@@ -1,7 +1,8 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, firebaseReady } from '../core/firebase.js';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db, firebaseReady } from '../core/firebase.js';
 import { registerUser, friendlyError } from '../core/api.js';
 import { toast, videoEmbedHtml, videoSoonHtml } from '../core/ui.js';
 import { getSettings } from '../core/store.js';
@@ -63,9 +64,21 @@ form?.addEventListener('submit', async e => {
     return;
   }
 
+  // referral code — কোনো registered user-এর code কিনা আগেই চেক (random code-তে account তৈরি হয় না)
   const btn = form.querySelector('button[type=submit]');
-  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> তৈরি হচ্ছে...';
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> যাচাই হচ্ছে...';
   errBox.innerHTML = '';
+  try {
+    const refSnap = await getDoc(doc(db, 'refs', refCode));
+    if (!refSnap.exists) {
+      errBox.innerHTML = `<div class="error-box"><div><i class="fa-solid fa-circle-exclamation"></i> Referral Code সঠিক নয় — কোনো registered user-এর code দিয়ে দিন (random code-তে account তৈরি হবে না)</div></div>`;
+      btn.disabled = false; btn.innerHTML = 'Register Now <i class="fa-solid fa-arrow-right"></i>';
+      return;
+    }
+  } catch (_) {
+    // network issue — server-এ আবার validate হবে (double guard)
+  }
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> তৈরি হচ্ছে...';
   try {
     await registerUser({ name, mobile, email, password, refCodeInput: refCode });
     location.replace('/dashboard.html');

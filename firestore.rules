@@ -56,9 +56,12 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // ---------- admins/ — browser থেকে সম্পূর্ণ বন্ধ (server-ই চেক করে) ----------
+    // ---------- admins/ ----------
+    // get: শুধু signed-in user (isAdmin() function-এর internal get()-এর জন্য দরকার)
+    // list/write সম্পূর্ণ বন্ধ — browser থেকে collection enumerate করা যায় না
     match /admins/{email} {
-      allow read, write: if false;
+      allow get: if isSignedIn();
+      allow list, create, update, delete: if false;
     }
 
     // ---------- users ----------

@@ -225,7 +225,7 @@ export async function bootAppPage({ active = 'home', onReady }) {
     } catch (_) {}
   }
   if (!profile) {
-    toast('প্রোফাইল লোড হয়নি — আবার লগইন করুন', 'error');
+    toast('প্রোফাইল লোড হয়নি — একবার refresh করুন, আবার না হলে admin-এ জানান', 'error');
     return;
   }
 
