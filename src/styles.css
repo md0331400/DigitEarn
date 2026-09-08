@@ -211,6 +211,11 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
   background: linear-gradient(135deg, #f97316, #ef4444);
   color: #fff; text-align: center; padding: 24px 18px;
   box-shadow: 0 10px 24px rgba(239, 68, 68, .3);
+  animation: bannerPulse 2.6s ease-in-out infinite;
+}
+@keyframes bannerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.015); }
 }
 .banner-alert { font-size: 30px; background: rgba(255, 255, 255, .25); border-radius: 50%; width: 58px; height: 58px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px; }
 .active-banner h3 { font-size: 21px; font-weight: 800; }

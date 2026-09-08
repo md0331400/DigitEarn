@@ -1,7 +1,7 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, projectGrid, setMarquee, showWelcomeModal, fmtBDT, esc } from '../core/ui.js';
-import { getTasks, getNotices, markWelcomeShown, friendlyError } from '../core/api.js';
+import { getTasks, getNotices, friendlyError } from '../core/api.js';
 import { getSettings } from '../core/store.js';
 
 bootAppPage({
@@ -24,10 +24,8 @@ bootAppPage({
         </div>`);
     }
 
-    // welcome modal (first login)
-    if (!user.welcomeShown) {
-      showWelcomeModal(settings, () => markWelcomeShown(user.uid));
-    }
+    // welcome modal — login/reload-এর পরেই দেখাবে (Telegram + admin links admin panel থেকে change হয়)
+    showWelcomeModal(settings);
 
     // tasks grid
     const grid = document.getElementById('projGrid');
