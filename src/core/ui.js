@@ -23,6 +23,26 @@ export function memberSince(s) {
   return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 }
 
+/* ---------- video embed (settings.videoUrl থেকে) ---------- */
+/* YouTube (watch / youtu.be / embed / shorts) → embed iframe; সরাসরি mp4 → <video>;
+   খালি/পরিচিত নয় → '' (কলার সাইড "coming soon" দেখাবে) */
+export function videoEmbedHtml(url) {
+  const u = String(url || '').trim();
+  if (!u) return '';
+  const m = u.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,11})/);
+  if (m) {
+    return `<iframe src="https://www.youtube.com/embed/${m[1]}" title="DigitEarn tutorial video" style="width:100%;height:100%;border:0;display:block" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+  }
+  if (/^https?:\/\/\S+\.(mp4|webm|ogv|ogg)(\?\S*)?$/i.test(u)) {
+    return `<video src="${esc(u)}" controls style="width:100%;height:100%;display:block;background:#000"></video>`;
+  }
+  return '';
+}
+
+export function videoSoonHtml(text) {
+  return `<div class="video-soon"><i class="fa-solid fa-clapperboard"></i><span>${esc(text || 'Video Coming Soon')}</span></div>`;
+}
+
 /* ---------- project grid (shared between dashboard & landing fallback) ---------- */
 
 export function projectGrid(tasks) {

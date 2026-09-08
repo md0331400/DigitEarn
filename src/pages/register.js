@@ -3,7 +3,8 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, firebaseReady } from '../core/firebase.js';
 import { registerUser, friendlyError } from '../core/api.js';
-import { toast } from '../core/ui.js';
+import { toast, videoEmbedHtml, videoSoonHtml } from '../core/ui.js';
+import { getSettings } from '../core/store.js';
 
 const form = document.getElementById('registerForm');
 const errBox = document.getElementById('registerError');
@@ -12,6 +13,19 @@ const errBox = document.getElementById('registerError');
 const refFromUrl = new URLSearchParams(location.search).get('ref');
 const refInput = document.getElementById('refCode');
 if (refInput && refFromUrl) refInput.value = refFromUrl;
+
+// tutorial video — admin panel থেকে settings.videoUrl বদলালেই এটা বদলে যাবে;
+// link না থাকলে "Video Coming Soon" দেখাবে
+const videoBox = document.getElementById('registerVideo');
+if (videoBox) {
+  videoBox.innerHTML = videoSoonHtml('Video Coming Soon');
+  getSettings()
+    .then(settings => {
+      const html = videoEmbedHtml(settings.videoUrl);
+      if (html) videoBox.innerHTML = html;
+    })
+    .catch(() => {});
+}
 
 if (firebaseReady) {
   onAuthStateChanged(auth, u => { if (u) location.replace('/dashboard.html'); });

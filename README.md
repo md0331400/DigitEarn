@@ -116,6 +116,7 @@ git push origin arena/01a080f3-digitearn
 | Field | মানে | ডিফল্ট |
 |---|---|---|
 | `siteStart` | সাইট শুরুর তারিখ (header টাইমার) | `2026-04-29` |
+| `videoUrl` | রেজিস্টার + হেল্প পেজের টিউটোরিয়াল ভিডিও (YouTube link — `watch?v=...` বা `youtu.be/...`); খালি থাকলে "Video Coming Soon" দেখাবে | `''` |
 | `registerBonus` | রেজিস্ট্রেশন বোনাস | `10` |
 | `activationBonus` | একাউন্ট অ্যাক্টিভেশন বোনাস | `20` |
 | `referralBonus` | প্রতি রেফারে বোনাস | `5` |

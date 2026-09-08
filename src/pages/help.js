@@ -1,6 +1,6 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import { bootAppPage, esc } from '../core/ui.js';
+import { bootAppPage, esc, videoEmbedHtml } from '../core/ui.js';
 
 bootAppPage({
   active: 'help',
@@ -8,17 +8,14 @@ bootAppPage({
     const box = document.getElementById('helpBox');
     if (!box) return;
     const vu = settings.videoUrl || '';
-    let videoHtml = `
+    const embed = videoEmbedHtml(vu);
+    const videoHtml = embed
+      ? `<div class="video-box" style="border-radius:14px;overflow:hidden">${embed}</div>`
+      : `
       <div class="tutorial-box">
         <i class="fa-solid fa-video-slash"></i>
         <p>ভিডিও টিউটোরিয়াল শীঘ্রই আসছে...</p>
       </div>`;
-    if (vu && /youtube\.com|youtu\.be/.test(vu)) {
-      const m = vu.match(/(?:v=|youtu\.be\/)([\w-]{6,})/);
-      if (m) videoHtml = `<iframe src="https://www.youtube.com/embed/${m[1]}" style="width:100%;aspect-ratio:16/9;border-radius:14px;border:0" allowfullscreen></iframe>`;
-    } else if (vu) {
-      videoHtml = `<video controls style="width:100%;border-radius:14px;background:#000"><source src="${esc(vu)}"></video>`;
-    }
     box.innerHTML = `
       <div class="help-head">
         <h2 class="hist-title"><i class="fa-solid fa-headset"></i> Customer Support</h2>
