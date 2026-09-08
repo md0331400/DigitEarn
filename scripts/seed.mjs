@@ -39,7 +39,6 @@ const { TASKS, SITE } = await import('../src/tasks-data.js');
 
 const settings = {
   siteName: SITE.name,
-  siteStart: '2026-04-29',
   footerText: 'POWERED BY DIGITEARN',
   videoUrl: '',
   telegramLink: 'https://t.me/digitearnbd',

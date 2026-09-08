@@ -7,7 +7,6 @@ const TTL = 5 * 60 * 1000;
 
 const DEFAULTS = {
   siteName: 'DigitEarn',
-  siteStart: '2026-04-29',
   footerText: 'POWERED BY DIGITEARN',
   videoUrl: '',
   telegramLink: '',

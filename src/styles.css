@@ -157,18 +157,6 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
 .active-banner h3 { font-size: 21px; font-weight: 800; }
 .active-banner p { font-size: 13px; opacity: .95; margin: 8px 0 16px; line-height: 1.55; }
 
-/* ===== timer ===== */
-.timer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.timer-title { font-weight: 700; font-size: 15.5px; display: flex; align-items: center; gap: 8px; }
-.timer-title i { color: var(--gold-deep); }
-.live-badge { background: var(--green-soft); color: #15803d; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
-.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; animation: pulse 1.4s infinite; }
-@keyframes pulse { 50% { opacity: .35; } }
-.timer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.t-box { background: var(--cream); border: 1.5px solid var(--border); border-radius: 14px; padding: 12px 4px; text-align: center; }
-.t-box b { font-size: 21px; display: block; font-variant-numeric: tabular-nums; }
-.t-box span { font-size: 11.5px; color: var(--muted); }
-
 /* ===== notice marquee ===== */
 .notice-bar {
   display: flex; gap: 10px; align-items: center; background: #fff;

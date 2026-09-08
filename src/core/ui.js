@@ -153,26 +153,6 @@ export function toast(msg, type = 'success') {
   el._t = setTimeout(() => el.classList.remove('show'), 3600);
 }
 
-export function startSiteTimer(container, startDate) {
-  if (!container || !startDate) return;
-  const start = new Date(startDate + 'T00:00:00').getTime();
-  if (isNaN(start)) return;
-  const el = sel => container.querySelector(sel);
-  function tick() {
-    let diff = Math.max(0, Date.now() - start);
-    const d = Math.floor(diff / 86400000); diff -= d * 86400000;
-    const h = Math.floor(diff / 3600000); diff -= h * 3600000;
-    const m = Math.floor(diff / 60000); diff -= m * 60000;
-    const s = Math.floor(diff / 1000);
-    if (el('[data-d]')) el('[data-d]').textContent = d;
-    if (el('[data-h]')) el('[data-h]').textContent = h;
-    if (el('[data-m]')) el('[data-m]').textContent = m;
-    if (el('[data-s]')) el('[data-s]').textContent = s;
-  }
-  tick();
-  setInterval(tick, 1000);
-}
-
 export function setMarquee(container, text) {
   if (!container || !text) { if (container) container.parentElement?.remove(); return; }
   container.innerHTML = `<span class="notice-chip">Notice</span><div class="marquee"><span>${esc(text)}</span></div>`;
@@ -244,9 +224,6 @@ export async function bootAppPage({ active = 'home', onReady }) {
     await logout();
     location.replace('/login.html');
   });
-
-  const timer = document.getElementById('siteTimer');
-  if (timer) startSiteTimer(timer, settings.siteStart);
 
   onReady && onReady({ uid: user.uid, user: userDoc, settings });
 }
