@@ -217,7 +217,7 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.015); }
 }
-.banner-alert { font-size: 30px; background: rgba(255, 255, 255, .25); border-radius: 50%; width: 58px; height: 58px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.banner-alert { font-size: 32px; line-height: 1; background: rgba(255, 255, 255, .3); border-radius: 50%; width: 62px; height: 62px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25); }
 .active-banner h3 { font-size: 21px; font-weight: 800; }
 .active-banner p { font-size: 13px; opacity: .95; margin: 8px 0 16px; line-height: 1.55; }
 
