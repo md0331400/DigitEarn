@@ -653,6 +653,10 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
 }
 
 /* task password/instruction box (admin-configured) */
-.pw-box { display: flex; align-items: center; gap: 10px; background: var(--gold-soft); border: 1.5px dashed var(--gold-ring); border-radius: 12px; padding: 11px 14px; margin-bottom: 14px; }
-.pw-label { font-size: 12.5px; font-weight: 700; color: var(--gold-deep); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.pw-box b { font-size: 15px; letter-spacing: .5px; word-break: break-all; }
+.pw-box { display: block; background: var(--gold-soft); border: 1.5px dashed var(--gold-ring); border-radius: 12px; padding: 11px 12px; margin-bottom: 14px; }
+.pw-label { display: block; font-size: 12.5px; font-weight: 700; color: var(--gold-deep); margin-bottom: 8px; }
+.pw-row { display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 9px; padding: 8px 10px; }
+.pw-row b { flex: 1; font-size: 14.5px; letter-spacing: .4px; word-break: break-all; }
+.pw-copy { flex: 0 0 auto; background: var(--gold-deep); color: #fff; border: 0; border-radius: 8px; padding: 8px 13px; font-size: 11.5px; font-weight: 700; letter-spacing: .6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.pw-copy:active { transform: scale(.95); }
+.btn-gray { background: #f1f5f9; color: #334155; box-shadow: none; }

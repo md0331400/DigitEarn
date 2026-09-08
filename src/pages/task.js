@@ -48,9 +48,9 @@ bootAppPage({
       const vu = task.videoUrl || '';
       const embed = videoEmbedHtml(vu);
       if (embed) {
-        vidSlot.innerHTML = `<div class="video-card"><p class="video-note">এই প্রজেক্টের ভিডিও দেখে কাজ করুন</p><div class="video-box">${embed}</div></div>`;
+        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ভিডিও গাইড — দেখে কাজ করুন</p><div class="video-box">${embed}</div></div>`;
       } else if (vu) {
-        vidSlot.innerHTML = `<div class="video-card"><p class="video-note">ভিডিও গাইড দেখুন</p><a href="${esc(vu)}" target="_blank" rel="noopener" class="btn btn-indigo btn-block" style="margin-top:10px"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Video Link</a></div>`;
+        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ভিডিও গাইড</p><a href="${esc(vu)}" target="_blank" rel="noopener" class="btn btn-indigo btn-block" style="margin-top:10px"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Video Link</a></div>`;
       }
     }
 
@@ -133,12 +133,25 @@ bootAppPage({
         <div class="card proof-card" style="margin-top:14px">
           <h4 class="sec-title"><i class="fa-solid fa-paper-plane" style="color:var(--gold-deep)"></i> কাজ শেষ? Submit করুন</h4>
           ${task.description ? `<p class="muted" style="margin-bottom:12px;font-size:13.5px;line-height:1.55">${esc(task.description)}</p>` : ''}
-          ${task.password ? `<div class="pw-box"><span class="pw-label"><i class="fa-solid fa-key"></i> Password</span><b>${esc(task.password)}</b></div>` : ''}
+          ${task.password ? `
+          <div class="pw-box">
+            <span class="pw-label"><i class="fa-solid fa-key"></i> পাসওয়ার্ড রিকোয়ারমেন্ট:</span>
+            <div class="pw-row"><b>${esc(task.password)}</b><button type="button" id="pwCopyBtn" class="pw-copy"><i class="fa-solid fa-copy"></i> COPY</button></div>
+          </div>` : ''}
           <div class="steps-list" style="margin-bottom:${fieldsHtml ? '6px' : '14px'}">${stepsHtml}</div>
           ${fieldsHtml}
           ${settings.admin1Link ? `<a href="${esc(settings.admin1Link)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> ${esc(settings.admin1Name)}-এর সাথে চ্যাট করুন</a>` : ''}
           <button type="button" id="proofSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> Submit করুন</button>
+          <a href="/history.html" class="btn btn-gray btn-block" style="margin-top:10px"><i class="fa-solid fa-clock-rotate-left"></i> View Activity History</a>
         </div>`;
+
+      const pwCopy = document.getElementById('pwCopyBtn');
+      if (pwCopy) pwCopy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(String(task.password || ''));
+          toast('Password copy হয়েছে');
+        } catch (_) { toast('Copy করতে পারা যায়নি', 'error'); }
+      });
 
       const btn = document.getElementById('proofSubmitBtn');
       btn.addEventListener('click', async () => {
