@@ -226,4 +226,37 @@ Task proof-এর screenshot upload-এ [ImageKit](https://imagekit.io) ব্�
 2. **Firestore** → নতুন collection **`admins`** → document ID = আপনার **admin email** (field: `role: "admin"`)
 3. `firestore.rules` পাস্ট করা থাকলে সেই email-এ login করলেই admin full access পাবে
 
-Admin panel (আলাদা অ্যাপ) এখন বানাচ্ছি — সেটা এই সাইটের ভেতরে থাকবে না।
+## 🛠️ Admin Panel (আলাদা অ্যাপ — `admin/` folder)
+
+User site-এর সাথে **কোনো লিংক নেই** — আলাদা Vercel project, আলাদা URL।
+
+### Vercel-এ নতুন project (একবারই করতে হবে)
+
+1. Vercel Dashboard → **Add New → Project**
+2. Repo: `DigitEarn` select করুন
+3. **Root Directory: `admin`** ← (এটাই সবচেয়ে গুরুত্বপূর্ণ)
+4. Framework Preset: **Other** (auto-detect হবে)
+5. Build Command: `npm run build` • Output Directory: `dist`
+6. Environment Variables: একই **৬টা `VITE_FIREBASE_*`** variable (Production)
+7. Deploy → আপনার admin panel-এর আলাদা URL পাবেন (যেমন `xxx-admin.vercel.app`)
+
+### Admin সেটআপ (Firebase-এ)
+
+1. Firebase Console → **Authentication → Users** → আপনার admin email-এ **Email/Password** account খুলুন
+2. **Firestore** → collection **`admins`** → নতুন document — **document ID = আপনার admin email** (field: `role: "admin"`)
+3. `firestore.rules` (এই repo-র ফাইল) Firestore Console-এ paste করে **PUBLISH** করুন
+4. Admin panel-এ সেই email/password দিয়ে login
+
+### Admin panel-এ যা যা করা যাবে
+
+| Section | কাজ |
+|---|---|
+| **Overview** | মোট user, pending proof/deposit count, total balance |
+| **Proofs** | User-এর task proof review — **Approve** (reward auto balance-এ) / **Reject** (reason সহ) |
+| **Deposits** | bKash/Nagad payment proof + TrxID check — **Approve** (account active + bonus) / **Reject** |
+| **Users** | Search, balance/transactions দেখা, manual activate/inactivate |
+| **Micro Jobs** | Task-এর reward, link, on/off, lock, video — save করলেই site-তে update |
+| **Settings** | Deposit fee, bonus, bKash/Nagad/Rocket number, admin contact (name/phone/email), gift, links |
+| **Notices** | Dashboard-এর notice bar add/edit/delete |
+
+> নতুন task (নতুন page) add করতে চাইলে developer-কে জানান — static SEO page generate হয় build time-এ।

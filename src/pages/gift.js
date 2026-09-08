@@ -15,7 +15,7 @@ bootAppPage({
           <div class="lock-dot-red"></div>
           <h2 class="locked-title">Gift Code Locked!</h2>
           <p class="muted">আপনার একাউন্টটি অ্যাক্টিভ হলে তবেই গিফট কোড ব্যবহার করা যাবে।</p>
-          <a href="/dashboard.html" class="btn btn-orange btn-block" style="margin-top:16px"><i class="fa-solid fa-unlock"></i> Activate Account</a>
+          <a href="/deposit.html" class="btn btn-orange btn-block" style="margin-top:16px"><i class="fa-solid fa-unlock"></i> Deposit করে অ্যাক্টিভ করুন</a>
         </div>`;
       return;
     }

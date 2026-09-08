@@ -336,6 +336,54 @@ export async function submitProof(uid, { taskSlug, taskName, images, reward }) {
   return pRef.id;
 }
 
+/* ---------- deposit (one-time activation fee → admin review → account active) ---------- */
+
+export async function getPendingDeposit(uid) {
+  if (!firebaseReady) return null;
+  const q = query(collection(db, 'users', uid, 'deposits'), where('status', '==', 'pending'), limit(1));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+export async function getLastDeposit(uid) {
+  if (!firebaseReady) return null;
+  const q = query(collection(db, 'users', uid, 'deposits'), orderBy('createdAt', 'desc'), limit(1));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+export async function submitDeposit(uid, { method, trxId, image, amount }) {
+  if (!firebaseReady) throw new Error('Firebase configure করা নেই');
+  if (!image) throw new Error('Payment proof (screenshot) upload করুন');
+  if (!trxId || String(trxId).trim().length < 6) throw new Error('bKash/Nagad Transaction ID সঠিকভাবে লিখুন');
+  const pending = await getPendingDeposit(uid);
+  if (pending) throw new Error('আপনার একটা deposit ইতিমধ্যে review-এ আছে — অপেক্ষায় থাকুন');
+  const depositData = {
+    method,
+    trxId: String(trxId).trim(),
+    image,
+    amount: Number(amount) || 0,
+    status: 'pending',
+    note: '',
+    createdAt: serverTimestamp(),
+    reviewedAt: null,
+  };
+  const dRef = doc(collection(db, 'users', uid, 'deposits'));
+  await runTransaction(db, async tx => {
+    const userSnap = await tx.get(doc(db, 'users', uid));
+    if (!userSnap.exists()) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+    if (userSnap.data().isActive) throw new Error('আপনার একাউন্ট ইতিমধ্যে অ্যাক্টিভ');
+    tx.set(dRef, depositData);
+    // admin panel-এর জন্য top-level mirror
+    tx.set(doc(db, 'deposits', dRef.id), { ...depositData, userId: uid });
+  });
+  return dRef.id;
+}
+
 /* ---------- withdrawals ---------- */
 
 export async function requestWithdrawal(uid, { amount, method, accountNumber, name, email }) {

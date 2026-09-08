@@ -58,6 +58,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---------- deposits/ — admin review queue (top-level mirror) ----------
+    match /deposits/{depositId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
     // ---------- admin directory ----------
     match /admins/{email} {
       allow get: if isSignedIn();

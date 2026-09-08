@@ -53,8 +53,8 @@ bootAppPage({
       }
       if (!user.isActive) {
         box.innerHTML = `
-          <div class="notice-orange"><i class="fa-solid fa-circle-info"></i><div>রিওয়ার্ড পেতে আপনার একাউন্ট অ্যাক্টিভ করতে হবে। অ্যাক্টিভ করলে সাথে সাথে ${esc(settings.activationBonus)} টাকা বোনাস!</div></div>
-          <a href="${esc(settings.activationLink)}" target="_blank" rel="noopener" class="btn btn-orange btn-block" style="margin-top:12px">এক্টিভ করুন</a>`;
+          <div class="notice-orange"><i class="fa-solid fa-circle-info"></i><div>রিওয়ার্ড পেতে আপনার একাউন্ট অ্যাক্টিভ করতে হবে — ৳${Number(settings.activationFee) || 30} deposit করলেই অ্যাক্টিভ + ${esc(settings.activationBonus)} টাকা বোনাস!</div></div>
+          <a href="/deposit.html" class="btn btn-orange btn-block" style="margin-top:12px"><i class="fa-solid fa-bolt"></i> Deposit করে অ্যাক্টিভ করুন</a>`;
         return;
       }
 

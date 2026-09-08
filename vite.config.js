@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.vercel']);
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.vercel', 'admin']);
 
 // Collect every static HTML entry (multi-page build → প্রতিটা পেজ আলাদা URL, আলাদা index-able)
 function collectHtml(dir, base = '') {

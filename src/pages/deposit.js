@@ -1,0 +1,132 @@
+import '../styles.css';
+import '@fortawesome/fontawesome-free/css/all.min.css';
+import { bootAppPage, toast, esc } from '../core/ui.js';
+import { getPendingDeposit, getLastDeposit, submitDeposit } from '../core/api.js';
+import { uploadImage } from '../core/upload.js';
+
+const METHODS = [
+  { key: 'bkash', label: 'bKash', color: '#e2136e', icon: 'fa-solid fa-mobile-screen', field: 'bkashNumber' },
+  { key: 'nagad', label: 'Nagad', color: '#f6921e', icon: 'fa-solid fa-wallet', field: 'nagadNumber' },
+  { key: 'rocket', label: 'Rocket', color: '#8c3494', icon: 'fa-solid fa-rocket', field: 'rocketNumber' },
+];
+
+bootAppPage({
+  active: 'home',
+  onReady: async ({ user, settings }) => {
+    const box = document.getElementById('depositBox');
+    if (!box) return;
+    const fee = Number(settings.activationFee) || 30;
+    const bonus = Number(settings.activationBonus) || 20;
+
+    if (user.isActive) {
+      box.innerHTML = `
+        <div class="center-lock">
+          <div class="lock-dot-green"><i class="fa-solid fa-circle-check"></i></div>
+          <h2 class="locked-title">আপনার একাউন্ট অ্যাক্টিভ!</h2>
+          <p class="muted">সব টাস্ক আনলকড — এখন কাজ শুরু করুন।</p>
+          <a href="/dashboard.html" class="btn btn-gold btn-block">Dashboard-এ ফিরে যান</a>
+        </div>`;
+      return;
+    }
+
+    const pending = await getPendingDeposit(user.uid).catch(() => null);
+    const last = pending ? null : await getLastDeposit(user.uid).catch(() => null);
+    const methods = METHODS.filter(m => settings[m.field]);
+
+    box.innerHTML = `
+      <div class="deposit-hero">
+        <div class="dh-title"><i class="fa-solid fa-bolt"></i> একাউন্ট অ্যাক্টিভেশন</div>
+        <div class="dh-amount">৳${fee} <small>(একবার মাত্র)</small></div>
+        <p>একবার ফি দিলেই পাবেন:</p>
+        <div class="dh-features">
+          <div class="dh-chip"><i class="fa-solid fa-unlock"></i> সব টাস্ক আনলক</div>
+          <div class="dh-chip"><i class="fa-solid fa-gift"></i> ৳${bonus} অ্যাক্টিভেশন বোনাস</div>
+          <div class="dh-chip"><i class="fa-solid fa-infinity"></i> লাইফটাইম অ্যাক্টিভ</div>
+        </div>
+      </div>
+
+      ${pending ? `
+        <div class="pending-box">
+          <i class="fa-solid fa-hourglass-half"></i>
+          <div><b>Deposit Review-এ আছে</b>
+          <span>আপনার payment proof (${esc(pending.method)}) admin review করছে। Approve হলেই একাউন্ট অ্যাক্টিভ হবে + ৳${bonus} বোনাস পাবেন।</span></div>
+        </div>
+        ${pending.image ? `<div class="proof-thumbs"><img class="proof-thumb" src="${esc(pending.image)}" alt="payment proof"></div>` : ''}`
+        : last && last.status === 'rejected' ? `
+        <div class="reject-box">
+          <i class="fa-solid fa-circle-xmark"></i>
+          <div><b>Deposit Reject হয়েছে।</b>${last.note ? `<span>${esc(last.note)}</span>` : '<span>সঠিক amount ও Transaction ID দিয়ে আবার চেষ্টা করুন।</span>'}</div>
+        </div>`
+        : ''}
+
+      ${methods.length ? `
+        <div class="card" style="margin-top:14px">
+          <h4 class="sec-title"><i class="fa-solid fa-credit-card" style="color:var(--gold-deep)"></i> কীভাবে Deposit করবেন</h4>
+          <div class="steps-list">
+            ${methods.map((m, i) => `
+              <div class="step-line"><b class="step-num">${i + 1}</b><span><b style="color:${m.color}">${m.label}</b> নম্বরে <b>${esc(settings[m.field])}</b> (Send Money) — Amount: <b>৳${fee}</b></span></div>`).join('')}
+            <div class="step-line"><b class="step-num">${methods.length + 1}</b><span>Payment-এর <b>Transaction ID</b> (TrxID) খাতায় লিখে রাখুন</span></div>
+            <div class="step-line"><b class="step-num">${methods.length + 2}</b><span>নিচের ফর্মে <b>payment screenshot</b> + TrxID দিয়ে submit করুন</span></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h4 class="sec-title"><i class="fa-solid fa-file-shield" style="color:var(--gold-deep)"></i> Payment Proof Submit</h4>
+          <select id="depMethod" class="input-field">
+            ${methods.map(m => `<option value="${m.key}">${m.label} — ${esc(settings[m.field])}</option>`).join('')}
+          </select>
+          <input type="text" id="depTrxId" class="input-field" placeholder="Transaction ID (TrxID)" maxlength="30">
+          <label class="proof-drop">
+            <input type="file" id="depImage" accept="image/*">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>Payment Screenshot upload করুন</span>
+            <small>JPG / PNG • ৩MB পর্যন্ত</small>
+          </label>
+          <button type="button" id="depSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন</button>
+          <p class="muted" style="font-size:11.5px;margin-top:10px;text-align:center">Admin review করে approve করলেই একাউন্ট অ্যাক্টিভ হবে।</p>
+        </div>`
+      : `
+        <div class="card" style="margin-top:14px">
+          <div class="notice-orange"><i class="fa-solid fa-circle-info"></i><div>Deposit number শীঘ্রই যুক্ত হবে। এ পর্যন্ত যোগাযোগ করুন:</div></div>
+        </div>`}
+    `;
+
+    const submitBtn = document.getElementById('depSubmitBtn');
+    if (!submitBtn) return;
+    let uploadedUrl = '';
+    const imgInput = document.getElementById('depImage');
+    imgInput.addEventListener('change', async () => {
+      const f = imgInput.files[0];
+      if (!f) return;
+      uploadedUrl = '';
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Upload হচ্ছে...';
+      try {
+        uploadedUrl = await uploadImage(f);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন';
+        toast('Screenshot upload হয়েছে');
+      } catch (err) {
+        toast(err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন';
+      }
+    });
+
+    submitBtn.addEventListener('click', async () => {
+      const method = document.getElementById('depMethod').value;
+      const trxId = document.getElementById('depTrxId').value;
+      if (!uploadedUrl) { toast('Payment screenshot upload করুন', 'error'); return; }
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
+      try {
+        await submitDeposit(user.uid, { method, trxId, image: uploadedUrl, amount: fee });
+        toast('Deposit Submit হয়েছে — Admin review করবে');
+        location.reload();
+      } catch (err) {
+        toast(err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন';
+      }
+    });
+  },
+});
