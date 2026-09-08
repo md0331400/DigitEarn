@@ -122,7 +122,7 @@ bootAppPage({
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
         try {
-          await submitProof(user.uid, { taskSlug: slug, taskName: task.nameBn, images: [], reward: task.reward });
+          await submitProof(user.uid, { taskSlug: slug });
           toast('Proof Submit হয়েছে — Admin review করবে');
           render();
         } catch (err) {

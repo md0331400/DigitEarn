@@ -42,7 +42,7 @@ bootAppPage({
       btn.addEventListener('click', async () => {
         btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Claim হচ্ছে...';
         try {
-          const bonus = await claimTarget(user.uid, btn.dataset.tier, Number(btn.dataset.bonus));
+          const bonus = await claimTarget(user.uid, btn.dataset.tier);
           toast(`+৳${bonus} টার্গেট বোনাস যোগ হয়েছে`);
           location.reload();
         } catch (err) {

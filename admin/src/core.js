@@ -5,7 +5,7 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore, doc, getDoc, getDocs, collection, query, where, orderBy, limit,
-  updateDoc, setDoc, deleteDoc, serverTimestamp, runTransaction,
+  updateDoc, setDoc, deleteDoc, serverTimestamp,
 } from 'firebase/firestore';
 
 const cfg = {
@@ -31,12 +31,28 @@ export const timeBn = ts => {
 };
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/* ---------- admin auth ---------- */
-export async function isAdminEmail(email) {
-  if (!email) return false;
+/* ---------- secure API helper (admin) ---------- */
+export async function callApi(path, body = {}, method = 'POST') {
+  if (!firebaseReady) throw new Error('Firebase configure করা নেই');
+  const cu = auth.currentUser;
+  if (!cu) throw new Error('Login required');
+  const token = await cu.getIdToken();
+  const resp = await fetch(path, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: method === 'GET' ? undefined : JSON.stringify(body),
+  });
+  let data = {};
+  try { data = await resp.json(); } catch (_) {}
+  if (!resp.ok) throw new Error(data.error || 'Operation fail হয়েছে — আবার চেষ্টা করুন');
+  return data;
+}
+
+/* ---------- admin auth (server-side verify — client check নয়) ---------- */
+export async function isAdminEmail() {
   try {
-    const snap = await getDoc(doc(db, 'admins', email));
-    return snap.exists();
+    const data = await callApi('/api/admin/verify', {});
+    return !!data.isAdmin;
   } catch (_) { return false; }
 }
 
@@ -53,37 +69,11 @@ export async function listProofs(status = 'pending', limitN = 100) {
 }
 
 export async function approveProof(proofId) {
-  const snap = await getDoc(doc(db, 'proofs', proofId));
-  if (!snap.exists()) throw new Error('Proof পাওয়া যায়নি');
-  const p = snap.data();
-  if (p.status !== 'pending') throw new Error('এই proof-এর status আগেই পরিবর্তন হয়েছে');
-  const uid = p.userId;
-  const reward = Number(p.reward) || 0;
-  await runTransaction(db, async tx => {
-    const userRef = doc(db, 'users', uid);
-    const uSnap = await tx.get(userRef);
-    if (!uSnap.exists()) throw new Error('User পাওয়া যায়নি');
-    const u = uSnap.data();
-    tx.update(userRef, {
-      balance: (Number(u.balance) || 0) + reward,
-      totalEarned: (Number(u.totalEarned) || 0) + reward,
-    });
-    tx.set(doc(db, 'users', uid, 'transactions'), {
-      amount: reward, type: 'task_reward', note: `টাস্ক: ${p.taskName || p.taskSlug}`, uid: 'admin', createdAt: serverTimestamp(),
-    });
-    tx.update(doc(db, 'proofs', proofId), { status: 'approved', note: '', reviewedAt: serverTimestamp() });
-    tx.update(doc(db, 'users', uid, 'proofs', proofId), { status: 'approved', note: '', reviewedAt: serverTimestamp() });
-  });
+  await callApi('/api/admin/proof-review', { proofId, action: 'approve' });
 }
 
 export async function rejectProof(proofId, note = '') {
-  await runTransaction(db, async tx => {
-    const snap = await tx.get(doc(db, 'proofs', proofId));
-    if (!snap.exists()) throw new Error('Proof পাওয়া যায়নি');
-    const p = snap.data();
-    tx.update(doc(db, 'proofs', proofId), { status: 'rejected', note, reviewedAt: serverTimestamp() });
-    tx.update(doc(db, 'users', p.userId, 'proofs', proofId), { status: 'rejected', note, reviewedAt: serverTimestamp() });
-  });
+  await callApi('/api/admin/proof-review', { proofId, action: 'reject', note });
 }
 
 /* ---------- deposits ---------- */
@@ -99,43 +89,11 @@ export async function listDeposits(status = 'pending', limitN = 100) {
 }
 
 export async function approveDeposit(depositId) {
-  const snap = await getDoc(doc(db, 'deposits', depositId));
-  if (!snap.exists()) throw new Error('Deposit পাওয়া যায়নি');
-  const d = snap.data();
-  if (d.status !== 'pending') throw new Error('এই deposit-এর status আগেই পরিবর্তন হয়েছে');
-  const uid = d.userId;
-  const sSnap = await getDoc(doc(db, 'settings', 'site'));
-  const bonus = Number(sSnap.exists() ? sSnap.data().activationBonus : 20) || 20;
-  await runTransaction(db, async tx => {
-    const userRef = doc(db, 'users', uid);
-    const uSnap = await tx.get(userRef);
-    if (!uSnap.exists()) throw new Error('User পাওয়া যায়নি');
-    const u = uSnap.data();
-    const alreadyGiven = !!u.activationBonusGiven;
-    tx.update(userRef, {
-      isActive: true,
-      activationBonusGiven: true,
-      balance: alreadyGiven ? (Number(u.balance) || 0) : (Number(u.balance) || 0) + bonus,
-      totalEarned: alreadyGiven ? (Number(u.totalEarned) || 0) : (Number(u.totalEarned) || 0) + bonus,
-    });
-    if (!alreadyGiven) {
-      tx.set(doc(db, 'users', uid, 'transactions'), {
-        amount: bonus, type: 'activation_bonus', note: 'একাউন্ট অ্যাক্টিভেশন বোনাস', uid: 'admin', createdAt: serverTimestamp(),
-      });
-    }
-    tx.update(doc(db, 'deposits', depositId), { status: 'approved', note: '', reviewedAt: serverTimestamp() });
-    tx.update(doc(db, 'users', uid, 'deposits', depositId), { status: 'approved', note: '', reviewedAt: serverTimestamp() });
-  });
+  await callApi('/api/admin/deposit-review', { depositId, action: 'approve' });
 }
 
 export async function rejectDeposit(depositId, note = '') {
-  await runTransaction(db, async tx => {
-    const snap = await tx.get(doc(db, 'deposits', depositId));
-    if (!snap.exists()) throw new Error('Deposit পাওয়া যায়নি');
-    const d = snap.data();
-    tx.update(doc(db, 'deposits', depositId), { status: 'rejected', note, reviewedAt: serverTimestamp() });
-    tx.update(doc(db, 'users', d.userId, 'deposits', depositId), { status: 'rejected', note, reviewedAt: serverTimestamp() });
-  });
+  await callApi('/api/admin/deposit-review', { depositId, action: 'reject', note });
 }
 
 /* ---------- users ---------- */
@@ -157,7 +115,7 @@ export async function getUserTransactions(uid, limitN = 25) {
 }
 
 export async function setUserActive(uid, active) {
-  await updateDoc(doc(db, 'users', uid), { isActive: active });
+  await callApi('/api/admin/set-active', { uid, active });
 }
 
 /* ---------- tasks ---------- */

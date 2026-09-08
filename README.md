@@ -206,6 +206,42 @@ npm run seed       # Firestore seed (বারবার চালানো safe)
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` (সংখ্যা) |
 | `VITE_FIREBASE_APP_ID` | `appId` (web app-এর ID) |
 
+## 🔒 Security Architecture (Wallet Protection)
+
+**সব financial operation server-side (Vercel API + Firebase Admin SDK)** — browser-এর user
+সরাসরি `balance`/`totalEarned`/transactions/claims কখনোই change করতে পারে না
+(Firestore rules client-কে read-only + safe profile field-এর মধ্যে সীমাবদ্ধ রাখে)।
+
+| Endpoint | কাজ |
+|---|---|
+| `POST /api/user/register` | রেজিস্ট্রেশন — bonus + referral credit server-side (atomic) |
+| `POST /api/user/ensure` | profile doc heal (legacy session, bonus ছাড়া) |
+| `POST /api/task/claim` | task reward — amount Firestore-এর task doc থেকে |
+| `POST /api/gift/claim` | gift code — code + amount server validate |
+| `POST /api/target/claim` | referral target bonus — tier + bonus server-side |
+| `POST /api/account/activate` | activation + bonus (exactly once) |
+| `POST /api/proof/submit` | task proof submit (pending) |
+| `POST /api/deposit/submit` | deposit request (amount server-এর settings থেকে) |
+| `POST /api/withdrawal/request` | withdrawal — server balance check, atomic deduct |
+| `POST /api/admin/verify` | admin token check (server-side) |
+| `POST /api/admin/proof-review` | admin proof approve/reject (reward credit) |
+| `POST /api/admin/deposit-review` | admin deposit approve/reject (account active) |
+| `POST /api/admin/set-active` | manual activate/inactivate |
+
+- প্রতি request-এ **Firebase ID token** (`Authorization: Bearer <token>`) — server `verifyIdToken()` করে
+- UID/amount/balance **client থেকে কখনো trust করা হয় না**
+- সব balance-changing operation **Firestore transaction**-এ (atomic, duplicate-proof)
+
+### Server env variables (Vercel-এ, দুটো project-এই লাগবে)
+
+| Variable | কোথায় পাবেন |
+|---|---|
+| `FIREBASE_PROJECT_ID` | Firebase Console → Project settings → **Service accounts** → `project_id` |
+| `FIREBASE_CLIENT_EMAIL` | সেখানেই → `client_email` |
+| `FIREBASE_PRIVATE_KEY` | সেখানেই → **Generate new private key** → `private_key` (\n escaped থাকলে ঠিক আছে) |
+
+⚠️ এই ৩টা **কখনোই** `VITE_` prefix-এ নয়, GitHub-এ নয়, frontend-এ নয় — শুধু Vercel env-এ।
+
 ## 📸 Image upload
 
 **Image upload feature বর্তমানে নেই** (ImageKit সরিয়ে দেওয়া হয়েছে)।

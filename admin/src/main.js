@@ -32,10 +32,10 @@ if (!firebaseReady) {
 
 onAuthStateChanged(auth, async fbUser => {
   if (!fbUser) { me = null; renderLogin(); return; }
-  const admin = await isAdminEmail(fbUser.email);
+  const admin = await isAdminEmail();
   if (!admin) {
     await signOut(auth);
-    renderLogin('এই email টা admin list-এ নেই — Firestore-এর admins collection-এ email টা আছে কিনা দেখুন।');
+    renderLogin('এই email টা admin list-এ নেই — Firestore-এর admins collection-এ এই email-এর document আছে কিনা দেখুন।');
     return;
   }
   me = { email: fbUser.email };

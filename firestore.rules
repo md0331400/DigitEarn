@@ -1,20 +1,16 @@
 rules_version = '2';
-// DigitEarn — Firestore Security Rules
+// DigitEarn — Firestore Security Rules (hardened)
 // Firebase Console → Firestore Database → Rules → এটা পুরোটা paste করে PUBLISH করুন
 //
-// Admin panel:
-//  1. Firebase Console → Authentication-এ আপনার admin email-এর একাউন্ট খুলুন
-//  2. Firestore-এ `admins` collection-এ একটা document বানান: document ID = আপনার admin email
-//     (field: role: "admin" — field optional, শুধু doc-টা থাকলেই admin)
-//  3. Admin panel সেই email দিয়ে login করলেই full access পাবে
+// আর্কিটেকচার:
+//  - সব financial mutation (balance, totalEarned, transactions, claims, withdrawal,
+//    deposit status, activation) হয় Vercel serverless API + Firebase Admin SDK-তে।
+//    Admin SDK rules bypass করে — তাই নিচের rules শুধু browser client-কে সীমাবদ্ধ করে।
+//  - Normal user: নিজের profile-র safe fields (name), নিজের data READ।
+//  - Admin: tasks/settings/notices content manage + নিজের data read (admins/{email} doc চেক
+//    হয় rules-engine-এর internal get()-এ, browser থেকে admins collection পড়া যায় না)।
 //
-// কী রক্ষা করে:
-//  - অন্য ইউজারের প্রোফাইল/ব্যালেন্স/proof কেউ পড়তে বা লিখতে পারবে না
-//  - tasks / settings / notices / refs শুধু পড়া যায় (পরিবর্তন শুধু admin)
-//  - ব্যালেন্স পরিবর্তন: নিজের লিগিটিমেট flow + referral credit + admin
-//
-// ⚠️ real money স্কেলে wallet লজিক Cloud Functions-এ তুলে আনুন।
-// নিচের সংখ্যাগুলা (5, 300) settings-এর bonus amount-এর সাথে মিল রাখুন।
+// ⚠️ Real money স্কেলে আরও: Cloud Functions / Vercel cron + audit log।
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -25,7 +21,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/admins/$(request.auth.token.email)).exists();
     }
 
-    // ---------- public content ----------
+    // ---------- public content (read) ----------
     match /tasks/{taskId} {
       allow get, list: if true;
       allow create, update, delete: if isAdmin();
@@ -43,78 +39,80 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // ---------- refs/ — রেফারেল কোড → uid directory ----------
+    // ---------- refs/ — public directory (create শুধু server-এ) ----------
     match /refs/{code} {
       allow get: if true;
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow list, update, delete: if false;
+      allow list, create, update, delete: if false;
     }
 
-    // ---------- proofs/ — admin review queue (top-level mirror) ----------
+    // ---------- top-level review queues (admin-only; write শুধু server-এ) ----------
     match /proofs/{proofId} {
       allow get, list: if isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin();
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
-    // ---------- deposits/ — admin review queue (top-level mirror) ----------
     match /deposits/{depositId} {
       allow get, list: if isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin();
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
-    // ---------- admin directory ----------
+    // ---------- admins/ — browser থেকে সম্পূর্ণ বন্ধ (server-ই চেক করে) ----------
     match /admins/{email} {
-      allow get: if isSignedIn();
-      allow list, create, update, delete: if false;
+      allow read, write: if false;
     }
 
     // ---------- users ----------
     match /users/{userId} {
       function isSelf() { return request.auth.uid == userId; }
 
-      // নিজের doc: নির্দিষ্ট ফিল্ড, একবারে সর্বোচ্চ +৳300
-      function selfWrite() {
+      // শুধু safe profile fields — balance/totalEarned/refCode/refBy/activationBonusGiven/isActive/createdAt কখনো না
+      function safeProfileWrite() {
         return isSignedIn() && isSelf() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-            ['balance', 'totalEarned', 'welcomeShown', 'name', 'lastLogin', 'isActive', 'activationBonusGiven']
-          ) &&
-          request.resource.data.balance - resource.data.balance <= 300;
-      }
-
-      // অন্যের doc: শুধু রেফারেল বোনাস ক্রেডিট (+৳5)
-      function referralCredit() {
-        return isSignedIn() && !isSelf() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'totalEarned']) &&
-          request.resource.data.balance - resource.data.balance == 5;
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
       }
 
       allow get: if isSignedIn() && (isSelf() || isAdmin());
-      allow create: if isSignedIn() && isSelf();
-      allow update: if selfWrite() || referralCredit() || isAdmin();
+      allow create: if false;              // server-এ (register/ensure)
+      allow update: if safeProfileWrite() || isAdmin();
       allow list: if isAdmin();
       allow delete: if false;
 
-      // team — public referral tree (শুধু name/refCode/isActive)
-      match /team/{childUid} {
-        allow get, list: if true;
-        allow create: if isSignedIn() && childUid == request.auth.uid && request.resource.data.refBy == userId;
-        allow update, delete: if false;
+      // transactions — read-only (financial records শুধু server/admin তৈরি করে)
+      match /transactions/{txId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
       }
 
-      // private subcollections (transactions, taskClaims, giftClaims, targetClaims, withdrawals, proofs)
-      match /{sub=**} {
-        allow read: if isSignedIn() && (isSelf() || isAdmin());
-        allow write: if isSignedIn() && (isSelf() || isAdmin());
-        // রেজিস্ট্রেশনে নতুন মেম্বার referrer-এর transactions-এ referral_bonus entry লেখে
-        allow create: if isSignedIn() &&
-          request.resource.data.type == 'referral_bonus' &&
-          request.resource.data.amount == 5 &&
-          request.resource.data.refBy == userId &&
-          request.resource.data.uid == request.auth.uid;
+      // claim/withdrawal/deposit/proof records — read-only for owner+admin
+      match /taskClaims/{claimId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /giftClaims/{claimId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /targetClaims/{claimId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /withdrawals/{wdId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /deposits/{depId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /proofs/{proofId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+
+      // team — public referral tree (write শুধু server-এ)
+      match /team/{childUid} {
+        allow get, list: if true;
+        allow create, update, delete: if false;
       }
     }
   }
