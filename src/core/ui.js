@@ -175,7 +175,7 @@ export function showWelcomeModal(settings, onClose) {
   overlay.innerHTML = `
   <div class="modal-card">
     <button class="modal-close" id="welcomeCloseX" aria-label="বন্ধ করুন"><i class="fa-solid fa-xmark"></i></button>
-    <div class="welcome-icon"><i class="fa-solid fa-gift"></i></div>
+    <div class="welcome-icon"><img src="/handshake.png" alt="" width="92" height="92" onerror="this.replaceWith(Object.assign(document.createElement('i'),{className:'fa-solid fa-gift',style:'font-size:56px;color:var(--gold)'}))"></div>
     <h2 class="welcome-title">Welcome!</h2>
     <p class="welcome-text">প্রতিদিন গিফট কোড দেওয়া হয় আমাদের টেলিগ্রাম চ্যানেলে। গিফট কোড বোনাস নিতে জয়েন করুন</p>
     <button type="button" class="tg-join" id="tgJoinBtn"><i class="fa-brands fa-telegram"></i> Join Telegram</button>

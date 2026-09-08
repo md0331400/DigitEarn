@@ -500,8 +500,8 @@ button.support-item { width: 100%; background: #fff; cursor: pointer; font-famil
 .modal-overlay { position: fixed; inset: 0; background: rgba(28, 25, 23, .55); display: flex; align-items: center; justify-content: center; z-index: 95; padding: 20px; }
 .modal-card { position: relative; background: #fff; border-radius: 22px; width: 100%; max-width: 380px; padding: 30px 22px 26px; text-align: center; box-shadow: 0 20px 60px rgba(28, 25, 23, .35); }
 .modal-close { position: absolute; top: 14px; right: 14px; width: 38px; height: 38px; border-radius: 12px; background: var(--cream); color: var(--muted); font-size: 16px; }
-.welcome-icon { width: 78px; height: 78px; margin: 0 auto 14px; color: var(--gold); font-size: 62px; line-height: 78px; background: var(--gold-soft); border-radius: 22px; }
-.welcome-icon i { font-weight: 400; }
+.welcome-icon { width: 92px; height: 92px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; }
+.welcome-icon img { width: 92px; height: 92px; object-fit: contain; }
 .welcome-title { font-size: 26px; font-weight: 800; }
 .welcome-text { color: var(--muted); font-size: 14px; margin: 12px 0 18px; line-height: 1.7; }
 .tg-join { display: inline-flex; align-items: center; gap: 10px; background: linear-gradient(135deg, #25d366, #128c7e); color: #fff; border: 0; cursor: pointer; font-family: inherit; font-size: 15.5px; font-weight: 700; padding: 13px 30px; border-radius: 14px; box-shadow: 0 8px 18px rgba(37, 211, 102, .35); }
