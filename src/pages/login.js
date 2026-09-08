@@ -7,7 +7,9 @@ import { toast } from '../core/ui.js';
 
 const form = document.getElementById('loginForm');
 const errBox = document.getElementById('loginError');
-const next = new URLSearchParams(location.search).get('next') || '/dashboard.html';
+// ?next= শুধু same-site path নেওয়া হবে (open-redirect রোধ)
+const rawNext = new URLSearchParams(location.search).get('next');
+const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard.html';
 
 if (firebaseReady) {
   onAuthStateChanged(auth, u => { if (u) location.replace(next); });
