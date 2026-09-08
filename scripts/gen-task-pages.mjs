@@ -124,7 +124,7 @@ ${stepsHtml}
     <div class="foot-grid">
       <div>
         <img src="/logo.png" alt="${SITE.name}" width="40" height="40">
-        <p class="muted" style="font-size:13px;margin-top:8px">সহজ ডিজিটাল টাস্ক করে প্রতিদিন টাকা আর্ন করুন — bKash/Nagad-এ উইথড্র।</p>
+        <p class="muted" style="font-size:13px;margin-top:8px">সহজ ডিজিটাল টাস্ক করে প্রতিদিন টাকা আর্ন করুন — কাজ শেষ করলেই রিওয়ার্ড! 💰</p>
       </div>
       <div>
         <b>কুইক লিংক</b>
