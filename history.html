@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>উইথড্র হিস্টরি | DigitEarn — আপনার পেমেন্ট রিকোয়েস্ট</title>
+<meta name="description" content="DigitEarn উইথড্র হিস্টরি — আপনার সকল পেমেন্ট রিকোয়েস্টের তালিকা ও স্ট্যাটাস দেখুন।">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://digitearn.vercel.app/history.html">
+<link rel="icon" type="image/png" href="/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DigitEarn">
+<meta property="og:title" content="উইথড্র হিস্টরি | DigitEarn">
+<meta property="og:url" content="https://digitearn.vercel.app/history.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="phone">
+  <header class="app-header" id="appHeader"></header>
+  <main class="main" id="appMain">
+    <div class="hist-head">
+      <div>
+        <h2 class="hist-title"><i class="fa-solid fa-clock-rotate-left" style="color:#d97706"></i> Withdrawal History</h2>
+        <p class="muted">আপনার সকল পেমেন্ট রিকোয়েস্টের তালিকা</p>
+      </div>
+      <span class="records-pill">Records: <span id="histCount">0</span></span>
+    </div>
+    <div id="histBox"><div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> লোড হচ্ছে...</div></div>
+  </main>
+  <nav class="bottom-nav" id="appNav"></nav>
+</div>
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer" id="appDrawer"></aside>
+<script type="module" src="/src/pages/history.js"></script>
+</body>
+</html>

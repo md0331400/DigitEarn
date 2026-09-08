@@ -1,19 +1,20 @@
 {
   "name": "digitearn",
-  "version": "1.0.0",
-  "description": "DigitEarn - Bangladesh Top Earn style earning platform with a fully separate admin panel",
-  "main": "scripts/start.js",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "DigitEarn — digital task earning platform (Vite + Firebase, Vercel-ready, SEO optimized)",
   "scripts": {
-    "start": "node scripts/start.js",
-    "start:user": "node public-site/server.js",
-    "start:admin": "node admin/server.js"
+    "dev": "node scripts/gen-task-pages.mjs && vite",
+    "build": "node scripts/gen-task-pages.mjs && vite build",
+    "preview": "vite preview",
+    "seed": "node scripts/seed.mjs"
   },
-  "license": "MIT",
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.5.2",
-    "bcryptjs": "^2.4.3",
-    "ejs": "^3.1.10",
-    "express": "^4.19.2",
-    "express-session": "^1.18.0"
+    "firebase": "^10.12.2"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
   }
 }

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ড্যাশবোর্ড | DigitEarn — টাস্ক, রিওয়ার্ড ও প্রজেক্ট</title>
+<meta name="description" content="DigitEarn ড্যাশবোর্ড — প্রতিদিনের ডিজিটাল টাস্ক সম্পন্ন করুন, রিওয়ার্ড ক্লেইম করুন এবং আপনার ব্যালেন্স দেখুন।">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://digitearn.vercel.app/dashboard.html">
+<link rel="icon" type="image/png" href="/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DigitEarn">
+<meta property="og:title" content="ড্যাশবোর্ড | DigitEarn">
+<meta property="og:url" content="https://digitearn.vercel.app/dashboard.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="phone">
+  <header class="app-header" id="appHeader"></header>
+  <main class="main" id="appMain">
+    <div class="card timer-card">
+      <div class="timer-head">
+        <span class="timer-title"><i class="fa-solid fa-clock"></i> সাইটের বয়স</span>
+        <span class="live-badge"><span class="live-dot"></span> Live</span>
+      </div>
+      <div class="timer-grid" id="siteTimer">
+        <div class="t-box"><b data-d>0</b><span>দিন</span></div>
+        <div class="t-box"><b data-h>0</b><span>ঘণ্টা</span></div>
+        <div class="t-box"><b data-m>0</b><span>মিনিট</span></div>
+        <div class="t-box"><b data-s>0</b><span>সেকেন্ড</span></div>
+      </div>
+    </div>
+    <div class="notice-bar" id="noticeBar" style="display:none"></div>
+    <div class="card projects-card">
+      <div class="proj-head"><i class="fa-solid fa-rocket"></i> আমাদের প্রজেক্ট সমূহ</div>
+      <div class="grid4" id="projGrid"><div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> লোড হচ্ছে...</div></div>
+    </div>
+  </main>
+  <nav class="bottom-nav" id="appNav"></nav>
+</div>
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer" id="appDrawer"></aside>
+<script type="module" src="/src/pages/dashboard.js"></script>
+</body>
+</html>

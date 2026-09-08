@@ -1,97 +1,208 @@
-# DigitEarn
+# DigitEarn 🇧🇩
 
-Bangladesh Top Earn স্টাইলের মোবাইল-ফার্স্ট এরনিং প্ল্যাটফর্ম — **সম্পূর্ণ আলাদা Admin Panel** সহ।
+বাংলাদেশের জন্য ডিজিটাল টাস্ক-ভিত্তিক আর্নিং ওয়েবসাইট — **Vite + Firebase (Firestore/Auth) + Vercel**, সম্পূর্ণ SEO-optimized (প্রতিটা পেজের আলাদা URL, title, meta, canonical, sitemap, robots, JSON-LD)।
 
-> 🎨 UI রেফারেন্স: repo-তে থাকা ১৫টি `Screenshot_*.png` (bdtopearl.com-এর mobile app) অনুযায়ী বানানো।
+লাইভ সাইট: **https://digitearn.vercel.app/**
 
-## আর্কিটেকচার — দুইটা সম্পূর্ণ আলাদা অ্যাপ
+> এই রিপো-তে **push করলেই Vercel auto-deploy** হয় (আপনার Vercel এই repo-এর সাথে connected)।
 
-| অ্যাপ | পোর্ট | লগইন | কোড |
-|---|---|---|---|
-|  **User Website** | `3000` | সাধারণ ইউজার (Email + Password) | `public-site/` |
-| 🛡️ **Admin Panel** | `3001` | শুধু এডমিন (Username + Password) | `admin/` |
+---
 
-- Admin panel **সাইটের ভেতর নেই** — আলাদা প্রসেস, আলাদা পোর্ট, আলাদা লগইন পেজ, আলাদা ডিজাইন।
-- ইউজার সাইট থেকে admin-এর কোনো লিংক নেই।
-- দুইটা অ্যাপ শুধু **একটা SQLite database** (`data/digitearn.db`) শেয়ার করে।
-- টেক স্ট্যাক: Node.js (built-in `node:sqlite`) + Express + EJS, zero-DB-server।
+##  সেটআপ — ধাপে ধাপে (শুরুর একবারই করতে হবে)
 
-## চালাতে
+### ধাপ ১: Firebase প্রজেক্ট বানাও
+
+1. <https://console.firebase.google.com/> → **Add project** → নাম দিন `digitearn` (বা যেকোনো) → Create
+2. বাঁ পাশের মেনু → **Authentication** → **Get started** → **Sign-in method** ট্যাব →
+   - **Email/Password** → ON → **Save**
+   - (আর কিছু দরকার নেই)
+3. মেনু → **Firestore Database** → **Create database** →
+   - Location: **asia-south1 (Mumbai)** (বাংলাদেশের জন্য সেরা)
+   - Security rules: **Start in locked mode** → **Create**
+4. মেনু → **Firestore Database** → **Rules** ট্যাব → যে যা লেখা আছে **সব মুছে** এই repo-এর
+   [`firestore.rules`](./firestore.rules) ফাইলের কন্টেন্ট paste করে **PUBLISH** চাপুন
+5. মেনু → **Project settings (⚙️)** → নিচের দিকে **Your apps** → **Add app** → **Web (</>)**
+   - Nickname: `digitearn-web` → Register
+   - এবার একটা `firebaseConfig = { ... }` দেখাবে — ৬টা মান এখান থেকেই বের করবেন:
+
+### ধাপ ২: `.env` ফাইল বানাও
+
+রিপোর root-এ `.env` নামে নতুন ফাইল বানাও (`.env.example` কপি করে)। ভেতরে ৬টা key বসানো আছে:
+
+```env
+VITE_FIREBASE_API_KEY=AIzaSy...            ← firebaseConfig.apiKey
+VITE_FIREBASE_AUTH_DOMAIN=digitearn.firebaseapp.com   ← firebaseConfig.authDomain
+VITE_FIREBASE_PROJECT_ID=digitearn         ← firebaseConfig.projectId
+VITE_FIREBASE_STORAGE_BUCKET=digitearn.firestoreapp.com ← firebaseConfig.storageBucket
+VITE_FIREBASE_MESSAGING_SENDER_ID=1234567890 ← firebaseConfig.messagingSenderId
+VITE_FIREBASE_APP_ID=1:1234567890:web:abc... ← firebaseConfig.appId
+```
+
+> ⚠️ key-গুলোর **নাম ঠিক এই ৬টা** (VITE_ prefix ছাড়া কাজ করবে না — Vite শুধু `VITE_` দিয়ে শুরু হওয়া variable-এর বাইরে দিতে পারে)।
+> `.env`-এর মানগুলো **গোপন রাখুন** — `.env` git-এ push হবে না (`.gitignore`-এ আছে), কিন্তু `VITE_` variable-গুলো browser-এর ফ্রন্ট-এন্ড config — এগুলো দিয়ে কেউ সাইটের ডেটা নিয়ে খেলতে পারবে না, কারণ **Firestore Security Rules** তা রোধ করে।
+
+### ধাপ ৩: Firestore-এ ডেটা seed করো
+
+টাস্ক, settings, notice গুলো Firestore-তে বসাতে লোকাল টার্মিনালে:
 
 ```bash
 npm install
-npm start
+npm run seed
 ```
 
-- User site → http://localhost:3000
-- Admin panel → http://localhost:3001
+এবার console-এ ✅ দেখাবে। এটা **আবার আবার চালানো safe** — যে document আছে সেটাকে ছুঁয় না।
 
-(অথবা আলাদা: `npm run start:user`, `npm run start:admin`)
+### ধাপ ৪: Vercel-এ Environment Variables বসানো
 
-## ডিফল্ট লগইন (প্রথমবার)
+1. <https://vercel.com> → আপনার **DigitEarn** project → **Settings** → **Environment Variables**
+2. উপরের ৬টা variable-এর **একই নাম আর একই মান** বসান (যেমন `VITE_FIREBASE_API_KEY` = ...)
+3. Production / Preview / Development তিন জায়গাতেই (বা "All" scope) save করুন
+4. আবার যেকোনো commit/push করলেই নতুন variable নিয়ে build হয়ে যাবে
 
-### Admin Panel (port 3001)
-| Username | Password |
+### ধাপ ৫: Push
+
+```bash
+git push origin arena/01a080f3-digitearn
+```
+
+(যদি branch থেকে main-এ merge করে deploy করতে চান — Vercel যে branch connect করা আছে সেই branch-এ merge করুন।)
+
+---
+
+## 📄 পেজ তালিকা
+
+| URL | ধরন | Google Index |
+|---|---|---|
+| `/` | হোম/ল্যান্ডিং | ✅ |
+| `/task/facebook-sale.html` | টাস্ক পেজ | ✅ |
+| `/task/gmail-sale.html` | টাস্ক পেজ | ✅ |
+| `/task/instagram-sale.html` | টাস্ক পেজ | ✅ |
+| `/task/job-post.html` | টাস্ক পেজ | ✅ |
+| `/task/angk-kron.html` | টাস্ক পেজ | ✅ |
+| `/task/myjob.html` | টাস্ক পেজ | ✅ |
+| `/task/typing-job.html` | টাস্ক পেজ | ✅ |
+| `/task/ads-view.html` | টাস্ক পেজ | ✅ |
+| `/register.html` | রেজিস্ট্রেশন | ✅ |
+| `/login.html` | লগইন | ✅ |
+| `/forgot-password.html` | পাসওয়ার্ড রিসেট | ✅ |
+| `/dashboard.html` | অ্যাপ (লগইন পর) | ❌ noindex |
+| `/wallet.html` | অ্যাপ | ❌ noindex |
+| `/history.html` | অ্যাপ | ❌ noindex |
+| `/team.html` | অ্যাপ | ❌ noindex |
+| `/profile.html` | অ্যাপ | ❌ noindex |
+| `/help.html` | অ্যাপ | ❌ noindex |
+| `/gift.html` | অ্যাপ | ❌ noindex |
+| `/target.html` | অ্যাপ | ❌ noindex |
+| `/leadership.html` | অ্যাপ | ❌ noindex |
+
+- sitemap: `/sitemap.xml` (শুধু public পেজ) • robots: `/robots.txt`
+- লগইন ছাড়া অ্যাপ পেজ খুললেই `/login.html`-এ redirect
+
+### SEO চেক (deploy এর পর)
+
+1. <https://digitearn.vercel.app/sitemap.xml> খুলুন — ১২টা URL থাকবে
+2. [Google Search Console](https://search.google.com/search-console) → Property add → `digitearn.vercel.app` →
+   **Sitemap submit** করুন → `sitemap.xml`
+3. যেকোনো public পেজে রাইট-ক্লিক → View Page Source → `<title>`, `<meta name="description">`,
+   `canonical`, `og:` tags দেখুন
+
+---
+
+## ⚙️ সাইট কন্ট্রোল (Firestore থেকে)
+
+সব কন্টেন্ট/সেটিংস Firestore-এর `settings/site` document-এ আছে — বদলাতে হলে
+**Firebase Console → Firestore → settings → site** খুলে মান বদলালেই **লাইভ হয়ে যায়** (কোনো deploy লাগে না):
+
+| Field | মানে | ডিফল্ট |
+|---|---|---|
+| `siteStart` | সাইট শুরুর তারিখ (header টাইমার) | `2026-04-29` |
+| `registerBonus` | রেজিস্ট্রেশন বোনাস | `10` |
+| `activationBonus` | একাউন্ট অ্যাক্টিভেশন বোনাস | `20` |
+| `referralBonus` | প্রতি রেফারে বোনাস | `5` |
+| `minWithdraw` | ন্যূনতম উইথড্র | `100` |
+| `giftCode` | গিফট কোড (টেলিগ্রামে দেন) | `DIGIEARN01` |
+| `giftReward` | গিফট বোনাস | `5` |
+| `telegramLink` / `facebookLink` / `youtubeLink` | সোশ্যাল লিংক | — |
+| `activationLink` | "Telegram Join" বাটনের লিংক | — |
+| `admin1Name` / `admin1Link` / `admin2Name` / `admin2Link` | সাপোর্ট/হেল্প পেজের যোগাযোগ | — |
+| `targetTiers` | টার্গেট বোনাস (৫/১০/২০ জন → ৳৫০/৳১০০/৳৩০০) | — |
+
+টাস্ক add/বন্ধ করতে: **Firestore → tasks** collection (প্রতি task-এ `enabled: true/false`, `reward`, `sort`)।
+Notice marquee: **Firestore → notices** collection (`enabled`, `sort`, `text`)।
+
+> ⚠️ **`referralBonus` ৫ আর টার্গেট বোনাস ৩০০-এর বেশি না** — এই দুইটা সংখ্যা `firestore.rules`-এ hard-code করা
+> (নিরাপত্তার জন্য)। বোনাস বদলাতে হলে rules-এর `5` ও `300` মানটাও একসাথে বদলাতে হবে।
+
+---
+
+## 💰 Real Money নিয়ে গুরুত্বপূর্ণ সতর্কতা
+
+এই সফটওয়্যারের **wallet ব্যালেন্স পরিবর্তন client-side (browser) থেকে** Firestore-এ হয় — এটা
+অন্য ইউজারের ডেটা থেকে রক্ষা করে (rules দিয়ে), **কিন্তু নিজের ব্যালেন্স হ্যাকের ১০০%
+রক্ষা Firestore Rules দিয়ে সম্ভব নয়** (যেকোনো client-side wallet-এই এই সীমাবদ্ধতা)।
+
+**তাই real money দেওয়ার আগ পর্যন্ত:**
+- **নিজেকে শিখিয়ে নিন**: browser DevTools দিয়ে কী কী সম্ভব তা বুঝুন
+- পAYOUT (bKash/Nagad-এ টাকা পাঠানো) **সবসময় ম্যানুয়ালি করুন** — Firestore-এর
+  `withdrawals` দেখে, তারপর নিজে টাকা পাঠিয়ে status আপডেট করুন
+- **স্কাল করার আগে** wallet লজিক **Cloud Functions** (Firebase) তে তুলে আনুন —
+  তখনই ব্যালেন্স ১০০% server-controlled হবে। এটা পরের ধাপে করা যাবে।
+
+**এখন যা করবেন:** সাইটটা test mode-এ চালান (বোনাস/রিওয়ার্ডের মান কম রাখুন),
+কিছু দিন দেখুন, তারপর আসল ব্যবসায় ধীরে ধীরে বাড়ান।
+
+---
+
+## 🛠️ ডেভেলপমেন্ট (লোকাল)
+
+```bash
+npm install        # একবারই
+npm run dev        # লোকাল ডেভ সার্ভার (http://localhost:5173)
+npm run build      # প্রোডাকশন build (dist/ তৈরি হয়)
+npm run seed       # Firestore seed (বারবার চালানো safe)
+```
+
+- টাস্ক পেজগুলো **build-এর সময়** `scripts/gen-task-pages.mjs` দিয়ে তৈরি হয়
+  (`task/` ফোল্ডার — জেনারেটেড, git-এ থাকে না)
+- `src/tasks-data.js`-তে টাস্কের ডেটা/SEO text এডিট করুন → `npm run build`
+
+---
+
+## 📁 স্ট্রাকচার
+
+```
+├── index.html                  # ল্যান্ডিং পেজ (SEO)
+├── login.html register.html forgot-password.html
+├── dashboard.html wallet.html history.html team.html profile.html
+├── help.html gift.html target.html leadership.html   # অ্যাপ পেজ (noindex)
+├── 404.html
+├── task/*.html                 # ৮টা টাস্ক পেজ (build-এ generated)
+├── public/                     # logo.png, favicon.png, robots.txt, sitemap.xml
+├── firestore.rules             # Firestore Security Rules (console-এ paste করবেন)
+├── scripts/
+│   ├── gen-task-pages.mjs      # টাস্ক পেজ জেনারেটর
+│   └── seed.mjs                # Firestore seeder (tasks/settings/notices)
+└── src/
+    ├── core/
+    │   ├── firebase.js         # Firebase init (import.meta.env থেকে)
+    │   ├── store.js            # auth state + settings cache
+    │   ├── api.js              # সব Firestore/Auth লজিক
+    │   └── ui.js               # header/nav/drawer/modal helpers
+    ├── pages/                  # প্রতিটা পেজের JS module
+    └── tasks-data.js           # টাস্ক ডেটা + সাইট কনস্ট্যান্ট
+```
+
+---
+
+## 🔑 Environment Variables (Vercel-এও একই নামে)
+
+| Variable | কোথায় পাবেন |
 |---|---|
-| `admin` | `admin123` |
+| `VITE_FIREBASE_API_KEY` | Firebase Console → Project settings → Your apps → Web app → `apiKey` |
+| `VITE_FIREBASE_AUTH_DOMAIN` | `authDomain` (সাধারণত `আপনার-প্রজেক্ট.firebaseapp.com`) |
+| `VITE_FIREBASE_PROJECT_ID` | `projectId` |
+| `VITE_FIREBASE_STORAGE_BUCKET` | `storageBucket` (সাধারণত `আপনার-প্রজেক্ট.firestoreapp.com`) |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` (সংখ্যা) |
+| `VITE_FIREBASE_APP_ID` | `appId` (web app-এর ID) |
 
-> ⚠️ প্রোডাকশনে প্রথম লগইনের পরই Admins প্যেজ থেকে পাসওয়ার্ড পরিবর্তন করে নিন।
-
-### Demo User (port 3000)
-| Email | Password |
-|---|---|
-| `amisayem@gmail.com` | `sayem123` |
-
-## User সাইটে যা যা আছে (screenshot অনুযায়ী)
-
-- **Log In / Sign Up** — referral code, Full Name, BD mobile, email, password; ভিডিও টিউটোরিয়াল বক্স; "Powered by..." ফুটার
-- **Welcome modal** — Telegram join, এডমিন ১/২ বাটন (প্রথমবার লগইনে)
-- **Dashboard** — "একাউন্ট একটিভ নয়" রড ব্যানার (৳২০ activation bonus), লাইভ **"সাইটের বয়স"** টাইমার, Notice marquee, ১২টি প্রজেক্ট গ্রেড (ফেসবুক সেল, জিমেইল সেল, ইনস্টা সেল, জব পোস্ট 🔒, লিডারশিপ, টার্গেট বোনাস, রেফার, গিফট কোড, অংক ক্রন, মাইজেকো জব, টাইপিং জব 🔒, ADS VIEW OFF 🔒)
-- **Task system** — ধাপসহ কাজ, লিংক, daily reward claim
-- **গিফট কোড** — প্রতিদিনের কোড দিয়ে বোনাস
-- **টার্গেট বোনাস** — ৫/১০/২০ রেফারে ৳৫০/১০০/৩০০
-- **লিডারশিপ** — team size অনুযায়ী level (ব্রোঞ্জ→প্লাটিনাম)
-- **My Referral Team** — level ১–৪, referral link copy
-- **Wallet** — inactive হলে "উইথড্র করতে একাউন্ট এক্টিভ করুন" কার্ড; active হলে bKash/Nagad/Rocket উইথড্র
-- **Withdrawal History**, **Account Settings** (email change-able না, password change), **Customer Support** (FB/Telegram/Admin/YouTube + training tutorials)
-- হ্যামবার্গার **drawer** (ID, Active/Inactive, Balance, Member Since) ও নিচের **bottom nav** (Help • Wallet • HOME • Team • Profile)
-
-## Admin Panel-এ যা যা আছে
-
-- **Dashboard** — মোট/অ্যাক্টিভ ইউজার, আজকের নিবন্ধন, pending withdrawal টাকার হিসাব, সর্বশেষ activity
-- **Users** — সার্চ, pagination, detail পেজ:
-  - ✅ **Activate/Deactivate** (activate করলে সাথে সাথে activation bonus auto-credit)
-  - 💰 ব্যালেন্স যোগ/বিয়াদ/সেট (+transaction log)
-  - 🔑 পাসওয়ার্ড রিসেট, 🗑️ ডিলিট
-- **Projects/Tasks** — CRUD: নাম, আইকন, রং, ধরন (task/internal page), লিংক, ধাপ, রিওয়ার্ড, লক, show/hide, sort
-- **Withdrawals** — pending → **Paid** (confirm) বা **Reject** (টাকা auto-refund)
-- **Transactions** — সব লেনদেনের লগ (সার্চযোগ্য)
-- **Notices** — হোম পেজের Notice marquee ম্যানেজ
-- **Settings** — সাইটের নাম, সাইটের বয়স তারিখ, ভিডিও লিংক, Telegram/FB/YouTube/activation লিংক, এডমিন ১/২, সব বোনাস, গিফট কোড, টার্গেট টিয়ার, min withdrawal
-- **Admins** — একাধিক এডমিন add/delete/password reset (সর্বশেষ এডমিন ডিলিট করা যাবে না)
-
-## ফোল্ডার স্ট্রাকচার
-
-```
-├── package.json
-├── scripts/start.js          # দুইটা অ্যাপ start করে
-├── shared/db.js              # SQLite schema + helpers + seed
-├── public-site/              # 👤 User website (port 3000)
-│   ├── server.js
-│   ├── views/                # EJS templates
-│   └── public/               # CSS/JS/logo
-├── admin/                    # 🛡️ Admin panel (port 3001) — সম্পূর্ণ আলাদা অ্যাপ
-│   ├── server.js
-│   ├── views/
-│   └── public/
-├── data/                     # SQLite DB (auto-created, git-ignored)
-└── Screenshot_*.png          # UI রেফারেন্স
-```
-
-## প্রোডাকশনের জন্য নোট
-
-1. `public-site/server.js` ও `admin/server.js`-এ session secret পরিবর্তন করুন
-2. admin পাসওয়ার্ড পরিবর্তন করুন
-3. HTTPS ব্যবহার করুন (reverse proxy: Nginx → port 3000/3001)
-4. Admin panel-কে আলাদা ডোমেইনে (যেমন `admin.yourdomain.com`) host করুন — তাহলে এটা ১০০% alada থাকবে
-5. বড় traffic হলে SQLite → PostgreSQL/MySQL-এ migrate করুন (shared/db.js-তে সব query এক জায়গায়)
+Admin panel (আলাদা অ্যাপ) পরে করা হবে — সেটা এই সাইটের ভেতরে থাকবে না।
