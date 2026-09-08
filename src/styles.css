@@ -634,3 +634,15 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
   .hero h1 { font-size: 46px; }
   .steps-3 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* auth pages (login/register/forgot) — tablet & desktop-এ card ছোট centered থাকবে */
+@media (min-width: 600px) {
+  .phone.auth-page { max-width: 100%; }
+  .auth-wrap { max-width: 520px; width: 100%; margin: 0 auto; }
+  .tab-switch { max-width: 520px; }
+}
+@media (min-width: 1200px) {
+  .auth-wrap { max-width: 560px; }
+  .tab-switch { max-width: 560px; }
+  .auth-card { padding: 34px; border-radius: 28px; }
+}
