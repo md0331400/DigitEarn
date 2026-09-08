@@ -160,27 +160,43 @@ export function setMarquee(container, text) {
 
 /* ---------- welcome modal ---------- */
 
+/* admin panel থেকে set না থাকলে click-এ "Admin not set it" দেখাবে */
+function openAdminLink(link, toastFn) {
+  if (link && /^https?:\/\//i.test(String(link))) {
+    window.open(String(link), '_blank', 'noopener');
+  } else {
+    toastFn && toastFn('Admin not set it — এখনো admin panel থেকে set করা হয়নি', 'error');
+  }
+}
+
 export function showWelcomeModal(settings, onClose) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
   <div class="modal-card">
     <button class="modal-close" id="welcomeCloseX" aria-label="বন্ধ করুন"><i class="fa-solid fa-xmark"></i></button>
-    <div class="welcome-icon"><i class="fa-regular fa-circle-info"></i></div>
+    <div class="welcome-icon"><i class="fa-solid fa-gift"></i></div>
     <h2 class="welcome-title">Welcome!</h2>
     <p class="welcome-text">প্রতিদিন গিফট কোড দেওয়া হয় আমাদের টেলিগ্রাম চ্যানেলে। গিফট কোড বোনাস নিতে জয়েন করুন</p>
-    <a href="${esc(settings.telegramLink)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> Join Telegram</a>
+    <button type="button" class="tg-join" id="tgJoinBtn"><i class="fa-brands fa-telegram"></i> Join Telegram</button>
     <hr class="welcome-hr">
     <p class="welcome-warn">যাদের ট্রানজেকশন সমস্যা তারা নিচের আইডিতে যোগাযোগ করবেন</p>
     <div class="admin-btns">
-      <a href="${esc(settings.admin1Link)}" target="_blank" rel="noopener"><i class="fa-solid fa-user-tie"></i> ${esc(settings.admin1Name)}</a>
-      <a href="${esc(settings.admin2Link)}" target="_blank" rel="noopener"><i class="fa-solid fa-user-tie"></i> ${esc(settings.admin2Name)}</a>
+      <button type="button" class="admin-contact" data-adm="1"><i class="fa-solid fa-user-tie"></i> ${esc(settings.admin1Name || 'এডমিন ১')}</button>
+      <button type="button" class="admin-contact" data-adm="2"><i class="fa-solid fa-user-tie"></i> ${esc(settings.admin2Name || 'এডমিন ২')}</button>
     </div>
   </div>`;
   document.body.appendChild(overlay);
   const close = () => { overlay.remove(); onClose && onClose(); };
   overlay.querySelector('#welcomeCloseX').addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('#tgJoinBtn').addEventListener('click', () => openAdminLink(settings.telegramLink, toast));
+  overlay.querySelectorAll('[data-adm]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = btn.dataset.adm;
+      openAdminLink(i === '1' ? settings.admin1Link : settings.admin2Link, toast);
+    });
+  });
 }
 
 /* ---------- app page bootstrap ---------- */

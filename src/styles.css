@@ -469,6 +469,7 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
 .support-list { display: flex; flex-direction: column; gap: 10px; }
 .support-item { display: flex; align-items: center; gap: 13px; border: 1.5px solid var(--border); border-radius: 15px; padding: 13px 14px; transition: background .15s; }
 .support-item:hover { background: var(--cream); }
+button.support-item { width: 100%; background: #fff; cursor: pointer; font-family: inherit; color: inherit; text-decoration: none; }
 .s-ico { width: 46px; height: 46px; border-radius: 14px; color: #fff; font-size: 19px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .s-info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .support-mini-row { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
@@ -499,16 +500,19 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(28, 25, 23, .55); display: flex; align-items: center; justify-content: center; z-index: 95; padding: 20px; }
 .modal-card { position: relative; background: #fff; border-radius: 22px; width: 100%; max-width: 380px; padding: 30px 22px 26px; text-align: center; box-shadow: 0 20px 60px rgba(28, 25, 23, .35); }
 .modal-close { position: absolute; top: 14px; right: 14px; width: 38px; height: 38px; border-radius: 12px; background: var(--cream); color: var(--muted); font-size: 16px; }
-.welcome-icon { width: 78px; height: 78px; margin: 0 auto 14px; color: var(--gold); font-size: 74px; line-height: 78px; }
-.welcome-icon i { font-weight: 300; }
+.welcome-icon { width: 78px; height: 78px; margin: 0 auto 14px; color: var(--gold); font-size: 62px; line-height: 78px; background: var(--gold-soft); border-radius: 22px; }
+.welcome-icon i { font-weight: 400; }
 .welcome-title { font-size: 26px; font-weight: 800; }
 .welcome-text { color: var(--muted); font-size: 14px; margin: 12px 0 18px; line-height: 1.7; }
+.tg-join { display: inline-flex; align-items: center; gap: 10px; background: linear-gradient(135deg, #25d366, #128c7e); color: #fff; border: 0; cursor: pointer; font-family: inherit; font-size: 15.5px; font-weight: 700; padding: 13px 30px; border-radius: 14px; box-shadow: 0 8px 18px rgba(37, 211, 102, .35); }
+.tg-join:active { transform: scale(.98); }
+.tg-join i { font-size: 19px; }
 .welcome-hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 .welcome-warn { color: #dc2626; font-weight: 600; font-size: 14px; line-height: 1.7; margin-bottom: 14px; }
 .admin-btns { display: flex; gap: 12px; }
-.admin-btns a { flex: 1; border-radius: 14px; padding: 13px 8px; color: #fff; font-weight: 700; font-size: 14.5px; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.admin-btns a:first-child { background: var(--gold-deep); }
-.admin-btns a:last-child { background: var(--gold); }
+.admin-btns a, .admin-btns button { flex: 1; border: 0; cursor: pointer; font-family: inherit; text-decoration: none; border-radius: 14px; padding: 13px 8px; color: #fff; font-weight: 700; font-size: 14.5px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.admin-btns a:first-child, .admin-btns button[data-adm="1"] { background: var(--gold-deep); }
+.admin-btns a:last-child, .admin-btns button[data-adm="2"] { background: var(--gold); }
 
 /* ===== footer (public pages) ===== */
 .site-footer { background: #fff; border-top: 2px solid var(--gold-ring); margin-top: 30px; padding: 30px 22px 18px; }
