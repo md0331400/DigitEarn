@@ -77,7 +77,7 @@ function renderLogin(errMsg = '') {
 /* ---------- shell ---------- */
 const NAV = [
   { id: 'overview', label: 'Overview', icon: 'fa-gauge-high' },
-  { id: 'proofs', label: 'Proofs', icon: 'fa-images' },
+  { id: 'proofs', label: 'Submissions', icon: 'fa-clipboard-list' },
   { id: 'deposits', label: 'Deposits', icon: 'fa-money-bill-wave' },
   { id: 'users', label: 'Users', icon: 'fa-users' },
   { id: 'tasks', label: 'Micro Jobs', icon: 'fa-briefcase' },
@@ -126,7 +126,7 @@ async function viewOverview(main) {
     <div class="stat-grid">
       <div class="adm-stat gold"><i class="fa-solid fa-users"></i><b>${s.totalUsers}</b><span>মোট ইউজার</span></div>
       <div class="adm-stat green"><i class="fa-solid fa-circle-check"></i><b>${s.activeUsers}</b><span>অ্যাক্টিভ</span></div>
-      <div class="adm-stat red"><i class="fa-solid fa-images"></i><b>${s.pendingProofs}</b><span>Proof Review</span></div>
+      <div class="adm-stat red"><i class="fa-solid fa-clipboard-list"></i><b>${s.pendingProofs}</b><span>Task Submissions</span></div>
       <div class="adm-stat red"><i class="fa-solid fa-money-bill-wave"></i><b>${s.pendingDeposits}</b><span>Deposit Review</span></div>
     </div>
     <div class="adm-card"><h4><i class="fa-solid fa-scale-balanced" style="color:#d97706"></i> মোট Outstanding Balance</h4>
@@ -135,7 +135,7 @@ async function viewOverview(main) {
     </div>
     ${s.recentProofs.length ? `
     <div class="adm-card">
-      <h4><i class="fa-solid fa-images" style="color:#d97706"></i> সর্বশেষ Pending Proofs</h4>
+      <h4><i class="fa-solid fa-clipboard-list" style="color:#d97706"></i> সর্বশেষ Pending Submissions</h4>
       ${s.recentProofs.map(p => `<div class="mini-row"><b>${esc(p.taskName || p.taskSlug)}</b> <span class="muted">${timeBn(p.createdAt)}</span><span class="badge gold">+${fmt(p.reward)}</span></div>`).join('')}
       <a href="#/proofs" class="link-more">সব দেখুন →</a>
     </div>` : ''}
@@ -148,8 +148,13 @@ async function viewOverview(main) {
     ${!s.recentProofs.length && !s.recentDeposits.length ? '<p class="muted center-note">কোনো pending item নেই ✓</p>' : ''}`;
 }
 
-/* ---------- proofs ---------- */
+/* ---------- task submissions (proof review queue) ---------- */
 let proofFilter = 'pending';
+function submittedFieldsHtml(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.keys(data).length) return '';
+  return `<div class="sub-fields">${Object.entries(data).map(([k, v]) => `
+    <div class="sub-row"><span class="muted">${esc(k)}:</span><b>${esc(v || '—')}</b></div>`).join('')}</div>`;
+}
 async function viewProofs(main) {
   main.innerHTML = `
     <div class="chip-row" id="proofChips">
@@ -165,17 +170,20 @@ async function viewProofs(main) {
   });
   const list = await listProofs(proofFilter);
   const box = document.getElementById('proofList');
-  if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো proof নেই।</p>'; return; }
+  if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো submission নেই।</p>'; return; }
   const items = await Promise.all(list.map(async p => ({ p, user: await getUser(p.userId).catch(() => null) })));
   box.innerHTML = items.map(({ p, user }) => `
     <div class="adm-item">
       <div class="ai-head">
-        <div class="ai-user"><b>${esc(user?.name || p.userId)}</b><span class="muted">${esc(user?.mobile || '')}</span></div>
+        <div class="ai-user"><b>${esc(user?.name || p.username || '—')}</b><span class="muted">${esc(user?.email || p.userEmail || '')}</span></div>
         <span class="badge ${p.status}">${{ pending: 'PENDING', approved: 'APPROVED', rejected: 'REJECTED' }[p.status] || p.status}</span>
       </div>
+      <div class="ai-meta"><i class="fa-solid fa-user"></i> UID: ${esc(p.userId)}${user?.mobile ? ` • ${esc(user.mobile)}` : ''}</div>
       <div class="ai-meta"><i class="fa-solid fa-briefcase"></i> ${esc(p.taskName || p.taskSlug)} • <b class="gold-txt">${fmt(p.reward)}</b> • ${timeBn(p.createdAt)}</div>
+      ${submittedFieldsHtml(p.submittedData)}
       ${(p.images || []).length ? `<div class="thumb-row">${p.images.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img class="adm-thumb" src="${esc(u)}" loading="lazy" alt="proof"></a>`).join('')}</div>` : ''}
       ${p.status === 'rejected' && p.note ? `<p class="ai-note"><i class="fa-solid fa-note"></i> ${esc(p.note)}</p>` : ''}
+      ${p.status !== 'pending' && p.reviewedAt ? `<p class="ai-meta muted-sm">reviewed ${timeBn(p.reviewedAt)}${p.approvedBy ? ' by ' + esc(p.approvedBy) : ''}${p.rejectedBy ? ' by ' + esc(p.rejectedBy) : ''}</p>` : ''}
       ${p.status === 'pending' ? `
       <div class="ai-actions">
         <button class="adm-btn green sm" data-approve="${p.id}"><i class="fa-solid fa-check"></i> Approve +${fmt(p.reward)}</button>
@@ -314,30 +322,53 @@ async function viewUsers(main) {
 }
 
 /* ---------- tasks ---------- */
+const TF_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url'];
+function fieldRowHtml(f = {}) {
+  return `<div class="if-row" data-if-row>
+    <input class="adm-input if-label" placeholder="Field name (যেমন: Email)" value="${esc(f.label || '')}" maxlength="40">
+    <select class="adm-input if-type">${TF_TYPES.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <label class="chk if-req"><input type="checkbox" data-ifreq ${f.required ? 'checked' : ''}> Required</label>
+    <button type="button" class="adm-btn red sm if-del" data-ifdel><i class="fa-solid fa-trash"></i></button>
+  </div>`;
+}
+function inputFieldsEditorHtml(t) {
+  const fields = Array.isArray(t.inputFields) ? t.inputFields : [];
+  return `
+    <div class="if-editor">
+      <div class="if-head">
+        <label>Input Fields — user task page-এ এই field গুলো পূরণ করে submit করবে</label>
+        <button type="button" class="adm-btn ghost sm" data-ifadd><i class="fa-solid fa-plus"></i> Field যোগ করুন</button>
+      </div>
+      <div class="if-rows" data-ifrows>${fields.map(fieldRowHtml).join('') || '<p class="muted if-empty">কোনো field নেই — task শুধু "link + submit" flow-এ থাকবে।</p>'}</div>
+    </div>`;
+}
 async function viewTasks(main) {
   const tasks = await listTasks();
   main.innerHTML = `
     <div class="adm-card task-head"><h4><i class="fa-solid fa-briefcase" style="color:#d97706"></i> Micro Jobs</h4>
-    <p class="muted">Reward, link, lock/status, video পরিবর্তন করুন। Save করলেই website-তে update হয়ে যাবে। নতুন task-এর জন্য নতুন page লাগবে — developer-কে জানান।</p></div>
+    <p class="muted">Reward, link, password, description, input fields, lock/status, video — সব এখান থেকেই। Save করলেই user website-তে automatically update হয়ে যাবে। নতুন task-এর জন্য নতুন page লাগবে — developer-কে জানান।</p></div>
     <div id="taskList">${tasks.map(t => `
       <div class="adm-card task-card" data-slug="${esc(t.slug)}">
         <div class="task-row">
           <div class="task-info">
             <b>${esc(t.nameBn || t.slug)} ${t.enabled === false ? '<span class="badge gray">OFF</span>' : ''} ${t.locked ? '<span class="badge gold">LOCKED</span>' : ''}</b>
-            <span class="muted">/task/${esc(t.slug)}.html • ${fmt(t.reward)}</span>
+            <span class="muted">/task/${esc(t.slug)}.html • ${fmt(t.reward)}${Array.isArray(t.inputFields) && t.inputFields.length ? ` • ${t.inputFields.length} field(s)` : ''}</span>
           </div>
           <button class="adm-btn ghost sm" data-edit="${esc(t.slug)}"><i class="fa-solid fa-pen"></i></button>
         </div>
         <div class="task-form" data-form="${esc(t.slug)}" hidden>
           <label>নাম (বাংলা)</label><input class="adm-input" data-f="nameBn" value="${esc(t.nameBn || '')}">
-          <label>Task URL (user-এর জন্য link)</label><input class="adm-input" data-f="url" value="${esc(t.url || '')}">
+          <label>Task URL (user-এর জন্য Open Link) — শুধু http/https</label><input class="adm-input" data-f="url" value="${esc(t.url || '')}" placeholder="https://...">
           <div class="two-col">
-            <div><label>Reward (৳)</label><input type="number" step="0.5" class="adm-input" data-f="reward" value="${Number(t.reward) || 0}"></div>
-            <div><label>Sort</label><input type="number" class="adm-input" data-f="sort" value="${Number(t.sort) || 10}"></div>
+            <div><label>Amount / Reward (৳)</label><input type="number" step="0.5" class="adm-input" data-f="reward" value="${Number(t.reward) || 0}"></div>
+            <div><label>Sort order</label><input type="number" class="adm-input" data-f="sort" value="${Number(t.sort) || 10}"></div>
           </div>
+          <label>Task Password / Instruction (user-কে দেখাতে হবে? খালি রাখলে hide)</label><input class="adm-input" data-f="password" value="${esc(t.password || '')}" maxlength="60">
+          <label>Description / Instructions (task page-এ description)</label><textarea class="adm-input" data-f="description" rows="3" maxlength="300">${esc(t.description || '')}</textarea>
+          ${inputFieldsEditorHtml(t)}
           <label>Video URL (YouTube link বা mp4) — task page-এ guide video</label><input class="adm-input" data-f="videoUrl" value="${esc(t.videoUrl || '')}">
           <div class="two-col">
-            <label class="chk"><input type="checkbox" data-f="enabled" ${t.enabled !== false ? 'checked' : ''}> Task ON (website-এ দেখাবে)</label>
+            <label class="chk"><input type="checkbox" data-f="enabled" ${t.enabled !== false ? 'checked' : ''}> Task ON / Active</label>
             <label class="chk"><input type="checkbox" data-f="locked" ${t.locked ? 'checked' : ''}> Locked</label>
           </div>
           <div class="ai-actions">
@@ -345,6 +376,20 @@ async function viewTasks(main) {
           </div>
         </div>
       </div>`).join('')}</div>`;
+
+  // input fields editor events (add / remove row)
+  main.querySelectorAll('[data-ifadd]').forEach(btn => btn.addEventListener('click', () => {
+    const rows = btn.closest('.if-editor').querySelector('[data-ifrows]');
+    rows.querySelector('.if-empty')?.remove();
+    const wrap = document.createElement('div');
+    wrap.innerHTML = fieldRowHtml();
+    rows.appendChild(wrap.firstElementChild);
+  }));
+  main.querySelectorAll('[data-ifdel]').forEach(btn => btn.addEventListener('click', () => {
+    btn.closest('[data-if-row]').remove();
+    const rows = btn.closest('[data-ifrows]');
+    if (!rows.querySelector('[data-if-row]')) rows.innerHTML = '<p class="muted if-empty">কোনো field নেই — task শুধু "link + submit" flow-এ থাকবে।</p>';
+  }));
 
   main.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
     const card = btn.closest('.task-card');
@@ -354,18 +399,31 @@ async function viewTasks(main) {
   main.querySelectorAll('[data-save]').forEach(btn => btn.addEventListener('click', async () => {
     const card = btn.closest('.task-card');
     const f = n => card.querySelector(`[data-form] [data-f="${n}"]`);
+    const url = f('url').value.trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      toast('Task URL শুধু http/https হতে পারে (javascript:/data: allowed না)', 'error');
+      return;
+    }
+    const inputFields = [...card.querySelectorAll('[data-ifrows] [data-if-row]')].map(r => ({
+      label: r.querySelector('.if-label').value.trim(),
+      type: r.querySelector('.if-type').value,
+      required: r.querySelector('[data-ifreq]').checked,
+    })).filter(x => x.label);
     btn.disabled = true;
     try {
       await saveTask(btn.dataset.save, {
         nameBn: f('nameBn').value.trim(),
-        url: f('url').value.trim(),
+        url,
         reward: Number(f('reward').value) || 0,
         sort: Number(f('sort').value) || 10,
+        password: f('password').value.trim(),
+        description: f('description').value.trim(),
+        inputFields,
         videoUrl: f('videoUrl').value.trim(),
         enabled: f('enabled').checked,
         locked: f('locked').checked,
       });
-      toast('Task save হয়েছে — website-তে update হয়ে গেছে');
+      toast('Task save হয়েছে — user website-তে update হয়ে গেছে');
       viewTasks(main);
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
   }));

@@ -1,101 +1,106 @@
-# 🔒 Security Audit Report — DigitEarn Wallet Hardening
-**Date:** 2026-09-09 • **Commit:** 077e9e3 • **Status:** code shipped — **3 user action needed** (নিচে লিস্ট আছে)
+# 🔒 Security Audit + Task Submission System Report
+**Date:** 2026-09-09 • **Branch:** arena/01a080f3-digitearn
+
+**Final flow (যেমন চাওয়া হয়েছিল):**
+`USER fills admin-configured fields → SUBMIT (pending) → ADMIN reviews in panel → APPROVE → server-side atomic balance credit`
 
 ---
 
-## 1. আগে কী সমস্যা ছিল (Root Cause)
-পুরনো `firestore.rules`-এ user-কে নিজের user doc-এ **write access** ছিল — মানে কোনো user browser console/Postman থেকে
-নিজের `balance`-এ `999999` লিখে দিতে পারত, `transactions` doc বানিয়ে ফেক history দেখাতে পারত,
-`giftClaims`/`taskClaims` doc delete করে আবার claim করতে পারত, withdrawal-এর `status` সরাসরি change করতে পারত।
-এটা **critical** — real money site-তে একদম গ্রহণযোগ্য নয়।
-
-## 2. এখন কী আর্কিটেকচার
-| Layer | কী করে |
+## 1. Files created
+| File | কাজ |
 |---|---|
-| **Vercel serverless API** (`api/` 9টা endpoint) | সব financial mutation — reward/bonus/amount সব **Firestore-এর trusted doc থেকে** server নিজে নেয় |
-| **Admin Vercel API** (`admin/api/` 4টা endpoint) | proof approve/reject, deposit approve/reject, set-active, admin verify |
-| **Firebase Admin SDK** | verified ID token-এ `verifyIdToken()` — **UID শুধু token থেকে**, client-এর পাঠানো কিছুই trust হয় না |
-| **Firestore rules (rewrite)** | client এখন read-only + নিজের `name` field-এর বাইরে কিছু লিখতে পারে না |
-| **Firebase client SDK** | শুধু auth + safe reads (tasks, settings, নিজের history) |
+| `api/_lib/firebase-admin.js` | Admin SDK singleton (env vars থেকে, browser-এ কখনো যায় না) |
+| `api/_lib/http.js` | token verify, JSON, input validators, requireAdmin |
+| `api/user/register.js` | registration + bonus + referral (atomic) |
+| `api/user/ensure.js` | legacy profile heal (bonus ছাড়া) |
+| `api/task/claim.js` | trusted task reward (approved proof gate সহ) |
+| `api/gift/claim.js` | gift code (server code+amount) |
+| `api/target/claim.js` | referral target (server tier+count) |
+| `api/account/activate.js` | activation (exactly-once bonus) |
+| `api/withdrawal/request.js` | withdrawal (atomic deduct) |
+| `api/proof/submit.js` | **TASK SUBMISSION** — admin-configured input fields server-validate করে pending-এ store |
+| `api/deposit/submit.js` | deposit request (amount server-এর) |
+| `admin/api/_lib/` (2 files) | Admin project-এর Admin SDK + helpers |
+| `admin/api/admin/verify.js` | admin auth check (enumeration-safe) |
+| `admin/api/admin/proof-review.js` | **submission approve/reject (atomic, one-shot, reward = approval-time task doc)** |
+| `admin/api/admin/deposit-review.js` | deposit approve/reject |
+| `admin/api/admin/set-active.js` | manual activate/inactivate |
+| `admin/vercel.json` | Admin Vercel project config |
+| `tests/register.mjs`, `tests/hooks.mjs`, `tests/run.mjs`, `tests/mocks/*` | **Mock-based security test suite (32 tests)** — `node --import ./tests/register.mjs tests/run.mjs` |
+| `AUDIT.md` | এই রিপোর্ট |
 
-## 3. প্রতিটা balance-changing path — আগে vs এখন
-| Path | আগে (client) | এখন (server) |
+## 2. Files modified
+| File | পরিবর্তন |
+|---|---|
+| `firestore.rules` | Full rewrite — client-এ কোনো financial write নেই |
+| `src/core/api.js` | সব financial op → secure API call (`callApi` + Bearer token); index-free queries |
+| `src/pages/task.js` | **Dynamic task form**: admin-configured amount, Open Link, Password box, Description, input fields, submit → pending; status boxes (approved/rejected+reason/pending) |
+| `src/pages/history.js` + `history.html` | নতুন **Task Submissions** section (Task / Amount / Date / Status) |
+| `src/pages/login.js` | email enumeration remove → generic error |
+| `src/pages/target.js`, `src/tasks-data.js` | signature fix + step text accuracy |
+| `src/styles.css` | `.pw-box` (task password display) — theme-matched |
+| `admin/src/main.js` | **Micro Jobs**: password/description/**input fields editor**/URL validation; **Submissions** section (name, UID, email, fields, reward, status, approve/reject) |
+| `admin/src/core.js` | reviews → server API; URL sanitize; index-free lists; `updatedAt` on task save |
+| `admin/src/styles.css` | fields editor + submission review styles |
+| `.env.example`, `README.md` | 3টা server env var docs |
+
+## 3. API endpoints (সব POST, Bearer ID token)
+| Endpoint | Auth | কাজ |
 |---|---|---|
-| Registration bonus + referral credit | client-এর লেখা amount | `/api/user/register` — settings থেকে, hard cap ৳300, atomic, self-ref block |
-| Task reward | client `reward:999999` possible | `/api/task/claim` — task doc থেকে + **approved proof ছাড়া claim হয় না** |
-| Gift code | client-এর amount | `/api/gift/claim` — code+amount settings থেকে, এক দিন একবার |
-| Target bonus | client-এর amount | `/api/target/claim` — tier+bonus settings থেকে, direct team count server-এ check |
-| Activation bonus | client-এর amount | `/api/deposit/submit` → admin `/api/admin/deposit-review` — `activationBonusGiven` flag-এ exactly once |
-| Withdrawal | client balance trust, status client-এর হাতে | `/api/withdrawal/request` — server balance check, atomic deduct (negative possible না), min/max, duplicate pending guard |
-| Proof approve (reward credit) | admin panel client-side write | `/api/admin/proof-review` — server token check, **double-credit guard** (claim record exists হলে আবার credit না) |
-| Deposit approve | admin panel client-side write | `/api/admin/deposit-review` — one-shot (`status != pending` → block) |
+| `/api/user/register` | user | profile+bonus+referral atomic |
+| `/api/user/ensure` | user | profile heal |
+| `/api/task/claim` | user | reward (approved proof gate) |
+| `/api/gift/claim` | user | gift (server code/amount) |
+| `/api/target/claim` | user | target bonus (server) |
+| `/api/account/activate` | user | activate + one-time bonus |
+| `/api/proof/submit` | user | **task submission → pending** (fields server-validated) |
+| `/api/deposit/submit` | user | deposit → pending |
+| `/api/withdrawal/request` | user | atomic deduct |
+| `/api/admin/verify` | user | admin check (always 200) |
+| `/api/admin/proof-review` | **admin (403 for user)** | approve (atomic credit) / reject (reason) |
+| `/api/admin/deposit-review` | admin | approve/reject |
+| `/api/admin/set-active` | admin | manual active |
 
-## 4. Firestore rules — এখন কী block
-- ❌ client `users/{uid}` doc **create/delete** — বন্ধ (server-ই বানায়)
-- ❌ client `balance`, `totalEarned`, `refCode`, `refBy`, `isActive`, `activationBonusGiven` change — বন্ধ (শুধু `name` field, `diff().affectedKeys().hasOnly(['name'])` দিয়ে)
-- ❌ client `transactions`/`taskClaims`/`giftClaims`/`targetClaims`/`withdrawals`/`deposits`/`proofs` doc create/update/delete — সব বন্ধ
-- ❌ `admins/` collection browser থেকে read/write — সম্পূর্ণ বন্ধ
-- ❌ `refs/` collection client write — বন্ধ (server-ই বানায়)
-- ✅ admin = `admins/{email}` doc exists (rules engine-এর internal `get()` — browser-এ collection পাঠাতে হয় না)
-- ✅ public reads: tasks, settings, notices, team (referral tree)
+## 4. Firestore collections
+- `tasks/{slug}` — nameBn, reward, url, **password, description, inputFields[{label,type,required}]**, enabled, locked, sort, videoUrl, updatedAt
+- `proofs/{id}` (top-level) = **task submission review queue** — userId, username, userEmail, taskSlug, taskName, **submittedData{…}**, reward (server), status, note, createdAt, reviewedAt, **approvedAt/approvedBy, rejectedAt/rejectedBy**
+- `users/{uid}/proofs/{id}` — user mirror (history page থেকে পড়া হয়)
+- `users/{uid}` — balance, totalEarned (server-only writes), transactions/, taskClaims/, giftClaims/, targetClaims/, withdrawals/, deposits/, team/
+- `refs/{code}`, `settings/site`, `notices/{id}`, `deposits/{id}`, `admins/{email}`
 
-## 5. Auth / Token verification
-- প্রতি API request-এ `Authorization: Bearer <Firebase ID token>` — server `verifyIdToken()` করে
-- Invalid/expired/missing token → `401` (test করা: no token → 401, bad token → 401, GET → 405)
-- Admin endpoint: verified token + `admins/{email}` doc (server-side) — client-এর কোনো "isAdmin" flag-এ ভরসা নেই
-- **Email enumeration fix**: login error এখন generic ("ইমেইল বা পাসওয়ার্ড সঠিক নয়") — `fetchSignInMethodsForEmail` সম্পূর্ণ সরানো হয়েছে
-- **Admin verify endpoint** always 200 + `{isAdmin:false}` unauthenticated হলে — admin email আবিষ্কার করা যায় না
+## 5. Firestore rules
+- Client `users/{uid}` create/delete — **বন্ধ** (server-ই বানায়)
+- Client `balance`, `totalEarned`, `refCode`, `isActive`, `activationBonusGiven` — **বন্ধ** (শুধু `name`, `hasOnly(['name'])`)
+- Client `transactions`/`taskClaims`/`giftClaims`/`targetClaims`/`withdrawals`/`deposits`/`proofs` — **সব read-only** (client create/update/delete বন্ধ)
+- `admins/`, `refs/` client write — বন্ধ
+- Admin = `admins/{email}` doc (rules-engine internal get) — tasks/settings/notices manage + submissions read
+- ⚠️ **Publish করা লাগবে**: Firebase Console → Firestore → Rules → repo-র `firestore.rules` paste → Publish
 
-## 6. Atomicity (money কখনো negative/duplicate হতে পারে না)
-প্রতিটা balance-changing operation `runTransaction`-এ:
-- read balance → check → deduct/add → write record — **এক transaction-এ**
-- দুইটা simultaneous request-এ একটা fail হয় (409)
-- doc IDs unique: `w_{timestamp}_{random}` pattern — collision possible না
-- `createdAt` সব জায়গায় `FieldValue.serverTimestamp()` — legacy data-র Timestamp type-এর সাথে consistent (orderBy break হয় না)
+## 6. Vercel environment variables (দুটো project-এই)
+`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
+(Firebase Console → Project settings → Service accounts → Generate new private key)
++ আগের `VITE_FIREBASE_*` ৬টা client variable (changed না)
 
-## 7. Anti-abuse guards
-- Task claim: per-day doc (`{slug}_{YYYY-MM-DD}`) exists → block; **আজকের approved proof ছাড়া claim block**
-- Gift: per-day doc → block
-- Target: per-tier doc → block; direct team count < tier → block
-- Withdrawal: pending withdrawal আছে → block; balance < amount → block; max ৳1,00,000
-- Deposit: pending আছে → block; already active → block; amount client-এর নয় (settings থেকে)
-- Proof approve / deposit approve: one-shot (`status` check transaction-এর ভিতরে)
-- Registration: user doc exists → block; self-ref → block; unique ref code (collision loop)
-- `ensure` (legacy heal): bonus দেয় না, `activationBonusGiven: true` সেট করে — farming possible না
+## 7. Firebase config
+- `admins/{email}` doc (email = document ID)
+- কোনো **composite index লাগে না** — সব নতুন query single-field (code-side filter)
 
-## 8. Secrets handling
-- Admin SDK config **শুধু** 3টা env variable-এ: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
-- এগুলো `process.env` থেকে পড়ে — `api/_lib/firebase-admin.js` server-এ load হয়, **browser bundle-এ কখনো যায় না**
-- `VITE_` prefix নেই → Vercel client bundle-এ inject হয় না
-- `.env` gitignore-ড ✓ — repo-তে কোনো key নেই (grep audit করা: কোনো hardcoded key নেই)
-- Private key-র escaped `\n` — code handle করে
+## 8. Test results
+**Mock-based API test suite (in-memory Firestore, fake ID tokens): 32/32 PASSED**
+- ✅ required field missing → 400 • invalid email → 400 • unknown field → 400 • oversized → 400 • no token → 401
+- ✅ client `reward:999999` → **stored 50 (task doc)** • client `userId:"alice"` → **stored under token's uid**
+- ✅ normal user → admin endpoint = **403**
+- ✅ approve → balance+50, totalEarned+50, transaction record, approvedAt, **approvedBy=admin uid**
+- ✅ **double approve → 409, balance unchanged (exactly-once)**
+- ✅ reject → no money, rejectedAt/rejectedBy/reason stored, user mirror updated
+- ✅ approve-after-reject → 409 • rejected user may resubmit • **reward = approval-time task doc**
+- ✅ 13/13 handlers import + syntax check • both builds pass
+- ✅ grep audit: client-এ `increment(` নেই, `updateDoc` শুধু `name` field, কোনো hardcoded secret নেই
+- ✅ **Bug caught by tests (fixed)**: সব handler-তে `snapshot.exists()` function-like call — Firestore-এ `exists` property — production-এ 9টা endpoint break হতো
 
-## 9. Frontend (UX একদম unchanged)
-- `src/core/api.js` — `callApi(path, body)` helper: ID token → Bearer header → server-এর message
-- সব financial function এখন server call — signature একই, পেজের code প্রায় unchanged
-- Error toast-ই থাকে (server-এর Bengali message এনে দেখায়)
-- `name` update client-এই থাকে (rules-এ safe field হিসেবে allowed)
-- Keep-me-logged-in unchanged
-
-## 10. ⚠️ Known residual risks (সততার সাথে)
-1. **Withdrawal duplicate-pending race**: pending check transaction-এর আগে — দুইটা একই মুহূর্তের request দুটোই pending দেখতে পারে। **Money safe** (balance check transaction-এর ভিতরে, negative possible না), কিন্তু দুইটা pending withdrawal request বানানো possible। Fix চাইলে Cloud Function লাগবে (spec অনুযায়ী Cloud Functions বাদ)।
-2. **Settings-এর মান**: bonus/fee settings doc-এর value hard cap-এ (৳300/৳5000) bounded — settings-এর ভিতর cap-এর ভেতরে কী আছে সেটা admin-এর দায়িত্ব।
-3. **Admin email = power** যতই: `admins/{email}` doc-এ যে email, সে-ই full admin (proof approve = টাকা দেওয়া)। Email account hack হলে admin access। Firebase 2FA on রাখুন।
-4. **Rate limiting নেই**: Vercel-এ per-IP rate limit নেই — brute-force login attempt Firebase-এর নিজের throttle-এ (500/day/IP class)।
-5. **Real-money scale**: এটা Vercel Hobby/Pro serverless — scale-up-এ Cloud Functions + audit log + idempotency key consider করুন।
-
-## ✅ আপনার করতে থাকলে (3টা জিনিস — না করলে site অসম্পূর্ণ থাকবে)
-1. **Vercel-এ 3টা env variable বসান (দুটো project-এই)** — Main + Admin:
-   `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
-   (Firebase Console → Project settings → Service accounts → **Generate new private key** → JSON-এ আছে)
-2. **Nতুন `firestore.rules` publish করুন** — Firebase Console → Firestore Database → Rules → repo-র `firestore.rules` ফাইল-র পুরোটা paste → **Publish**।
-   ⚠️ এই publish-এর আগ পর্যন্ত পুরনো insecure rules চালু থাকবে।
-3. **`admins/{email}` doc** — Firestore → `admins` collection → document ID = আপনার admin email, field: `{ "isAdmin": true }` (আগেই বানানো থাকলে লাগবে না)।
-
-## Tested (sandbox-এ)
-- ✅ সব 13টা API handler import + syntax check passed
-- ✅ No token → 401, bad token → 401, wrong method → 405
-- ✅ Admin verify unauthenticated → 200 `{isAdmin:false}` (enumeration-safe)
-- ✅ Main build ✓, Admin build ✓
-- ✅ Secret scan: repo-তে কোনো hardcoded key নেই
-- ✅ Client-এ এখন কোনো financial write নেই (grep audit: শুধু `name` field)
+## 9. Remaining issues (honest)
+1. **Rules publish + env vars — user action** (উপরে §5/§6) — এর আগ পর্যন্ত live site insecure থাকে
+2. Withdrawal pending-duplicate-এর ছোট race (দুইটা একসাথে request) — money safe (tx-এ balance check), fix চাইলে Cloud Functions
+3. `submittedData`-তে user credentials save হয় (business flow অনুযায়ী) — access শুধু owner+admin (rules), কিন্তু real-money scale-এ field-level encryption consider করুন
+4. Admin email = full power — Firebase 2FA on রাখুন
+5. "Fully secure" claim করিনি — build passing ≠ secure; উপরের action গুলো complete হলে তবেই system production-ready

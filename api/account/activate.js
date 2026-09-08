@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     let bonusGiven = false;
     await db.runTransaction(async tx => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists()) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+      if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
       const d = userSnap.data();
       if (d.isActive) throw new Error('একাউন্টটি ইতিমধ্যে অ্যাক্টিভ আছে');
       tx.update(userRef, { isActive: true, lastLogin: now });

@@ -651,3 +651,8 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
   .tab-switch { max-width: 560px; }
   .auth-card { padding: 34px; border-radius: 28px; }
 }
+
+/* task password/instruction box (admin-configured) */
+.pw-box { display: flex; align-items: center; gap: 10px; background: var(--gold-soft); border: 1.5px dashed var(--gold-ring); border-radius: 12px; padding: 11px 14px; margin-bottom: 14px; }
+.pw-label { font-size: 12.5px; font-weight: 700; color: var(--gold-deep); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pw-box b { font-size: 15px; letter-spacing: .5px; word-break: break-all; }

@@ -42,7 +42,7 @@ export default async function handler(req, res) {
   try {
     await db.runTransaction(async tx => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists()) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+      if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
       const d = userSnap.data();
       if (!d.isActive) throw new Error('উইথড্র করতে একাউন্ট অ্যাক্টিভ করুন');
       if (amount > (Number(d.balance) || 0)) throw new Error('পর্যাপ্ত ব্যালেন্স নেই');

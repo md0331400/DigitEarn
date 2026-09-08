@@ -40,7 +40,7 @@ export default async function handler(req, res) {
   try {
     await db.runTransaction(async tx => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists()) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+      if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
       if (userSnap.data().isActive) throw new Error('আপনার একাউন্ট ইতিমধ্যে অ্যাক্টিভ');
       tx.set(db.collection('users', uid, 'deposits').doc(did), depositData);
       // admin review queue (top-level mirror)

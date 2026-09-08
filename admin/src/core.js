@@ -58,14 +58,11 @@ export async function isAdminEmail() {
 
 /* ---------- proofs ---------- */
 export async function listProofs(status = 'pending', limitN = 100) {
-  let q;
-  if (status && status !== 'all') {
-    q = query(collection(db, 'proofs'), where('status', '==', status), orderBy('createdAt', 'desc'), limit(limitN));
-  } else {
-    q = query(collection(db, 'proofs'), orderBy('createdAt', 'desc'), limit(limitN));
-  }
+  // index-free: createdAt desc + client-side status filter (composite index লাগে না)
+  const q = query(collection(db, 'proofs'), orderBy('createdAt', 'desc'), limit(limitN));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return status && status !== 'all' ? all.filter(p => p.status === status) : all;
 }
 
 export async function approveProof(proofId) {
@@ -78,14 +75,11 @@ export async function rejectProof(proofId, note = '') {
 
 /* ---------- deposits ---------- */
 export async function listDeposits(status = 'pending', limitN = 100) {
-  let q;
-  if (status && status !== 'all') {
-    q = query(collection(db, 'deposits'), where('status', '==', status), orderBy('createdAt', 'desc'), limit(limitN));
-  } else {
-    q = query(collection(db, 'deposits'), orderBy('createdAt', 'desc'), limit(limitN));
-  }
+  // index-free: createdAt desc + client-side status filter
+  const q = query(collection(db, 'deposits'), orderBy('createdAt', 'desc'), limit(limitN));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return status && status !== 'all' ? all.filter(p => p.status === status) : all;
 }
 
 export async function approveDeposit(depositId) {
@@ -127,7 +121,24 @@ export async function listTasks() {
 }
 
 export async function saveTask(slug, data) {
-  await setDoc(doc(db, 'tasks', slug), data, { merge: true });
+  // URL sanitize: শুধু http/https — javascript:/data:/vbscript: বন্ধ
+  if (data.url && !/^https?:\/\/\S+$/i.test(data.url)) {
+    throw new Error('Task URL শুধু http/https হতে পারে (javascript:/data: allowed না)');
+  }
+  const clean = { ...data, updatedAt: serverTimestamp() };
+  if (Array.isArray(data.inputFields)) {
+    clean.inputFields = data.inputFields
+      .map(f => ({
+        label: String(f.label || '').trim().slice(0, 50),
+        type: ['text', 'email', 'password', 'tel', 'number', 'url'].includes(f.type) ? f.type : 'text',
+        required: !!f.required,
+      }))
+      .filter(f => f.label);
+    // duplicate label remove (field key = label)
+    const seen = new Set();
+    clean.inputFields = clean.inputFields.filter(f => (seen.has(f.label) ? false : (seen.add(f.label), true)));
+  }
+  await setDoc(doc(db, 'tasks', slug), clean, { merge: true });
 }
 
 /* ---------- settings ---------- */

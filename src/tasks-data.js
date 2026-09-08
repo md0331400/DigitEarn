@@ -22,7 +22,7 @@ export const TASKS = [
     steps: [
       'লিংক থেকে ফেসবুক পেজে গিয়ে লাইক করুন',
       'পেজটি ফলো / ফলোয়িং করুন',
-      'সম্পন্ন হলে Claim Reward বাটনে ক্লিক করুন',
+      'সম্পন্ন হলে Submit বাটনে ক্লিক করুন',
     ],
     seo: {
       title: 'Facebook Sale Task — প্রতিদিন ৳৫ রিওয়ার্ড | DigitEarn',
@@ -42,7 +42,7 @@ export const TASKS = [
     steps: [
       'লিংকে গিয়ে Gmail ইনবক্সে আমাদের পোস্ট খুঁজে নিন',
       'পোস্টে লাইক ও কমেন্ট করুন',
-      'Claim Reward বাটনে ক্লিক করুন',
+      'Submit বাটনে ক্লিক করুন',
     ],
     seo: {
       title: 'Gmail Sale Task — প্রতিদিন ৳১০ রিওয়ার্ড | DigitEarn',
@@ -62,7 +62,7 @@ export const TASKS = [
     steps: [
       'লিংকে গিয়ে ইনস্টাগ্রাম পোস্টে লাইক করুন',
       'প্রোফাইল ফলো করুন',
-      'Claim Reward বাটনে ক্লিক করুন',
+      'Submit বাটনে ক্লিক করুন',
     ],
     seo: {
       title: 'Instagram Sale Task — প্রতিদিন ৳৫ রিওয়ার্ড | DigitEarn',
@@ -82,7 +82,7 @@ export const TASKS = [
     steps: [
       'টেলেগ্রাম চ্যানেলে পাওয়া জব পোস্ট শেয়ার করুন',
       'স্ক্রিনশট এডমিনকে পাঠান',
-      'কনফার্ম হলে Claim Reward বাটনে ক্লিক করুন',
+      'কনফার্ম হলে Submit বাটনে ক্লিক করুন',
     ],
     seo: {
       title: 'Job Post Task — ৳১৫ রিওয়ার্ড | DigitEarn',
@@ -122,7 +122,7 @@ export const TASKS = [
     steps: [
       'লিংকে গিয়ে MyJago প্ল্যাটফর্মে জব পোস্টে অ্যাপ্লাই করুন',
       'স্ক্রিনশট এডমিনকে পাঠান',
-      'Claim Reward বাটনে ক্লিক করুন',
+      'Submit বাটনে ক্লিক করুন',
     ],
     seo: {
       title: 'MyJago Job Task — প্রতিদিন ৳১২ রিওয়ার্ড | DigitEarn',
@@ -142,7 +142,7 @@ export const TASKS = [
     steps: [
       'টেলেগ্রামে দেওয়া টেক্সটটি টাইপ করুন',
       'স্ক্রিনশট এডমিনকে পাঠান',
-      'কনফার্ম হলে Claim Reward বাটনে ক্লিক করুন',
+      'কনফার্ম হলে Submit বাটনে ক্লিক করুন',
     ],
     seo: {
       title: 'Typing Job Task — ৳২০ রিওয়ার্ড | DigitEarn',
@@ -162,7 +162,7 @@ export const TASKS = [
     steps: [
       'বিজ্ঞাপন লিংকে ১০ সেকেন্ড ভিউ করুন',
       'স্ক্রিনশট এডমিনকে পাঠান',
-      'Claim Reward বাটনে ক্লিক করুন',
+      'Submit বাটনে ক্লিক করুন',
     ],
     seo: {
       title: 'Ads View Task — ৳৩ রিওয়ার্ড | DigitEarn',

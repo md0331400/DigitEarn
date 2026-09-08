@@ -115,9 +115,10 @@ export async function claimTarget(uid, tier) {
   return data.bonus;
 }
 
-export async function submitProof(uid, { taskSlug } = {}) {
-  const data = await callApi('/api/proof/submit', { taskSlug });
-  return data.id;
+export async function submitProof(uid, { taskSlug, data } = {}) {
+  // data = { fieldLabel: value } — server task config অনুযায়ী validate করে
+  const r = await callApi('/api/proof/submit', { taskSlug, data: data || {} });
+  return r.id;
 }
 
 export async function submitDeposit(uid, { method, trxId, senderNumber } = {}) {
@@ -156,9 +157,12 @@ export async function changePassword(currentPw, newPw) {
 
 export async function getTasks() {
   if (!firebaseReady) return [];
-  const q = query(collection(db, 'tasks'), where('enabled', '==', true), orderBy('sort'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // index-free: sort client-side (task count কম, কোনো composite index লাগে না)
+  const snap = await getDocs(query(collection(db, 'tasks'), limit(100)));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(t => t.enabled !== false)
+    .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
 }
 
 export async function getTaskBySlug(slug) {
@@ -207,16 +211,12 @@ export async function teamCounts(uid) {
 
 export async function getTodayProof(uid, taskSlug) {
   if (!firebaseReady) return null;
+  // single-field query (day) + code filter — composite index লাগে না
   const day = todayStr();
-  const q = query(
-    collection(db, 'users', uid, 'proofs'),
-    where('taskSlug', '==', taskSlug),
-    where('day', '==', day),
-    limit(1),
-  );
+  const q = query(collection(db, 'users', uid, 'proofs'), where('day', '==', day), limit(20));
   const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
+  const d = snap.docs.find(x => x.data().taskSlug === taskSlug);
+  if (!d) return null;
   return { id: d.id, ...d.data() };
 }
 
@@ -281,7 +281,9 @@ export async function getDirectTeam(uid) {
 
 export async function getNotices() {
   if (!firebaseReady) return [];
-  const q = query(collection(db, 'notices'), where('enabled', '==', true), orderBy('sort'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => d.data());
+  const snap = await getDocs(query(collection(db, 'notices'), limit(50)));
+  return snap.docs
+    .map(d => d.data())
+    .filter(n => n.enabled)
+    .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
 }

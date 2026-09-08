@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       const claimSnap = await tx.get(claimRef);
       if (claimSnap.exists) throw new Error('এই টার্গেটের বোনাস ইতিমধ্যে নিয়েছেন');
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists()) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+      if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
       if (!userSnap.data().isActive) throw new Error('বোনাস পেতে আগে একাউন্ট অ্যাক্টিভ করুন');
       const d = userSnap.data();
       tx.set(claimRef, { tier, bonus, createdAt: now });

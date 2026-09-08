@@ -24,14 +24,14 @@ export default async function handler(req, res) {
   try {
     await db.runTransaction(async tx => {
       const dSnap = await tx.get(depRef);
-      if (!dSnap.exists()) throw new Error('Deposit পাওয়া যায়নি');
+      if (!dSnap.exists) throw new Error('Deposit পাওয়া যায়নি');
       const d = dSnap.data();
       if (d.status !== 'pending') throw new Error('এই deposit-এর status আগেই পরিবর্তন হয়েছে');
       const uid = d.userId;
       const userRef = db.collection('users').doc(uid);
       if (action === 'approve') {
         const userSnap = await tx.get(userRef);
-        if (!userSnap.exists()) throw new Error('User পাওয়া যায়নি');
+        if (!userSnap.exists) throw new Error('User পাওয়া যায়নি');
         const u = userSnap.data();
         const sSnap = await tx.get(db.collection('settings').doc('site'));
         const settings = sSnap.exists ? sSnap.data() : {};

@@ -24,37 +24,41 @@ export default async function handler(req, res) {
   try {
     await db.runTransaction(async tx => {
       const pSnap = await tx.get(proofRef);
-      if (!pSnap.exists()) throw new Error('Proof পাওয়া যায়নি');
+      if (!pSnap.exists) throw new Error('Proof পাওয়া যায়নি');
       const p = pSnap.data();
       if (p.status !== 'pending') throw new Error('এই proof-এর status আগেই পরিবর্তন হয়েছে');
       const uid = p.userId;
       const userRef = db.collection('users').doc(uid);
       if (action === 'approve') {
-        const reward = Number(p.reward) || 0;
-        const upd = { status: 'approved', note: '', reviewedAt: now };
+        // reward = APPROVAL time-এর task doc থেকে (spec: browser-এর পাঠানো amount কখনো trust না)
+        const tSnap = await tx.get(db.collection('tasks').doc(p.taskSlug));
+        const reward = tSnap.exists
+          ? (Number(tSnap.data().reward) || 0)
+          : (Number(p.reward) || 0);
+        const upd = { status: 'approved', note: '', reviewedAt: now, approvedAt: now, approvedBy: admin.uid };
         // double-credit guard: claim record-এ same ID format (${taskSlug}_${day}) —
         // আগে direct claim হয়ে থাকলে reward আবার credit হয় না
         const claimRef = db.collection('users', uid, 'taskClaims').doc(`${p.taskSlug}_${p.day}`);
         const cSnap = await tx.get(claimRef);
         if (!cSnap.exists && reward > 0) {
           const userSnap = await tx.get(userRef);
-          if (!userSnap.exists()) throw new Error('User পাওয়া যায়নি');
+          if (!userSnap.exists) throw new Error('User পাওয়া যায়নি');
           const d = userSnap.data();
           tx.update(userRef, {
             balance: (Number(d.balance) || 0) + reward,
             totalEarned: (Number(d.totalEarned) || 0) + reward,
           });
           tx.set(db.collection('users', uid, 'transactions').doc(`pr_${ts}_${rnd}`), {
-            amount: reward, type: 'task_reward', note: `টাস্ক: ${p.taskName || p.taskSlug} (proof approved)`, createdAt: now,
+            amount: reward, type: 'task_reward', note: `টাস্ক: ${p.taskName || p.taskSlug} (submission approved)`, createdAt: now,
           });
           tx.set(claimRef, {
-            reward, taskId: p.taskSlug, claimedOn: p.day, source: 'proof', createdAt: now,
+            reward, taskId: p.taskSlug, claimedOn: p.day, source: 'submission', createdAt: now,
           });
         }
         tx.update(proofRef, upd);
         tx.update(db.collection('users', uid, 'proofs').doc(proofId), upd);
       } else {
-        const upd = { status: 'rejected', note, reviewedAt: now };
+        const upd = { status: 'rejected', note, reviewedAt: now, rejectedAt: now, rejectedBy: admin.uid };
         tx.update(proofRef, upd);
         tx.update(db.collection('users', uid, 'proofs').doc(proofId), upd);
       }

@@ -134,3 +134,20 @@ a { color: var(--gold-deep); }
   .set-grid, .two-col, .detail-grid { grid-template-columns: 1fr; }
   .adm-email { display: none; }
 }
+
+/* ---------- task input fields editor ---------- */
+.if-editor { margin: 14px 0 4px; }
+.if-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.if-head label { font-size: 13px; font-weight: 700; }
+.if-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.if-row .if-label { flex: 1 1 160px; }
+.if-row .if-type { flex: 0 0 110px; }
+.if-req { flex: 0 0 auto; margin: 0 !important; }
+.if-del { flex: 0 0 auto; }
+.if-empty { font-size: 12.5px; padding: 8px 0; }
+
+/* ---------- submitted fields (review) ---------- */
+.sub-fields { background: #faf7ef; border: 1px solid #eee4cc; border-radius: 10px; padding: 10px 12px; margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+.sub-row { font-size: 13px; display: flex; gap: 7px; align-items: baseline; word-break: break-word; }
+.sub-row .muted { flex: 0 0 auto; }
+.sub-row b { font-weight: 600; }
