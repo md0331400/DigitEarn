@@ -20,6 +20,8 @@
   --blue: #0ea5e9;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+/* mobile-এ horizontal pan/scroll রোধ — sticky positioning-র জন্য body-only (html-এ নয়) */
+body { overflow-x: hidden; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body {
   font-family: 'Poppins', 'Hind Siliguri', system-ui, sans-serif;
@@ -122,7 +124,8 @@ img { max-width: 100%; }
 /* ===== fields ===== */
 .field { position: relative; margin-bottom: 13px; }
 .field .left { position: absolute; left: 17px; top: 50%; transform: translateY(-50%); color: #b5a678; font-size: 15px; }
-.field input {
+/* type-selector দিয়ে specificity বাড়াতে হবে — নাহলে নিচের global input rule (line ~134) এটার padding override করে icon/text overlap হয়ে যায় */
+.field input[type="text"], .field input[type="email"], .field input[type="password"], .field input[type="tel"], .field input[type="number"] {
   width: 100%; padding: 14px 46px; border: 1.5px solid var(--border); border-radius: 15px;
   background: #fffdf7; font-size: 14.5px; color: var(--ink); outline: none;
   transition: border .2s, background .2s;
@@ -278,6 +281,15 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
 .auth-switch { text-align: center; color: var(--muted); font-size: 13.5px; margin-top: 16px; }
 .auth-switch a { color: var(--gold-deep); font-weight: 700; }
 .powered-by { text-align: center; letter-spacing: 4px; color: #b5a678; font-size: 11px; font-weight: 600; margin-top: auto; padding-top: 26px; }
+
+/* ছোট স্ক্রিনে auth card compact রাখা */
+@media (max-width: 380px) {
+  .auth-wrap { padding: 20px 12px 16px; }
+  .auth-card { padding: 22px 16px; border-radius: 20px; }
+  .field input[type="text"], .field input[type="email"], .field input[type="password"], .field input[type="tel"], .field input[type="number"] { font-size: 14px; padding: 13px 42px; }
+  .video-card { padding: 10px; }
+  .video-note { font-size: 14px; }
+}
 .login-row { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 16px; font-size: 12px; }
 .check-label { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: .5px; color: #44403c; }
 .check-label input { width: 16px; height: 16px; accent-color: var(--gold-deep); }
