@@ -1,0 +1,31 @@
+<%- include('partials/head', { title: 'Notices' }) %>
+<%- include('partials/sidebar', { active, sidebarOpen: false }) %>
+<div class="content">
+  <%- include('partials/topbar', { pageTitle: 'Notices' }) %>
+  <div class="a-main">
+    <div class="a-card">
+      <div class="a-card-head"><h3><i class="fa-solid fa-bullhorn" style="color:#2563eb"></i> নতুন নোটিশ যোগ করুন</h3></div>
+      <form method="post" action="/notices" class="a-inline-form">
+        <input type="text" name="text" placeholder="যেমন: আজ রাতে ১০টায় ডাবল বোনাস!" required>
+        <button type="submit" class="a-btn a-btn-primary"><i class="fa-solid fa-plus"></i> যোগ করুন</button>
+      </form>
+    </div>
+    <div class="a-card">
+      <div class="a-card-head"><h3><i class="fa-solid fa-list" style="color:#64748b"></i> বর্তমান নোটিশগুলো</h3></div>
+      <% if (!notices.length) { %><p class="a-empty-sm">কোনো নোটিশ নেই — উপরে থেকে যোগ করুন। হোম পেজে "Notice" বার দেখাবে।</p><% } %>
+      <% notices.forEach(n => { %>
+        <div class="notice-row <%= n.enabled ? '' : 'off' %>">
+          <i class="fa-solid <%= n.enabled ? 'fa-bullhorn' : 'fa-bullhorn-slash' %>" style="color:<%= n.enabled ? '#2563eb' : '#94a3b8' %>"></i>
+          <span class="notice-text"><%= n.text %></span>
+          <span class="badge <%= n.enabled ? 'b-green' : 'b-red' %>"><%= n.enabled ? 'Active' : 'Hidden' %></span>
+          <form method="post" action="/notices/<%= n.id %>/toggle"><button type="submit" class="a-ico-btn" title="Toggle"><i class="fa-solid <%= n.enabled ? 'fa-eye-slash' : 'fa-eye' %>"></i></button></form>
+          <form method="post" action="/notices/<%= n.id %>/delete" onsubmit="return confirm('মুছে ফেলবেন?')"><button type="submit" class="a-ico-btn danger" title="Delete"><i class="fa-solid fa-trash"></i></button></form>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+</div>
+<%- include('partials/flash') %>
+<script src="/admin.js"></script>
+</body>
+</html>

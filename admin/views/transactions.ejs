@@ -1,0 +1,39 @@
+<%- include('partials/head', { title: 'Transactions' }) %>
+<%- include('partials/sidebar', { active, sidebarOpen: false }) %>
+<div class="content">
+  <%- include('partials/topbar', { pageTitle: 'Transactions' }) %>
+  <div class="a-main">
+    <div class="a-card">
+      <div class="a-toolbar">
+        <form method="get" action="/transactions" class="a-search">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" name="q" value="<%= search %>" placeholder="ইউজার নাম, ইমেইল, ID দিয়ে খুঁজুন...">
+          <button type="submit" class="a-btn a-btn-sm a-btn-primary">খুঁজুন</button>
+        </form>
+        <span class="a-count">সর্বশেষ <b><%= rows.length %></b> টি লেনদেন</span>
+      </div>
+      <div class="a-table-wrap">
+        <table class="a-table">
+          <thead><tr><th>#</th><th>ইউজার</th><th>পরিমাণ</th><th>ধরন</th><th>নোট</th><th>তারিখ</th></tr></thead>
+          <tbody>
+            <% if (!rows.length) { %><tr><td colspan="6" class="a-empty"><i class="fa-solid fa-inbox"></i> কোনো লেনদেন পাওয়া যায়নি</td></tr><% } %>
+            <% rows.forEach(t => { %>
+              <tr>
+                <td><%= t.id %></td>
+                <td><a href="/users/<%= t.user_id %>" class="a-link"><b><%= t.full_name || 'ID ' + t.user_id %></b></a><br><small class="dim">ref: <%= t.ref_code || '—' %></small></td>
+                <td><b class="<%= t.amount >= 0 ? 'pos' : 'neg' %>"><%= t.amount >= 0 ? '+' : '' %><%= Number(t.amount).toFixed(2) %></b></td>
+                <td><span class="badge b-blue"><%= t.type %></span></td>
+                <td><small><%= t.note || '—' %></small></td>
+                <td><small><%= t.created_at.replace('T', ' ').slice(0, 16) %> UTC</small></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('partials/flash') %>
+<script src="/admin.js"></script>
+</body>
+</html>

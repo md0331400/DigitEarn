@@ -1,0 +1,15 @@
+<header class="app-header">
+  <div class="header-row">
+    <button class="icon-btn" id="drawerBtn" aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
+    <div class="site-title"><%= settings.site_name %></div>
+    <a class="icon-btn" href="/help" aria-label="Support"><i class="fa-solid fa-bell"></i></a>
+  </div>
+  <div class="welcome-strip">
+    <div class="strip-avatar"><i class="fa-solid fa-user"></i></div>
+    <div class="strip-name">
+      <span class="strip-label">WELCOME BACK,</span>
+      <span class="strip-user"><%= user.full_name %></span>
+    </div>
+    <div class="balance-chip"><i class="fa-solid fa-wallet"></i> ৳ <%= Number(user.balance).toFixed(2) %></div>
+  </div>
+</header>

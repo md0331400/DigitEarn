@@ -1,0 +1,41 @@
+<%- include('partials/head', { title: 'Target Bonus' }) %>
+<div class="phone">
+  <%- include('partials/header', { user, settings }) %>
+  <main class="main">
+    <div class="page-back"><a href="/dashboard"><i class="fa-solid fa-arrow-left"></i> Dashboard</a></div>
+
+    <div class="card" style="text-align:center;border-top:4px solid #ef4444">
+      <div class="task-ico" style="color:#ef4444;background:#ef44441a;width:64px;height:64px;font-size:26px;margin:0 auto 10px"><i class="fa-solid fa-bullseye"></i></div>
+      <h2 class="task-name">টার্গেট বোনাস</h2>
+      <p class="muted">আপনার এখন পর্যন্ত মোট রেফারেল: <b style="color:#0f172a"><%= teamTotal %></b> জন</p>
+    </div>
+
+    <% tiers.forEach(t => { %>
+      <div class="card tier-card <%= t.claimed ? 'done' : '' %>">
+        <div class="tier-top">
+          <div>
+            <div class="tier-name"><%= t.tier %> জন রেফার করুন</div>
+            <div class="tier-progress"><div class="tier-bar" style="width:<%= Math.min(100, Math.round(teamTotal / Number(t.tier) * 100)) %>%"></div></div>
+          </div>
+          <span class="tier-bonus">৳<%= t.bonus %></span>
+        </div>
+        <% if (t.claimed) { %>
+          <div class="ok-box"><i class="fa-solid fa-check"></i> বোনাস Claim করা হয়েছে</div>
+        <% } else { %>
+          <form method="post" action="/target/claim">
+            <input type="hidden" name="tier" value="<%= t.tier %>">
+            <button type="submit" class="btn-blue btn-block" <%= teamTotal >= Number(t.tier) ? '' : 'disabled' %>>
+              <%= teamTotal >= Number(t.tier) ? 'বোনাস Claim করুন' : `আরও ${Number(t.tier) - teamTotal} জন দরকার` %>
+            </button>
+          </form>
+        <% } %>
+      </div>
+    <% }); %>
+  </main>
+  <%- include('partials/bottomnav', { nav: 'home' }) %>
+</div>
+<%- include('partials/drawer', { user, settings, nav: 'home' }) %>
+<%- include('partials/flash') %>
+<script src="/app.js"></script>
+</body>
+</html>

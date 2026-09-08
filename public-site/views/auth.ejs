@@ -1,0 +1,95 @@
+<%- include('partials/head', { title: tab === 'register' ? 'Create Account' : 'Login' }) %>
+<div class="phone auth-page">
+  <div class="auth-wrap">
+    <div class="tab-switch">
+      <a href="/login" class="<%= tab === 'login' ? 'active' : '' %>">Log In</a>
+      <a href="/register" class="<%= tab === 'register' ? 'active' : '' %>">Sign Up</a>
+    </div>
+
+    <div class="auth-card">
+      <img src="/logo.png" alt="logo" class="auth-logo">
+
+      <% if (errors && errors.length) { %>
+        <div class="error-box">
+          <% errors.forEach(e => { %><div><i class="fa-solid fa-circle-exclamation"></i> <%= e %></div><% }); %>
+        </div>
+      <% } %>
+
+      <% if (tab === 'register') { %>
+        <h1 class="auth-title">Create Account</h1>
+        <p class="auth-sub">Start your journey with <%= settings.site_name %></p>
+
+        <div class="video-card">
+          <p class="video-note">আইডি এ্যাক্টিভ ছাড়াও কিভাবে কাজ করবেন<br>ভিডিও টি দেখে নিন</p>
+          <% if (videoHtml) { %>
+            <%- videoHtml %>
+          <% } else { %>
+            <div class="video-box">
+              <div class="play-circle"><i class="fa-solid fa-play"></i></div>
+              <span class="video-time">0:00</span>
+              <div class="video-icons"><i class="fa-solid fa-expand"></i><i class="fa-solid fa-ellipsis-vertical"></i></div>
+              <div class="video-track"><span class="dot"></span></div>
+            </div>
+          <% } %>
+        </div>
+
+        <form method="post" action="/register" class="auth-form">
+          <div class="field">
+            <i class="fa-solid fa-gift left"></i>
+            <input type="text" name="ref_code" placeholder="Referral Code (optional)" value="<%= old.ref_code || '' %>">
+          </div>
+          <div class="field">
+            <i class="fa-solid fa-user left"></i>
+            <input type="text" name="full_name" placeholder="Full Name" value="<%= old.full_name || '' %>" required>
+          </div>
+          <div class="field">
+            <i class="fa-solid fa-mobile-screen left"></i>
+            <input type="tel" name="mobile" placeholder="Bangladeshi Mobile Number" value="<%= old.mobile || '' %>" required>
+          </div>
+          <div class="field">
+            <i class="fa-solid fa-envelope left"></i>
+            <input type="email" name="email" placeholder="Email Address" value="<%= old.email || '' %>" required>
+          </div>
+          <div class="field">
+            <i class="fa-solid fa-lock left"></i>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="button" class="eye" tabindex="-1"><i class="fa-solid fa-eye"></i></button>
+          </div>
+          <div class="field">
+            <i class="fa-solid fa-circle-check left"></i>
+            <input type="password" name="confirm_password" placeholder="Confirm Password" required>
+            <button type="button" class="eye" tabindex="-1"><i class="fa-solid fa-eye"></i></button>
+          </div>
+          <button type="submit" class="btn-blue">Register Now <i class="fa-solid fa-arrow-right"></i></button>
+        </form>
+        <p class="auth-switch">Already have an account? <a href="/login">Login here</a></p>
+      <% } else { %>
+        <h1 class="auth-title">Welcome Back</h1>
+        <p class="auth-sub">Login to access your dashboard</p>
+
+        <form method="post" action="/login" class="auth-form">
+          <div class="field">
+            <i class="fa-solid fa-envelope left"></i>
+            <input type="email" name="email" placeholder="Email Address" value="<%= old.email || '' %>" required>
+          </div>
+          <div class="field">
+            <i class="fa-solid fa-lock left"></i>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="button" class="eye" tabindex="-1"><i class="fa-solid fa-eye"></i></button>
+          </div>
+          <div class="login-row">
+            <label class="check-label"><input type="checkbox" name="remember" value="1"> KEEP ME LOGGED IN</label>
+            <a href="/forgot" class="forgot-link">FORGOT PASSWORD?</a>
+          </div>
+          <button type="submit" class="btn-blue">LOGIN SECURELY <i class="fa-solid fa-shield-halved"></i></button>
+        </form>
+        <p class="auth-switch">New to our platform? <a href="/register">Create Account</a></p>
+      <% } %>
+    </div>
+
+    <div class="powered-by"><%= settings.footer_text %></div>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

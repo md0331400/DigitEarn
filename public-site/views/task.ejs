@@ -1,0 +1,57 @@
+<%- include('partials/head', { title: task.name_bn }) %>
+<div class="phone">
+  <%- include('partials/header', { user, settings }) %>
+  <main class="main">
+    <div class="page-back"><a href="/dashboard"><i class="fa-solid fa-arrow-left"></i> Dashboard</a></div>
+
+    <div class="card task-hero" style="border-top:4px solid <%= task.color %>">
+      <div class="task-hero-top">
+        <div class="task-ico" style="color:<%= task.color %>;background:<%= task.color %>1a"><i class="<%= task.icon %>"></i></div>
+        <div>
+          <h2 class="task-name"><%= task.name_bn %></h2>
+          <span class="task-reward">প্রতিদিন ৳<%= task.reward %> রিওয়ার্ড</span>
+        </div>
+      </div>
+    </div>
+
+    <% if (task.locked) { %>
+      <div class="card lock-card">
+        <div class="lock-ico"><i class="fa-solid fa-lock"></i></div>
+        <h3>এই প্রজেক্টটি এখনো লক করা আছে</h3>
+        <p>শীঘ্রই খুলে দেওয়া হবে। আপডেট পেতে আমাদের টেলিগ্রাম চ্যানেলে জয়েন করুন।</p>
+        <a href="<%= settings.telegram_link %>" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> Join Telegram</a>
+      </div>
+    <% } else { %>
+      <% if (!user.is_active) { %>
+        <div class="notice-orange">
+          <i class="fa-solid fa-circle-info"></i>
+          রিওয়ার্ড পেতে আপনার একাউন্ট অ্যাক্টিভ করতে হবে। অ্যাক্টিভ করলে সাথে সাথে ৳<%= settings.activation_bonus %> বোনাস!
+          <a href="<%= settings.activation_link %>" target="_blank" rel="noopener" class="link-orange">এক্টিভ করুন</a>
+        </div>
+      <% } %>
+
+      <div class="card">
+        <h4 class="sec-title">কাজের ধাপসমূহ</h4>
+        <ol class="steps">
+          <% task.steps.forEach((s, i) => { %>
+            <li><span class="step-num"><%= i + 1 %></span><%= s %></li>
+          <% }); %>
+        </ol>
+        <a href="<%= task.url %>" target="_blank" rel="noopener" class="btn-blue btn-block"><i class="fa-solid fa-link"></i> লিংক ওপেন করুন</a>
+        <form method="post" action="/task/<%= task.id %>/claim" class="claim-form">
+          <% if (claimedToday) { %>
+            <button type="button" class="btn-green" disabled><i class="fa-solid fa-check"></i> আজ Claim করা হয়েছে</button>
+          <% } else { %>
+            <button type="submit" class="btn-green"><i class="fa-solid fa-gift"></i> Reward Claim করুন</button>
+          <% } %>
+        </form>
+      </div>
+    <% } %>
+  </main>
+  <%- include('partials/bottomnav', { nav: 'home' }) %>
+</div>
+<%- include('partials/drawer', { user, settings, nav: 'home' }) %>
+<%- include('partials/flash') %>
+<script src="/app.js"></script>
+</body>
+</html>

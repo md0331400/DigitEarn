@@ -1,0 +1,41 @@
+<%- include('partials/head', { title: 'Projects' }) %>
+<%- include('partials/sidebar', { active, sidebarOpen: false }) %>
+<div class="content">
+  <%- include('partials/topbar', { pageTitle: 'Projects / Tasks' }) %>
+  <div class="a-main">
+    <div class="a-card">
+      <div class="a-toolbar">
+        <p class="a-hint"><i class="fa-solid fa-circle-info"></i> সাইটের হোম পেজে যে প্রজেক্ট গ্রেড দেখাবে সেগুলো এখান থেকে ম্যানেজ করুন</p>
+        <a href="/tasks/new" class="a-btn a-btn-primary"><i class="fa-solid fa-plus"></i> নতুন প্রজেক্ট</a>
+      </div>
+      <div class="a-table-wrap">
+        <table class="a-table">
+          <thead><tr><th>ক্রম</th><th>প্রজেক্ট</th><th>ধরন</th><th>লিংক / প্যেজ</th><th>রিওয়ার্ড</th><th>লক</th><th>দৃশ্যমান</th><th>অ্যাকশন</th></tr></thead>
+          <tbody>
+            <% tasks.forEach(t => { %>
+              <tr class="<%= t.enabled ? '' : 'row-off' %>">
+                <td><%= t.sort %></td>
+                <td><span class="t-name"><i class="<%= t.icon %>" style="color:<%= t.color %>"></i> <%= t.name_bn %></span></td>
+                <td><span class="badge <%= t.kind === 'page' ? 'b-purple' : 'b-blue' %>"><%= t.kind === 'page' ? 'Internal Page' : 'Task' %></span></td>
+                <td><small class="dim"><%= t.kind === 'page' ? '/' + t.page : (t.url || '—') %></small></td>
+                <td><%= t.kind === 'task' ? '৳' + t.reward : '—' %></td>
+                <td><%= t.locked ? '<i class="fa-solid fa-lock" style="color:#ef4444"></i>' : '—' %></td>
+                <td><span class="badge <%= t.enabled ? 'b-green' : 'b-red' %>"><%= t.enabled ? 'Yes' : 'No' %></span></td>
+                <td class="a-actions-cell">
+                  <a href="/tasks/<%= t.id %>/edit" class="a-ico-btn" title="Edit"><i class="fa-solid fa-pen"></i></a>
+                  <form method="post" action="/tasks/<%= t.id %>/delete" onsubmit="return confirm('<%= t.name_bn %> মুছে ফেলতে চান?')">
+                    <button type="submit" class="a-ico-btn danger" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                  </form>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('partials/flash') %>
+<script src="/admin.js"></script>
+</body>
+</html>

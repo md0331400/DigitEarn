@@ -1,0 +1,44 @@
+<%- include('partials/head', { title: 'Withdrawal History' }) %>
+<div class="phone">
+  <%- include('partials/header', { user, settings }) %>
+  <main class="main">
+    <div class="hist-head">
+      <div>
+        <h2 class="hist-title"><i class="fa-solid fa-clock-rotate-left"></i> Withdrawal History</h2>
+        <p class="muted">আপনার সকল পেমেন্ট রিকোয়েস্টের তালিকা</p>
+      </div>
+      <span class="records-pill">Records: <%= rows.length %></span>
+    </div>
+
+    <% if (!rows.length) { %>
+      <div class="card empty-card" style="text-align:center">
+        <i class="fa-solid fa-receipt empty-ico"></i>
+        <h3>কোনো রেকর্ড পাওয়া যায়নি!</h3>
+        <p class="muted">আপনি এখনো কোনো উইথড্র রিকোয়েস্ট করেননি।</p>
+        <a href="/wallet" class="btn-blue" style="display:inline-flex;margin-top:8px">Withdraw Now</a>
+      </div>
+    <% } else { %>
+      <div class="hist-list">
+        <% rows.forEach(w => { %>
+          <div class="hist-item">
+            <div class="h-ico <%= w.status %>"><i class="fa-solid <%= w.status === 'paid' ? 'fa-circle-check' : w.status === 'rejected' ? 'fa-circle-xmark' : 'fa-hourglass-half' %>"></i></div>
+            <div class="h-info">
+              <b>৳ <%= Number(w.amount).toFixed(2) %> • <%= w.method %></b>
+              <span><%= w.account_number %> • <%= w.created_at.replace('T', ' ').slice(0, 16) %> UTC</span>
+              <% if (w.note) { %><em><%= w.note %></em><% } %>
+            </div>
+            <span class="h-status <%= w.status %>"><%= w.status === 'pending' ? 'পেন্ডিং' : w.status === 'paid' ? 'পেড' : 'বাতিল' %></span>
+          </div>
+        <% }); %>
+      </div>
+    <% } %>
+
+    <div class="back-link"><a href="/wallet"><i class="fa-solid fa-arrow-left"></i> Back to Withdraw</a></div>
+  </main>
+  <%- include('partials/bottomnav', { nav: 'history' }) %>
+</div>
+<%- include('partials/drawer', { user, settings, nav: 'history' }) %>
+<%- include('partials/flash') %>
+<script src="/app.js"></script>
+</body>
+</html>

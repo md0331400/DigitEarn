@@ -1,0 +1,52 @@
+<%- include('partials/head', { title: 'Settings' }) %>
+<%- include('partials/sidebar', { active, sidebarOpen: false }) %>
+<div class="content">
+  <%- include('partials/topbar', { pageTitle: 'Settings' }) %>
+  <div class="a-main">
+    <form method="post" action="/settings" class="a-card a-form-wide">
+
+      <h3 class="sec-h"><i class="fa-solid fa-house" style="color:#0ea5e9"></i> সাইট</h3>
+      <div class="a-form-grid two">
+        <div><label>সাইটের নাম</label><input type="text" name="site_name" value="<%= settings.site_name %>"></div>
+        <div><label>সাইট চালু হয়েছে (তারিখ — "সাইটের বয়স" টাইমার এর জন্য)</label><input type="date" name="site_start" value="<%= settings.site_start %>"></div>
+        <div><label>রেজিস্টার ভিডিওর লিংক (YouTube বা MP4 — খালি রাখলে placeholder দেখাবে)</label><input type="text" name="video_url" value="<%= settings.video_url || '' %>" placeholder="https://youtube.com/..."></div>
+        <div><label>ফুটার টেক্সট</label><input type="text" name="footer_text" value="<%= settings.footer_text %>"></div>
+      </div>
+
+      <h3 class="sec-h"><i class="fa-solid fa-link" style="color:#8b5cf6"></i> লিংকসমূহ</h3>
+      <div class="a-form-grid two">
+        <div><label>টেলিগ্রাম লিংক</label><input type="text" name="telegram_link" value="<%= settings.telegram_link %>"></div>
+        <div><label>ফেসবুক লিংক</label><input type="text" name="facebook_link" value="<%= settings.facebook_link %>"></div>
+        <div><label>ইউটিউব লিংক</label><input type="text" name="youtube_link" value="<%= settings.youtube_link %>"></div>
+        <div><label>"অ্যাক্টিভ করুন" বাটনের লিংক (যেখানে ইউজার এক্টিভ করতে যাবে)</label><input type="text" name="activation_link" value="<%= settings.activation_link %>"></div>
+        <div><label>এডমিন ১ (নাম)</label><input type="text" name="admin1_name" value="<%= settings.admin1_name %>"></div>
+        <div><label>এডমিন ১ (লিংক)</label><input type="text" name="admin1_link" value="<%= settings.admin1_link %>"></div>
+        <div><label>এডমিন ২ (নাম)</label><input type="text" name="admin2_name" value="<%= settings.admin2_name %>"></div>
+        <div><label>এডমিন ২ (লিংক)</label><input type="text" name="admin2_link" value="<%= settings.admin2_link %>"></div>
+      </div>
+
+      <h3 class="sec-h"><i class="fa-solid fa-gift" style="color:#ec4899"></i> বোনাস ও রিওয়ার্ড</h3>
+      <div class="a-form-grid two">
+        <div><label>রেজিস্ট্রেশন বোনাস (৳) — নতুন আইডি তৈরি করলে</label><input type="number" step="0.01" name="register_bonus" value="<%= settings.register_bonus %>"></div>
+        <div><label>এক্টিভেশন বোনাস (৳) — একাউন্ট অ্যাক্টিভ করলে</label><input type="number" step="0.01" name="activation_bonus" value="<%= settings.activation_bonus %>"></div>
+        <div><label>রেফারেল বোনাস (৳) — রেফার করলে</label><input type="number" step="0.01" name="referral_bonus" value="<%= settings.referral_bonus %>"></div>
+        <div><label>আজকের গিফট কোড (টেলেগ্রামে যে কোড দেবেন সেটি এখানে দিন)</label><input type="text" name="gift_code" value="<%= settings.gift_code %>"></div>
+        <div><label>গিফট কোড বোনাস (৳)</label><input type="number" step="0.01" name="gift_reward" value="<%= settings.gift_reward %>"></div>
+        <div><label>টার্গেট টিয়ার (JSON) — যেমন [{"tier":5,"bonus":50}]</label><input type="text" name="target_tiers" value="<%= settings.target_tiers %>" class="mono"></div>
+      </div>
+
+      <h3 class="sec-h"><i class="fa-solid fa-money-bill-transfer" style="color:#10b981"></i> উইথড্র</h3>
+      <div class="a-form-grid two">
+        <div><label>ন্যূনতম উইথড্র পরিমাণ (৳)</label><input type="number" step="0.01" name="min_withdraw" value="<%= settings.min_withdraw %>"></div>
+      </div>
+
+      <div class="form-btn-row">
+        <button type="submit" class="a-btn a-btn-primary a-btn-lg"><i class="fa-solid fa-floppy-disk"></i> সব সেটিংস সেভ করুন</button>
+      </div>
+    </form>
+  </div>
+</div>
+<%- include('partials/flash') %>
+<script src="/admin.js"></script>
+</body>
+</html>

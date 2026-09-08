@@ -1,0 +1,113 @@
+<%- include('partials/head', { title: 'User ' + u.id }) %>
+<%- include('partials/sidebar', { active, sidebarOpen: false }) %>
+<div class="content">
+  <%- include('partials/topbar', { pageTitle: 'User Details' }) %>
+  <div class="a-main">
+    <div class="back-line"><a href="/users" class="a-link"><i class="fa-solid fa-arrow-left"></i> Users তালিকায় ফিরে যান</a></div>
+
+    <div class="a-card u-head-card">
+      <div class="u-head">
+        <span class="u-avatar"><i class="fa-solid fa-user-tie"></i></span>
+        <div class="u-meta">
+          <h2><%= u.full_name %> <span class="badge <%= u.is_active ? 'b-green' : 'b-red' %>"><%= u.is_active ? 'Active' : 'Inactive' %></span></h2>
+          <div class="u-facts">
+            <span><i class="fa-solid fa-id-badge"></i> ID: <%= u.id %> • Ref: <%= u.ref_code %></span>
+            <span><i class="fa-solid fa-mobile"></i> <%= u.mobile %></span>
+            <span><i class="fa-solid fa-envelope"></i> <%= u.email %></span>
+            <span><i class="fa-solid fa-calendar"></i> যোগদান: <%= u.created_at.replace('T', ' ').slice(0, 16) %> UTC</span>
+          </div>
+        </div>
+        <div class="u-balance">
+          <small>ব্যালেন্স</small>
+          <b>৳ <%= Number(u.balance).toFixed(2) %></b>
+          <small>মোট আর্নড: ৳<%= Number(u.total_earned).toFixed(2) %> • টীম: <%= counts.reduce((a,b)=>a+b,0) %></small>
+        </div>
+      </div>
+
+      <form method="post" action="/users/<%= u.id %>/toggle-active" class="u-actions">
+        <button type="submit" class="a-btn <%= u.is_active ? 'a-btn-rose' : 'a-btn-green' %>" onclick="return confirm('<%= u.is_active ? 'অ্যাকাউন্টটি ইন-অ্যাক্টিভ করতে চান?' : 'অ্যাকাউন্টটি অ্যাক্টিভ করলে ' + settings.activation_bonus + ' টাকা বোনাস যোগ হবে — নিশ্চিত?' %>)">
+          <i class="fa-solid <%= u.is_active ? 'fa-ban' : 'fa-circle-check' %>"></i> <%= u.is_active ? 'ইন-অ্যাক্টিভ করুন' : 'অ্যাক্টিভ করুন (৳' + settings.activation_bonus + ' বোনাস)' %>
+        </button>
+      </form>
+    </div>
+
+    <div class="two-col">
+      <div class="a-card">
+        <div class="a-card-head"><h3><i class="fa-solid fa-sack-dollar" style="color:#10b981"></i> ব্যালেন্স আপডেট</h3></div>
+        <form method="post" action="/users/<%= u.id %>/balance" class="a-form-grid">
+          <div>
+            <label>মোড</label>
+            <select name="mode">
+              <option value="add">যোগ করুন (+)</option>
+              <option value="sub">বিয়াদ করুন (−)</option>
+              <option value="set">সেট করুন (=)</option>
+            </select>
+          </div>
+          <div>
+            <label>পরিমাণ (৳)</label>
+            <input type="number" step="0.01" name="amount" min="0" required>
+          </div>
+          <div>
+            <label>নোট</label>
+            <input type="text" name="note" value="Admin ব্যালেন্স আপডেট">
+          </div>
+          <div class="form-btn-row"><button type="submit" class="a-btn a-btn-primary">আপডেট করুন</button></div>
+        </form>
+
+        <h4 class="sub-h">পাসওয়ার্ড রিসেট</h4>
+        <form method="post" action="/users/<%= u.id %>/reset-password" class="a-form-grid">
+          <div>
+            <label>নতুন পাসওয়ার্ড</label>
+            <input type="text" name="password" minlength="6" placeholder="কমপক্ষে ৬ অক্ষর" required>
+          </div>
+          <div class="form-btn-row"><button type="submit" class="a-btn a-btn-amber" onclick="return confirm('নিশ্চিত? ইউজার নতুন পাসওয়ার্ড দিয়ে লগইন করবে.')">রিসেট করুন</button></div>
+        </form>
+
+        <div class="danger-zone">
+          <form method="post" action="/users/<%= u.id %>/delete" onsubmit="return confirm('সতর্কতা: <%= u.full_name %> এর অ্যাকাউন্ট ও সব রেকর্ড স্থায়ীভাবে মুছে যাবে। নিশ্চিত?')">
+            <button type="submit" class="a-btn a-btn-danger"><i class="fa-solid fa-trash"></i> অ্যাকাউন্ট ডিলিট করুন</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="a-card">
+        <div class="a-card-head"><h3><i class="fa-solid fa-money-bill-transfer" style="color:#f59e0b"></i> উইথড্র রিকোয়েস্ট</h3></div>
+        <% if (!withdrawals.length) { %><p class="a-empty-sm">কোনো উইথড্র রিকোয়েস্ট নেই</p><% } %>
+        <% withdrawals.forEach(w => { %>
+          <div class="wd-row">
+            <div>
+              <b>৳<%= Number(w.amount).toFixed(2) %> • <%= w.method %></b>
+              <small><%= w.account_number %> • <%= w.created_at.replace('T', ' ').slice(0, 16) %> UTC</small>
+            </div>
+            <span class="badge <%= w.status === 'paid' ? 'b-green' : w.status === 'rejected' ? 'b-red' : 'b-amber' %>"><%= w.status %></span>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+
+    <div class="a-card">
+      <div class="a-card-head"><h3><i class="fa-solid fa-right-left" style="color:#6366f1"></i> লেনদেন ইতিহাস (সর্বশেষ ৩টি)</h3></div>
+      <div class="a-table-wrap">
+        <table class="a-table">
+          <thead><tr><th>#</th><th>পরিমাণ</th><th>ধরন</th><th>নোট</th><th>তারিখ</th></tr></thead>
+          <tbody>
+            <% if (!transactions.length) { %><tr><td colspan="5" class="a-empty">কোনো লেনদেন নেই</td></tr><% } %>
+            <% transactions.forEach(t => { %>
+              <tr>
+                <td><%= t.id %></td>
+                <td class="<%= t.amount >= 0 ? 'pos' : 'neg' %>"><%= t.amount >= 0 ? '+' : '' %><%= Number(t.amount).toFixed(2) %></td>
+                <td><span class="badge b-blue"><%= t.type %></span></td>
+                <td><small><%= t.note || '—' %></small></td>
+                <td><small><%= t.created_at.replace('T', ' ').slice(0, 16) %> UTC</small></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('partials/flash') %>
+<script src="/admin.js"></script>
+</body>
+</html>

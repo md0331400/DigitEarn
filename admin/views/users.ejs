@@ -1,0 +1,56 @@
+<%- include('partials/head', { title: 'Users' }) %>
+<%- include('partials/sidebar', { active, sidebarOpen: false }) %>
+<div class="content">
+  <%- include('partials/topbar', { pageTitle: 'Users' }) %>
+  <div class="a-main">
+    <div class="a-card">
+      <div class="a-toolbar">
+        <form method="get" action="/users" class="a-search">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" name="q" value="<%= search %>" placeholder="নাম, ইমেইল, মোবাইল, ID বা রেফ কোড দিয়ে খুঁজুন...">
+          <% if (page > 1) { %><input type="hidden" name="page" value="<%= page %>"><% } %>
+          <button type="submit" class="a-btn a-btn-sm a-btn-primary">খুঁজুন</button>
+        </form>
+        <span class="a-count">মোট: <b><%= total %></b> জন</span>
+      </div>
+      <div class="a-table-wrap">
+        <table class="a-table">
+          <thead>
+            <tr><th>ID / Ref</th><th>নাম</th><th>মোবাইল</th><th>ইমেইল</th><th>ব্যালেন্স</th><th>রেফার</th><th>যোগদান</th><th>স্ট্যাটাস</th><th>অ্যাকশন</th></tr>
+          </thead>
+          <tbody>
+            <% if (!rows.length) { %>
+              <tr><td colspan="9" class="a-empty"><i class="fa-solid fa-user-slash"></i> কোনো ইউজার পাওয়া যায়নি</td></tr>
+            <% } %>
+            <% rows.forEach(u => { %>
+              <tr>
+                <td><a href="/users/<%= u.id %>" class="a-link">ID: <%= u.id %></a><br><small class="dim">ref: <%= u.ref_code %></small></td>
+                <td><b><%= u.full_name %></b></td>
+                <td><%= u.mobile %></td>
+                <td><small><%= u.email %></small></td>
+                <td>৳<%= Number(u.balance).toFixed(2) %></td>
+                <td><%= u.referrals %></td>
+                <td><small><%= u.created_at.slice(0, 10) %></small></td>
+                <td><span class="badge <%= u.is_active ? 'b-green' : 'b-red' %>"><%= u.is_active ? 'Active' : 'Inactive' %></span></td>
+                <td>
+                  <a href="/users/<%= u.id %>" class="a-ico-btn" title="View"><i class="fa-solid fa-eye"></i></a>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% if (pages > 1) { %>
+        <div class="a-pager">
+          <% for (let p = 1; p <= pages; p++) { %>
+            <a href="/users?q=<%= encodeURIComponent(search) %>&page=<%= p %>" class="a-page <%= p === page ? 'cur' : '' %>"><%= p %></a>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+<%- include('partials/flash') %>
+<script src="/admin.js"></script>
+</body>
+</html>

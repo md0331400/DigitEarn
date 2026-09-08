@@ -1,0 +1,12 @@
+<% if (flash) { %>
+<div class="a-toast a-toast-<%= flash.type %>" id="aToast">
+  <i class="fa-solid <%= flash.type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark' %>"></i>
+  <span><%= flash.msg %></span>
+</div>
+<script>
+  setTimeout(() => {
+    const t = document.getElementById('aToast');
+    if (t) { t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3500); }
+  }, 120);
+</script>
+<% } %>

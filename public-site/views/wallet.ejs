@@ -1,0 +1,50 @@
+<%- include('partials/head', { title: 'Wallet' }) %>
+<div class="phone">
+  <%- include('partials/header', { user, settings }) %>
+  <main class="main">
+    <% if (!user.is_active) { %>
+      <div class="card withdraw-locked">
+        <div class="wlock-ico"><i class="fa-solid fa-lock"></i></div>
+        <h3>উইথড্র করতে একাউন্ট এক্টিভ করুন</h3>
+        <p>আপনার একাউন্ট এ্যাক্টিভ করে <%= settings.activation_bonus %> টাকা বোনাস নিন সাথে সাথে 💸</p>
+        <a href="<%= settings.activation_link %>" target="_blank" rel="noopener" class="btn-orange">এক্টিভ করুন</a>
+      </div>
+    <% } else { %>
+      <div class="card balance-card">
+        <div class="bc-label">আপনার ব্যালেন্স</div>
+        <div class="bc-amount">৳ <%= Number(user.balance).toFixed(2) %></div>
+        <div class="bc-sub">মোট আর্নড: ৳ <%= Number(user.total_earned).toFixed(2) %></div>
+      </div>
+
+      <div class="card">
+        <h4 class="sec-title">নতুন উইথড্র রিকোয়েস্ট</h4>
+        <p class="muted" style="margin-bottom:14px">ন্যূনতম উইথড্র: ৳<%= settings.min_withdraw %> • পেমেন্ট: bKash / Nagad / Rocket</p>
+        <form method="post" action="/wallet/withdraw">
+          <label class="fld-label">টাকার পরিমাণ (৳)</label>
+          <input type="number" name="amount" min="<%= settings.min_withdraw %>" max="<%= Math.floor(user.balance) %>" placeholder="যেমন: 100" required>
+          <label class="fld-label">পেমেন্ট মেথড</label>
+          <div class="method-row">
+            <% methods.forEach((m, i) => { %>
+              <label class="method-chip">
+                <input type="radio" name="method" value="<%= m %>" <%= i === 0 ? 'checked' : '' %>>
+                <span><%= m %></span>
+              </label>
+            <% }); %>
+          </div>
+          <label class="fld-label">একাউন্ট নম্বর</label>
+          <div class="field" style="margin-bottom:0">
+            <i class="fa-solid fa-mobile-screen left"></i>
+            <input type="tel" name="account_number" placeholder="01XXXXXXXXX" required>
+          </div>
+          <button type="submit" class="btn-blue btn-block" style="margin-top:16px"><i class="fa-solid fa-paper-plane"></i> রিকোয়েস্ট পাঠান</button>
+        </form>
+      </div>
+    <% } %>
+  </main>
+  <%- include('partials/bottomnav', { nav: 'wallet' }) %>
+</div>
+<%- include('partials/drawer', { user, settings, nav: 'wallet' }) %>
+<%- include('partials/flash') %>
+<script src="/app.js"></script>
+</body>
+</html>
