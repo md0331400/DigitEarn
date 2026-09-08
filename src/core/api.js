@@ -284,6 +284,58 @@ export async function claimTarget(uid, tier, bonus) {
   return bonus;
 }
 
+/* ---------- proof (task-er screenshot submit → admin review → approve) ---------- */
+
+export async function getTodayProof(uid, taskSlug) {
+  if (!firebaseReady) return null;
+  const day = todayStr();
+  const q = query(
+    collection(db, 'users', uid, 'proofs'),
+    where('taskSlug', '==', taskSlug),
+    where('day', '==', day),
+    limit(1),
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+export async function getMyProofs(uid, limitN = 30) {
+  if (!firebaseReady) return [];
+  const q = query(collection(db, 'users', uid, 'proofs'), orderBy('createdAt', 'desc'), limit(limitN));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function submitProof(uid, { taskSlug, taskName, images, reward }) {
+  if (!firebaseReady) throw new Error('Firebase configure করা নেই');
+  if (!Array.isArray(images) || images.length === 0) throw new Error('কমপক্ষে ১ টা proof image দিন');
+  const day = todayStr();
+  const existing = await getTodayProof(uid, taskSlug);
+  if (existing && existing.status !== 'rejected') throw new Error('আজ এই টাস্কের proof ইতিমধ্যে submit করা আছে — review-এর অপেক্ষায় থাকুন');
+  const proofData = {
+    taskSlug, taskName, day,
+    images,
+    reward: Number(reward) || 0,
+    status: 'pending',
+    note: '',
+    createdAt: serverTimestamp(),
+    reviewedAt: null,
+  };
+  const pRef = doc(collection(db, 'users', uid, 'proofs'));
+  await runTransaction(db, async tx => {
+    const userRef = doc(db, 'users', uid);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+    if (!userSnap.data().isActive) throw new Error('Proof submit করতে একাউন্ট অ্যাক্টিভ করুন');
+    tx.set(pRef, proofData);
+    // admin panel-এর জন্য top-level mirror (admin সব pending proof এখান থেকে দেখবে)
+    tx.set(doc(db, 'proofs', pRef.id), { ...proofData, userId: uid });
+  });
+  return pRef.id;
+}
+
 /* ---------- withdrawals ---------- */
 
 export async function requestWithdrawal(uid, { amount, method, accountNumber, name, email }) {

@@ -2,48 +2,73 @@ rules_version = '2';
 // DigitEarn — Firestore Security Rules
 // Firebase Console → Firestore Database → Rules → এটা পুরোটা paste করে PUBLISH করুন
 //
-// কী রক্ষা করে:
-//  - অন্য ইউজারের প্রোফাইল/ব্যালেন্স/ট্রানজেকশন কেউ পড়তে বা লিখতে পারবে না
-//  - tasks / settings / notices শুধু পড়া যাবে (লাইভ সাইট থেকে পরিবর্তন সম্ভব না)
-//  - ব্যালেন্স পরিবর্তন শুধু ২ রকম: (১) নিজের লিগিটিমেট claim/withdraw (২) রেফারেল বোনাস ক্রেডিট
+// Admin panel:
+//  1. Firebase Console → Authentication-এ আপনার admin email-এর একাউন্ট খুলুন
+//  2. Firestore-এ `admins` collection-এ একটা document বানান: document ID = আপনার admin email
+//     (field: role: "admin" — field optional, শুধু doc-টা থাকলেই admin)
+//  3. Admin panel সেই email দিয়ে login করলেই full access পাবে
 //
-// ⚠️ গুরুত্বপূর্ণ: ক্লায়েন্ট-সাইড অ্যাপে ব্যালেন্স পরিবর্তন সম্পূর্ণ নিরাপদ করা সম্ভব নয়।
-// বড় স্কেলে real money ছাড়া Cloud Functions দিয়ে wallet লজিক তুলে আনতে হবে।
-// নিচের সংখ্যাগুলা (5, 300) settings-এর bonus amount-এর সাথে মিলে রাখুন।
+// কী রক্ষা করে:
+//  - অন্য ইউজারের প্রোফাইল/ব্যালেন্স/proof কেউ পড়তে বা লিখতে পারবে না
+//  - tasks / settings / notices / refs শুধু পড়া যায় (পরিবর্তন শুধু admin)
+//  - ব্যালেন্স পরিবর্তন: নিজের লিগিটিমেট flow + referral credit + admin
+//
+// ⚠️ real money স্কেলে wallet লজিক Cloud Functions-এ তুলে আনুন।
+// নিচের সংখ্যাগুলা (5, 300) settings-এর bonus amount-এর সাথে মিল রাখুন।
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------- public content (সবাই পড়তে পারবে) ----------
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/admins/$(request.auth.token.email)).exists();
+    }
+
+    // ---------- public content ----------
     match /tasks/{taskId} {
       allow get, list: if true;
-      allow create, update, delete: if false;
+      allow create, update, delete: if isAdmin();
     }
 
     match /settings/{docId} {
       allow get: if true;
-      allow list, create, update, delete: if false;
+      allow list: if false;
+      allow create, update: if isAdmin();
+      allow delete: if false;
     }
 
     match /notices/{noticeId} {
       allow get, list: if true;
-      allow create, update, delete: if false;
+      allow create, update, delete: if isAdmin();
     }
 
     // ---------- refs/ — রেফারেল কোড → uid directory ----------
-    // রেজিস্টার করার সময় কোড খোঁজা হয় এখান থেকে (users collection query করা হয় না)
     match /refs/{code} {
       allow get: if true;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
       allow list, update, delete: if false;
+    }
+
+    // ---------- proofs/ — admin review queue (top-level mirror) ----------
+    match /proofs/{proofId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- admin directory ----------
+    match /admins/{email} {
+      allow get: if isSignedIn();
+      allow list, create, update, delete: if false;
     }
 
     // ---------- users ----------
     match /users/{userId} {
-      function isSignedIn() { return request.auth != null; }
       function isSelf() { return request.auth.uid == userId; }
 
-      // নিজের doc: শুধু নির্দিষ্ট ফিল্ডে পরিবর্তন, একবারে সর্বোচ্চ +৳৩০০ (সবচেয়ে বড় বোনাস)
+      // নিজের doc: নির্দিষ্ট ফিল্ড, একবারে সর্বোচ্চ +৳300
       function selfWrite() {
         return isSignedIn() && isSelf() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(
@@ -52,28 +77,30 @@ service cloud.firestore {
           request.resource.data.balance - resource.data.balance <= 300;
       }
 
-      // অন্যের doc: শুধু রেফারেল বোনাস ক্রেডিট (+৳৫), নিজেকে বাদ
+      // অন্যের doc: শুধু রেফারেল বোনাস ক্রেডিট (+৳5)
       function referralCredit() {
         return isSignedIn() && !isSelf() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'totalEarned']) &&
           request.resource.data.balance - resource.data.balance == 5;
       }
 
-      allow get: if isSignedIn() && isSelf();
+      allow get: if isSignedIn() && (isSelf() || isAdmin());
       allow create: if isSignedIn() && isSelf();
-      allow update: if selfWrite() || referralCredit();
-      allow list, delete: if false;
+      allow update: if selfWrite() || referralCredit() || isAdmin();
+      allow list: if isAdmin();
+      allow delete: if false;
 
-      // team — public referral tree (শুধু name/refCode/isActive — ব্যালেন্স নাই)
+      // team — public referral tree (শুধু name/refCode/isActive)
       match /team/{childUid} {
         allow get, list: if true;
         allow create: if isSignedIn() && childUid == request.auth.uid && request.resource.data.refBy == userId;
         allow update, delete: if false;
       }
 
-      // বাকি private subcollections (transactions, taskClaims, giftClaims, targetClaims, withdrawals)
+      // private subcollections (transactions, taskClaims, giftClaims, targetClaims, withdrawals, proofs)
       match /{sub=**} {
-        allow read, write: if isSignedIn() && isSelf();
+        allow read: if isSignedIn() && (isSelf() || isAdmin());
+        allow write: if isSignedIn() && (isSelf() || isAdmin());
         // রেজিস্ট্রেশনে নতুন মেম্বার referrer-এর transactions-এ referral_bonus entry লেখে
         allow create: if isSignedIn() &&
           request.resource.data.type == 'referral_bonus' &&

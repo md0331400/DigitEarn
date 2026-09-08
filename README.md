@@ -206,4 +206,24 @@ npm run seed       # Firestore seed (বারবার চালানো safe)
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` (সংখ্যা) |
 | `VITE_FIREBASE_APP_ID` | `appId` (web app-এর ID) |
 
-Admin panel (আলাদা অ্যাপ) পরে করা হবে — সেটা এই সাইটের ভেতরে থাকবে না।
+## 📸 ImageKit (proof image upload)
+
+Task proof-এর screenshot upload-এ [ImageKit](https://imagekit.io) ব্যবহার হয়।
+**Vercel-এ Environment Variables** (Settings → Environment Variables) — এই ৩টা নাম:
+
+| Variable | কোথায় পাবেন (ImageKit Dashboard → Setup) |
+|---|---|
+| `IMAGEKIT_PUBLIC_KEY` | `Authentication` → Public Key (`ik_...`) |
+| `IMAGEKIT_PRIVATE_KEY` | `Authentication` → Private Key (🔒 শুধু server-এ থাকবে, browser-এ যায় না) |
+| `IMAGEKIT_URL_ENDPOINT` | `General` → URL Endpoint (`https://ik.imagekit.io/xxxxx/`) |
+
+- Signature তৈরি হয় Vercel serverless function-এ (`api/imagekit.js`) — private key client-এ আসে না
+- ছবি থাকে ImageKit-এ (ফ্রি প্ল্যান ৫GB) — Firebase Storage লাগবে না
+
+### Firestore Rules-এ Admin সেটআপ (admin panel-এর জন্য)
+
+1. Firebase Console → **Authentication** → আপনার admin email-এ email/password একাউন্ট খুলুন
+2. **Firestore** → নতুন collection **`admins`** → document ID = আপনার **admin email** (field: `role: "admin"`)
+3. `firestore.rules` পাস্ট করা থাকলে সেই email-এ login করলেই admin full access পাবে
+
+Admin panel (আলাদা অ্যাপ) এখন বানাচ্ছি — সেটা এই সাইটের ভেতরে থাকবে না।

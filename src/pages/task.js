@@ -1,7 +1,8 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, toast, esc, videoEmbedHtml } from '../core/ui.js';
-import { getTaskBySlug, hasClaimedToday, claimTask } from '../core/api.js';
+import { getTaskBySlug, getTodayProof, submitProof } from '../core/api.js';
+import { uploadImages } from '../core/upload.js';
 import { TASKS } from '../tasks-data.js';
 
 const slug = document.body.dataset.taskSlug || '';
@@ -40,7 +41,6 @@ bootAppPage({
     }
 
     const render = async () => {
-      const claimed = await hasClaimedToday(user.uid, slug).catch(() => false);
       if (task.locked) {
         box.innerHTML = `
           <div class="lock-card">
@@ -57,23 +57,65 @@ bootAppPage({
           <a href="${esc(settings.activationLink)}" target="_blank" rel="noopener" class="btn btn-orange btn-block" style="margin-top:12px">এক্টিভ করুন</a>`;
         return;
       }
+
+      // proof flow: আজকের proof-এর অবস্থা
+      const todayProof = await getTodayProof(user.uid, slug).catch(() => null);
+      const thumbs = p => (p.images || []).map(u => `<img class="proof-thumb" src="${esc(u)}" alt="proof">`).join('');
+      if (todayProof && todayProof.status === 'approved') {
+        box.innerHTML = `
+          <div class="ok-box proof-status-box"><i class="fa-solid fa-circle-check"></i> আজকের proof <b>Approve</b> হয়েছে — +৳${Number(todayProof.reward).toFixed(0)} আপনার ব্যালেন্সে যোগ হয়েছে</div>
+          <div class="proof-thumbs">${thumbs(todayProof)}</div>`;
+        return;
+      }
+      if (todayProof && todayProof.status === 'rejected') {
+        box.innerHTML = `
+          <div class="reject-box"><i class="fa-solid fa-circle-xmark"></i><div><b>Proof Reject হয়েছে।</b>${todayProof.note ? `<span>${esc(todayProof.note)}</span>` : ''} আবার নতুন proof দিতে পারেন।</div></div>`;
+      }
+      if (todayProof && todayProof.status === 'pending') {
+        box.innerHTML = `
+          <div class="pending-box"><i class="fa-solid fa-hourglass-half"></i><div><b>Proof Review-এ আছে</b><span>Admin আপনার proof review করে approve করলেই +৳${Number(todayProof.reward).toFixed(0)} ব্যালেন্সে যোগ হবে।</span></div></div>
+          <div class="proof-thumbs">${thumbs(todayProof)}</div>`;
+        return;
+      }
+
+      // নতুন proof submit form
       box.innerHTML = `
-        <a href="${esc(task.url)}" target="_blank" rel="noopener" class="btn btn-gold btn-block"><i class="fa-solid fa-link"></i> লিংক ওপেন করুন</a>
-        ${claimed
-          ? '<button type="button" class="btn btn-green btn-block" disabled><i class="fa-solid fa-check"></i> আজ Claim করা হয়েছে</button>'
-          : `<button type="button" id="claimBtn" class="btn btn-green btn-block"><i class="fa-solid fa-gift"></i> Reward Claim করুন (৳${task.reward})</button>`}`;
-      const claimBtn = document.getElementById('claimBtn');
-      if (claimBtn) claimBtn.addEventListener('click', async () => {
-        claimBtn.disabled = true;
-        claimBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Claim হচ্ছে...';
+        <a href="${esc(task.url)}" target="_blank" rel="noopener" class="btn btn-gold btn-block"><i class="fa-solid fa-link"></i> লিংক ওপেন করে কাজ করুন</a>
+        <div class="card proof-card" style="margin-top:14px">
+          <h4 class="sec-title"><i class="fa-solid fa-camera" style="color:var(--gold-deep)"></i> কাজ শেষ? Proof Submit করুন</h4>
+          <p class="muted" style="font-size:13px;margin-bottom:12px">কাজ সম্পন্ন করার স্ক্রিনশট (১-৩ টা) আপলোড করুন। Admin review করে <b>approve</b> করলেই +৳${Number(task.reward).toFixed(0)} আপনার ব্যালেন্সে যোগ হবে।</p>
+          <label class="proof-drop">
+            <input type="file" id="proofFiles" accept="image/*" multiple>
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>স্ক্রিনশট select করুন</span>
+            <small>JPG / PNG • সর্বোচ্চ ৩ টা • ৩MB পর্যন্ত</small>
+          </label>
+          <div class="proof-thumbs" id="proofPreviews"></div>
+          <button type="button" id="proofSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> Proof Submit করুন</button>
+        </div>`;
+
+      const input = document.getElementById('proofFiles');
+      const previews = document.getElementById('proofPreviews');
+      const btn = document.getElementById('proofSubmitBtn');
+      input.addEventListener('change', () => {
+        const files = [...input.files].slice(0, 3);
+        previews.innerHTML = files.map(f => `<img class="proof-thumb" src="${URL.createObjectURL(f)}" alt="preview">`).join('');
+      });
+      btn.addEventListener('click', async () => {
+        const files = [...input.files].slice(0, 3);
+        if (!files.length) { toast('কমপক্ষে ১ টা স্ক্রিনশট select করুন', 'error'); return; }
+        btn.disabled = true;
         try {
-          await claimTask(user.uid, slug, task);
-          toast(`+৳${task.reward} ব্যালেন্সে যোগ হয়েছে`);
-          document.querySelectorAll('[data-balance]').forEach(el => { el.textContent = '৳ ' + (Number(user.balance) + task.reward).toFixed(2); });
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Upload হচ্ছে (1/' + files.length + ')...';
+          const urls = await uploadImages(files, (i, n) => { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Upload হচ্ছে (' + i + '/' + n + ')...'; });
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
+          await submitProof(user.uid, { taskSlug: slug, taskName: task.nameBn, images: urls, reward: task.reward });
+          toast('Proof Submit হয়েছে — Admin review করবে');
           render();
         } catch (err) {
           toast(err.message, 'error');
-          claimBtn.disabled = false;
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Proof Submit করুন';
         }
       });
     };
