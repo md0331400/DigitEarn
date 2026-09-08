@@ -57,6 +57,7 @@ form?.addEventListener('submit', async e => {
   if (!/^\S+@\S+\.\S+$/.test(email)) errors.push('সঠিক ইমেইল ঠিকানা লিখুন');
   if (password.length < 6) errors.push('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে');
   if (password !== confirm) errors.push('পাসওয়ার্ড দুটি মিলছে না');
+  if (!refCode) errors.push('Referral Code দিতে হবে — এটা mandatory');
   if (errors.length) {
     errBox.innerHTML = '<div class="error-box">' + errors.map(x => `<div><i class="fa-solid fa-circle-exclamation"></i> ${x}</div>`).join('') + '</div>';
     return;

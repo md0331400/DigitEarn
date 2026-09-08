@@ -22,8 +22,12 @@ bootAppPage({
           <input type="number" name="amount" min="${settings.minWithdraw}" max="${Math.floor(user.balance)}" step="1" placeholder="যেমন: 100" required>
           <label class="fld-label">পেমেন্ট মেথড</label>
           <div class="method-row">
-            ${['bKash', 'Nagad', 'Rocket'].map((m, i) => `
-              <label class="method-chip"><input type="radio" name="method" value="${m}" ${i === 0 ? 'checked' : ''}><span>${m}</span></label>`).join('')}
+            ${[
+              { m: 'bKash', img: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR1eCYdSLflbztkyqrJchdnJieWDZgOTtbfAXMwPbQ03g&s=10' },
+              { m: 'Nagad', img: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTZ1kq9_6GpY3anEMuEoGRstF5dbWZp86KNNf9XaYu4Sw&s=10' },
+              { m: 'Rocket', img: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSJSGkr_8tLBvVNIkzSxs9K-TM8-S-ZSDjQLCPMRmNwtw&s=10' },
+            ].map((x, i) => `
+              <label class="method-chip"><input type="radio" name="method" value="${x.m}" ${i === 0 ? 'checked' : ''}><span><img class="m-img" src="${x.img}" alt="${x.m}" onerror="this.style.display='none'">${x.m}</span></label>`).join('')}
           </div>
           <label class="fld-label">একাউন্ট নম্বর</label>
           <div class="field" style="margin-bottom:0">

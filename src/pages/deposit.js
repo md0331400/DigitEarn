@@ -4,9 +4,9 @@ import { bootAppPage, toast, esc } from '../core/ui.js';
 import { getPendingDeposit, getLastDeposit, submitDeposit } from '../core/api.js';
 
 const METHODS = [
-  { key: 'bkash', label: 'bKash', color: '#e2136e', icon: 'fa-solid fa-mobile-screen', field: 'bkashNumber' },
-  { key: 'nagad', label: 'Nagad', color: '#f6921e', icon: 'fa-solid fa-wallet', field: 'nagadNumber' },
-  { key: 'rocket', label: 'Rocket', color: '#8c3494', icon: 'fa-solid fa-rocket', field: 'rocketNumber' },
+  { key: 'bkash', label: 'bKash', color: '#e2136e', icon: 'fa-solid fa-mobile-screen', field: 'bkashNumber', img: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR1eCYdSLflbztkyqrJchdnJieWDZgOTtbfAXMwPbQ03g&s=10' },
+  { key: 'nagad', label: 'Nagad', color: '#f6921e', icon: 'fa-solid fa-wallet', field: 'nagadNumber', img: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTZ1kq9_6GpY3anEMuEoGRstF5dbWZp86KNNf9XaYu4Sw&s=10' },
+  { key: 'rocket', label: 'Rocket', color: '#8c3494', icon: 'fa-solid fa-rocket', field: 'rocketNumber', img: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSJSGkr_8tLBvVNIkzSxs9K-TM8-S-ZSDjQLCPMRmNwtw&s=10' },
 ];
 
 bootAppPage({
@@ -70,9 +70,15 @@ bootAppPage({
         </div>
         <div class="card" style="margin-top:14px">
           <h4 class="sec-title"><i class="fa-solid fa-file-shield" style="color:var(--gold-deep)"></i> Deposit Submit</h4>
-          <select id="depMethod" class="input-field">
-            ${methods.map(m => `<option value="${m.key}">${m.label} — ${esc(settings[m.field])}</option>`).join('')}
-          </select>
+          <p class="muted" style="font-size:12.5px;margin-bottom:10px">Payment method select করুন:</p>
+          <div class="pay-methods">
+            ${methods.map((m, i) => `
+              <label class="pay-method ${i === 0 ? 'on' : ''}">
+                <input type="radio" name="depMethod" value="${m.key}" ${i === 0 ? 'checked' : ''}>
+                <img src="${esc(m.img)}" alt="${esc(m.label)}" loading="lazy" onerror="this.style.display='none'">
+                <b>${m.label}</b>
+              </label>`).join('')}
+          </div>
           <div class="dep-send-box">Send <b>৳${fee}</b> to this <span id="depMethodLabel">${esc(methods[0].label).toUpperCase()}</span> number:<br><span class="dep-num" id="depNumber">${esc(settings[methods[0].field])}</span> <small>(Personal)</small></div>
           <input type="text" id="depTrxId" class="input-field" placeholder="Transaction ID (TrxID)" maxlength="30">
           <input type="tel" id="depSender" class="input-field" placeholder="Sender Number — যে নম্বর থেকে টাকা পাঠিয়েছেন (01XXXXXXXXX)" maxlength="13">
@@ -89,16 +95,19 @@ bootAppPage({
     if (!submitBtn) return;
 
     // method বদলালে send box-এর number/label update
-    const methodSelect = document.getElementById('depMethod');
-    methodSelect.addEventListener('change', () => {
-      const m = methods.find(x => x.key === methodSelect.value);
+    const methodBox = document.querySelector('.pay-methods');
+    methodBox.addEventListener('change', () => {
+      const sel = methodBox.querySelector('input:checked');
+      const m = methods.find(x => x.key === sel.value);
       if (!m) return;
       document.getElementById('depMethodLabel').textContent = m.label.toUpperCase();
       document.getElementById('depNumber').textContent = settings[m.field];
+      methodBox.querySelectorAll('.pay-method').forEach(l => l.classList.toggle('on', l.contains(sel)));
     });
 
     submitBtn.addEventListener('click', async () => {
-      const method = document.getElementById('depMethod').value;
+      const sel = document.querySelector('.pay-methods input:checked');
+      const method = sel ? sel.value : '';
       const trxId = document.getElementById('depTrxId').value;
       const sender = document.getElementById('depSender').value;
       submitBtn.disabled = true;
