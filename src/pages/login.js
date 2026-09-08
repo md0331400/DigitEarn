@@ -32,7 +32,8 @@ form?.addEventListener('submit', async e => {
   errBox.innerHTML = '';
   try {
     const fd = new FormData(form);
-    await loginUser(String(fd.get('email') || '').trim(), String(fd.get('password') || ''));
+    const keep = document.getElementById('keepLogin') ? document.getElementById('keepLogin').checked : true;
+    await loginUser(String(fd.get('email') || '').trim(), String(fd.get('password') || ''), keep);
     location.replace(next);
   } catch (err) {
     errBox.innerHTML = `<div class="error-box"><div><i class="fa-solid fa-circle-exclamation"></i> ${friendlyError(err)}</div></div>`;

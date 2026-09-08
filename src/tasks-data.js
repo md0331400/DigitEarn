@@ -151,7 +151,7 @@ export const TASKS = [
   },
   {
     slug: 'ads-view',
-    nameBn: 'ADS VIEW OFF',
+    nameBn: 'ADS VIEW',
     nameEn: 'Ads View',
     icon: 'fa-solid fa-bullhorn',
     color: '#f59e0b',

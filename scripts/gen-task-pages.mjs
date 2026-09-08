@@ -91,7 +91,7 @@ for (const t of TASKS) {
       <div class="task-hero-top">
         <div class="task-ico" style="color:${t.color};background:${t.color}14"><i class="${t.icon}"></i></div>
         <div>
-          <h1>${esc(t.nameBn)} <small>(${esc(t.nameEn)})</small></h1>
+          <h1>${esc(t.nameBn)}</h1>
           <span class="reward-pill">প্রতিদিন ৳${t.reward} রিওয়ার্ড</span>
           ${t.locked ? '<span class="lock-pill"><i class="fa-solid fa-lock"></i> শীঘ্রই খুলবে</span>' : ''}
         </div>

@@ -8,6 +8,17 @@ import { TASKS } from '../tasks-data.js';
 const slug = document.body.dataset.taskSlug || '';
 const staticTask = TASKS.find(t => t.slug === slug) || { nameBn: 'টাস্ক', nameEn: '', icon: 'fa-solid fa-star', color: '#f59e0b', reward: 0, url: '', steps: [], locked: false };
 
+// flash রোধ: auth state পাকা হওয়া পর্যন্ত header button ও claim box লোডিং দেখাবে
+// (logged-in user কখনো "Register" দেখবে না)
+(function hideUntilAuth() {
+  const reg = document.getElementById('hdrReg');
+  const dash = document.getElementById('hdrDash');
+  const box = document.getElementById('taskActions');
+  if (reg) reg.classList.add('hdr-hide');
+  if (dash) dash.classList.add('hdr-hide');
+  if (box) box.innerHTML = '<div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> লোড হচ্ছে...</div>';
+})();
+
 bootAppPage({
   active: 'home',
   onReady: async ({ user, settings }) => {
@@ -17,6 +28,10 @@ bootAppPage({
 
     let task = await getTaskBySlug(slug).catch(() => null);
     if (!task) task = { ...staticTask, slug };
+
+    // logged-in: Register button সার্বক্ষণিক মুছে ফেল, Dashboard দেখাও
+    document.getElementById('hdrReg')?.remove();
+    document.getElementById('hdrDash')?.classList.remove('hdr-hide');
 
     if (stepsEl) {
       const steps = task.steps && task.steps.length ? task.steps : staticTask.steps;
@@ -42,6 +57,17 @@ bootAppPage({
 
     const render = async () => {
       if (task.locked) {
+        if (!user.isActive) {
+          // locked task + inactive account → activation page-এ নিয়ে যাবে
+          box.innerHTML = `
+          <div class="lock-card">
+            <div class="lock-ico"><i class="fa-solid fa-lock"></i></div>
+            <h3>এই টাস্কটি অ্যাক্টিভ একাউন্টে খোলে</h3>
+            <p>আপনার একাউন্ট অ্যাক্টিভ করলেই এই প্রিমিয়াম টাস্ক আনলক হয়ে যাবে। ৳${Number(settings.activationFee) || 30} deposit করলেই অ্যাক্টিভ + ${esc(settings.activationBonus)} টাকা বোনাস!</p>
+            <a href="/deposit.html" class="btn btn-orange btn-block" style="margin-top:12px"><i class="fa-solid fa-bolt"></i> Deposit করে অ্যাক্টিভ করুন</a>
+          </div>`;
+          return;
+        }
         box.innerHTML = `
           <div class="lock-card">
             <div class="lock-ico"><i class="fa-solid fa-lock"></i></div>

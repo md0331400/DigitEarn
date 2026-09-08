@@ -118,8 +118,12 @@ export async function ensureUserProfile(uid, { email = '', name = '' } = {}) {
   return { uid, name: finalName, email, refCode: legacyCode, balance: 0, totalEarned: 0, isActive: false, welcomeShown: true };
 }
 
-export async function loginUser(email, password) {
+export async function loginUser(email, password, keepLoggedIn = true) {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
+  // KEEP ME LOGGED IN: টিক থাকলে session browser বন্ধ করলেও থাকবে;
+  // না থাকলে browser close করলেই session clear হয়ে যাবে
+  const { browserLocalPersistence, browserSessionPersistence, setPersistence } = await import('firebase/auth');
+  await setPersistence(auth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
   const cred = await signInWithEmailAndPassword(auth, email, password);
   await ensureUserProfile(cred.user.uid, { email, name: cred.user.displayName });
   return cred.user.uid;
