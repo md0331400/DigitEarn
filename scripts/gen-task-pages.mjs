@@ -58,7 +58,7 @@ for (const t of TASKS) {
     url: canonical,
     provider: { '@type': 'Organization', name: SITE.name, url: SITE.url },
     areaServed: 'BD',
-    offers: { '@type': 'Offer', price: '0', priceCurrency: 'BDT', description: 'ফ্রি — প্রতিদিন ৳' + bn(t.reward) + ' রিওয়ার্ড' },
+    offers: { '@type': 'Offer', description: 'প্রতিদিন ৳' + bn(t.reward) + ' রিওয়ার্ড — একাউন্ট অ্যাক্টিভ করলেই আর্ন শুরু' },
   }).replace(/</g, '\\u003c');
 
   const stepsHtml = t.steps.map((s, i) => `            <li><span class="step-num">${i + 1}</span>${esc(s)}</li>`).join('\n');
@@ -108,7 +108,7 @@ ${stepsHtml}
       <div id="taskActions" data-reward="${t.reward}">
         <p class="muted claim-hint">লগইন করে টাস্ক সম্পন্ন করলে প্রতিদিন ৳${t.reward} ব্যালেন্সে যোগ হবে।</p>
         <a href="/login.html?next=/task/${t.slug}.html" class="btn btn-gold btn-block">লগইন করে Claim করুন</a>
-        <a href="/register.html" class="btn btn-outline-gold btn-block">নতুন? ফ্রি আইডি তৈরি করুন (৳১০ বোনাস)</a>
+        <a href="/register.html" class="btn btn-outline-gold btn-block">নতুন? আইডি তৈরি করুন (৳১০ বোনাস)</a>
       </div>
     </div>
 
