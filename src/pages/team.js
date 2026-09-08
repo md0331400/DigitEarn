@@ -1,7 +1,7 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, esc } from '../core/ui.js';
-import { teamCounts, getDirectTeam } from '../core/api.js';
+import { teamCounts, getDirectTeam, getReferralIncome } from '../core/api.js';
 
 bootAppPage({
   active: 'team',
@@ -10,15 +10,26 @@ bootAppPage({
     if (!box) return;
     box.innerHTML = '<div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> টীম লোড হচ্ছে...</div>';
 
-    const [counts, direct] = await Promise.all([
+    const [counts, direct, refIncome] = await Promise.all([
       teamCounts(user.uid).catch(() => [0, 0, 0, 0]),
       getDirectTeam(user.uid).catch(() => []),
+      getReferralIncome(user.uid).catch(() => 0),
     ]);
     const total = counts.reduce((a, b) => a + b, 0);
     const refLink = `${location.origin}/register.html?ref=${user.refCode}`;
 
     const levelNames = ['লেভেল ১', 'লেভেল ২', 'লেভেল ৩', 'লেভেল ৪'];
     box.innerHTML = `
+      <div class="stat-row2">
+        <div class="stat-card2">
+          <div class="sc-ico" style="background:#f3e8ff;color:#8b5cf6"><i class="fa-solid fa-users"></i></div>
+          <b>${direct.length}</b><span>Total Refer</span>
+        </div>
+        <div class="stat-card2">
+          <div class="sc-ico" style="background:#dbeafe;color:#2563eb"><i class="fa-solid fa-wallet"></i></div>
+          <b>৳${Number(refIncome).toFixed(0)}</b><span>Ref Income</span>
+        </div>
+      </div>
       <div class="card team-card">
         <div class="team-top">
           <div class="team-ico"><i class="fa-solid fa-users"></i></div>

@@ -1,6 +1,6 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import { bootAppPage, toast, esc } from '../core/ui.js';
+import { bootAppPage, toast, esc, videoEmbedHtml } from '../core/ui.js';
 import { getTaskBySlug, hasClaimedToday, claimTask } from '../core/api.js';
 import { TASKS } from '../tasks-data.js';
 
@@ -26,6 +26,18 @@ bootAppPage({
     // reflect live reward
     document.querySelectorAll('[data-reward]').forEach(el => { el.dataset.reward = task.reward; });
     document.querySelectorAll('.reward-pill').forEach(el => { el.textContent = `প্রতিদিন ৳${task.reward} রিওয়ার্ড`; });
+
+    // per-project video guide — admin panel থেকে tasks/{slug}.videoUrl সেট করলেই দেখাবে
+    const vidSlot = document.getElementById('taskVideo');
+    if (vidSlot) {
+      const vu = task.videoUrl || '';
+      const embed = videoEmbedHtml(vu);
+      if (embed) {
+        vidSlot.innerHTML = `<div class="video-card"><p class="video-note">এই প্রজেক্টের ভিডিও দেখে কাজ করুন</p><div class="video-box">${embed}</div></div>`;
+      } else if (vu) {
+        vidSlot.innerHTML = `<div class="video-card"><p class="video-note">ভিডিও গাইড দেখুন</p><a href="${esc(vu)}" target="_blank" rel="noopener" class="btn btn-indigo btn-block" style="margin-top:10px"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Video Link</a></div>`;
+      }
+    }
 
     const render = async () => {
       const claimed = await hasClaimedToday(user.uid, slug).catch(() => false);

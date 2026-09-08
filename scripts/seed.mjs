@@ -87,6 +87,7 @@ for (const t of TASKS) {
     enabled: true,
     sort: t.sort,
     steps: t.steps,
+    videoUrl: t.videoUrl || '',
   });
   created++;
 }

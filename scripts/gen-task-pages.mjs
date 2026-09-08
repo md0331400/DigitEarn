@@ -98,6 +98,8 @@ for (const t of TASKS) {
       </div>
     </div>
 
+    <div id="taskVideo"></div>
+
     <div class="card">
       <h2 class="sec-title">কীভাবে কাজ করবেন</h2>
       <ol class="steps" id="taskSteps">

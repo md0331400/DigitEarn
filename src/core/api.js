@@ -316,6 +316,13 @@ export async function requestWithdrawal(uid, { amount, method, accountNumber, na
   });
 }
 
+export async function getReferralIncome(uid) {
+  if (!firebaseReady) return 0;
+  const q = query(collection(db, 'users', uid, 'transactions'), where('type', '==', 'referral_bonus'), limit(1000));
+  const snap = await getDocs(q);
+  return snap.docs.reduce((a, d) => a + (Number(d.data().amount) || 0), 0);
+}
+
 export async function getMyWithdrawals(uid, limitN = 50) {
   if (!firebaseReady) return [];
   const q = query(collection(db, 'users', uid, 'withdrawals'), orderBy('createdAt', 'desc'), limit(limitN));

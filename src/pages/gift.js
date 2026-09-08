@@ -9,6 +9,16 @@ bootAppPage({
   onReady: async ({ user, settings }) => {
     const box = document.getElementById('giftBox');
     if (!box) return;
+    if (!user.isActive) {
+      box.innerHTML = `
+        <div class="card center-lock">
+          <div class="lock-dot-red"></div>
+          <h2 class="locked-title">Gift Code Locked!</h2>
+          <p class="muted">আপনার একাউন্টটি অ্যাক্টিভ হলে তবেই গিফট কোড ব্যবহার করা যাবে।</p>
+          <a href="/dashboard.html" class="btn btn-orange btn-block" style="margin-top:16px"><i class="fa-solid fa-unlock"></i> Activate Account</a>
+        </div>`;
+      return;
+    }
     const claimed = await hasGiftClaimedToday(user.uid).catch(() => false);
     box.innerHTML = `
       <div class="card" style="text-align:center">
