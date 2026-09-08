@@ -5,15 +5,16 @@ import { auth, firebaseReady } from '../core/firebase.js';
 
 /* landing page — mostly static; small interactivity only */
 
-// logged-in user হলে header-এ Log In/Register-এর বদলে Dashboard দেখাবে
+// logged-in user → landing-এ থাকবে না, সরাসরি dashboard-এ (flash রোধে header সাথে সাথে switch)
 function showDashboardHeader() {
   const nav = document.querySelector('.header-actions');
   if (!nav) return;
   nav.innerHTML = '<a href="/dashboard.html" class="btn btn-gold btn-sm">Dashboard</a>';
 }
 if (firebaseReady) {
-  if (auth.currentUser) showDashboardHeader();
-  else onAuthStateChanged(auth, u => { if (u) showDashboardHeader(); });
+  const goDashboard = () => { showDashboardHeader(); location.replace('/dashboard.html'); };
+  if (auth.currentUser) goDashboard();
+  else onAuthStateChanged(auth, u => { if (u) goDashboard(); });
 }
 
 document.querySelectorAll('.eye').forEach(btn => {
