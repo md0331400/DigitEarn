@@ -199,8 +199,16 @@ export async function bootAppPage({ active = 'home', onReady }) {
     location.replace('/login.html?next=' + next);
     return;
   }
-  const [settings, userDoc] = await Promise.all([getSettings(), getUserDoc(user.uid)]);
-  if (!userDoc) {
+  const [settings, userDoc] = await Promise.all([getSettings(), getUserDoc(user.uid).catch(() => null)]);
+  let profile = userDoc;
+  if (!profile) {
+    // stale/old session-এ profile missing হলে auto-create (self-heal)
+    try {
+      const { ensureUserProfile } = await import('./api.js');
+      profile = await ensureUserProfile(user.uid, { email: user.email, name: user.displayName });
+    } catch (_) {}
+  }
+  if (!profile) {
     toast('প্রোফাইল লোড হয়নি — আবার লগইন করুন', 'error');
     return;
   }
@@ -209,8 +217,8 @@ export async function bootAppPage({ active = 'home', onReady }) {
   const drawer = document.getElementById('appDrawer');
   const overlayEl = document.getElementById('drawerOverlay');
   const nav = document.getElementById('appNav');
-  if (header) header.innerHTML = renderHeader(userDoc, settings);
-  if (drawer) drawer.innerHTML = renderDrawer(userDoc, settings, active);
+  if (header) header.innerHTML = renderHeader(profile, settings);
+  if (drawer) drawer.innerHTML = renderDrawer(profile, settings, active);
   if (nav) nav.innerHTML = renderBottomNav(active);
 
   const open = () => document.body.classList.add('drawer-open');
@@ -225,7 +233,7 @@ export async function bootAppPage({ active = 'home', onReady }) {
     location.replace('/login.html');
   });
 
-  onReady && onReady({ uid: user.uid, user: userDoc, settings });
+  onReady && onReady({ uid: user.uid, user: profile, settings });
 }
 
 export { SITE };

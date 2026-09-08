@@ -99,25 +99,30 @@ export async function registerUser({ name, mobile, email, password, refCodeInput
   return uid;
 }
 
+/* Login/session restore-এ profile না থাকলে auto-create — dashboard blank হয়ে যাওয়া রোধ করে */
+export async function ensureUserProfile(uid, { email = '', name = '' } = {}) {
+  if (!firebaseReady) return null;
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (snap.exists()) return { uid, ...snap.data() };
+  const legacyCode = randomRefCode();
+  const finalName = name || (email ? email.split('@')[0] : 'User');
+  await setDoc(doc(db, 'users', uid), {
+    name: finalName,
+    mobile: '', email,
+    refCode: legacyCode, refBy: null,
+    balance: 0, totalEarned: 0, isActive: false, welcomeShown: true,
+    activationBonusGiven: true,
+    createdAt: serverTimestamp(), lastLogin: serverTimestamp(),
+  });
+  try { await setDoc(doc(db, 'refs', legacyCode), { uid }); } catch (_) {}
+  return { uid, name: finalName, email, refCode: legacyCode, balance: 0, totalEarned: 0, isActive: false, welcomeShown: true };
+}
+
 export async function loginUser(email, password) {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
   const cred = await signInWithEmailAndPassword(auth, email, password);
-  const uid = cred.user.uid;
-  const snap = await getDoc(doc(db, 'users', uid));
-  if (!snap.exists()) {
-    // legacy auth account without profile
-    const legacyCode = randomRefCode();
-    await setDoc(doc(db, 'users', uid), {
-      name: cred.user.displayName || email.split('@')[0],
-      mobile: '', email,
-      refCode: legacyCode, refBy: null,
-      balance: 0, totalEarned: 0, isActive: false, welcomeShown: true,
-      activationBonusGiven: true,
-      createdAt: serverTimestamp(), lastLogin: serverTimestamp(),
-    });
-    try { await setDoc(doc(db, 'refs', legacyCode), { uid }); } catch (_) {}
-  }
-  return uid;
+  await ensureUserProfile(cred.user.uid, { email, name: cred.user.displayName });
+  return cred.user.uid;
 }
 
 export async function activateAccount(uid) {

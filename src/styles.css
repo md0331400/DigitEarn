@@ -175,8 +175,8 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
   background: linear-gradient(90deg, #fbbf24, #f59e0b, #f97316);
 }
 .proj-head { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 9px; margin-bottom: 16px; }
-.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 8px; }
-.proj { text-align: center; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px; }
+.proj { text-align: center; overflow-wrap: anywhere; }
 .proj .ico {
   position: relative; width: 58px; height: 58px; margin: 0 auto 8px; border-radius: 16px;
   background: var(--cream); display: flex; align-items: center; justify-content: center; font-size: 22px;
@@ -484,20 +484,20 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
 .landing-section { padding: 34px 16px 0; }
 .landing-section > h2 { font-size: 23px; font-weight: 800; text-align: center; margin-bottom: 6px; }
 .landing-section > .sub { text-align: center; color: var(--muted); font-size: 13.5px; margin-bottom: 22px; }
-.steps-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.steps-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .step-card { background: #fff; border: 1.5px solid var(--border); border-radius: 18px; padding: 18px 14px; text-align: center; }
 .step-card .s-ico { width: 52px; height: 52px; border-radius: 16px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 21px; }
 .step-card b { font-size: 14px; display: block; margin-bottom: 6px; }
 .step-card p { font-size: 12px; color: var(--muted); line-height: 1.55; }
-.task-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.task-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .task-tile { display: flex; align-items: center; gap: 12px; background: #fff; border: 1.5px solid var(--border); border-radius: 16px; padding: 14px; transition: border .2s, transform .15s; }
 .task-tile:hover { border-color: var(--gold); transform: translateY(-2px); }
 .task-tile .t-ico { width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; }
-.task-tile .t-info { flex: 1; min-width: 0; }
+.task-tile .t-info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .task-tile .t-info b { font-size: 13.5px; display: block; }
 .task-tile .t-info span { font-size: 11.5px; color: var(--muted); }
 .task-tile .t-reward { font-size: 13px; font-weight: 800; color: var(--green); white-space: nowrap; }
-.bonus-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.bonus-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .bonus-card { background: #fff; border: 1.5px solid var(--gold-ring); border-radius: 16px; padding: 16px; text-align: center; }
 .bonus-card .b-amt { font-size: 22px; font-weight: 800; color: var(--gold-deep); }
 .bonus-card p { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
@@ -517,7 +517,7 @@ body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
 .cta-band .btn { background: #fff; color: var(--gold-deep); box-shadow: 0 6px 16px rgba(0, 0, 0, .18); }
 
 @media (max-width: 380px) {
-  .grid4 { grid-template-columns: repeat(3, 1fr); }
+  .grid4 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .steps-3 { grid-template-columns: 1fr; }
   .foot-grid { grid-template-columns: 1fr; }
   .hero h1 { font-size: 26px; }
