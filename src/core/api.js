@@ -314,7 +314,6 @@ export async function getMyProofs(uid, limitN = 30) {
 
 export async function submitProof(uid, { taskSlug, taskName, images, reward }) {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
-  if (!Array.isArray(images) || images.length === 0) throw new Error('কমপক্ষে ১ টা proof image দিন');
   const day = todayStr();
   const existing = await getTodayProof(uid, taskSlug);
   if (existing && existing.status !== 'rejected') throw new Error('আজ এই টাস্কের proof ইতিমধ্যে submit করা আছে — review-এর অপেক্ষায় থাকুন');
@@ -360,16 +359,17 @@ export async function getLastDeposit(uid) {
   return { id: d.id, ...d.data() };
 }
 
-export async function submitDeposit(uid, { method, trxId, image, amount }) {
+export async function submitDeposit(uid, { method, trxId, senderNumber, amount }) {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
-  if (!image) throw new Error('Payment proof (screenshot) upload করুন');
-  if (!trxId || String(trxId).trim().length < 6) throw new Error('bKash/Nagad Transaction ID সঠিকভাবে লিখুন');
+  if (!trxId || String(trxId).trim().length < 6) throw new Error('Transaction ID (TrxID) সঠিকভাবে লিখুন');
+  const sn = String(senderNumber || '').replace(/\D/g, '');
+  if (!/^01[3-9]\d{8}$/.test(sn)) throw new Error('সঠিক Sender Number দিন (01XXXXXXXXX)');
   const pending = await getPendingDeposit(uid);
   if (pending) throw new Error('আপনার একটা deposit ইতিমধ্যে review-এ আছে — অপেক্ষায় থাকুন');
   const depositData = {
     method,
     trxId: String(trxId).trim(),
-    image,
+    senderNumber: sn,
     amount: Number(amount) || 0,
     status: 'pending',
     note: '',

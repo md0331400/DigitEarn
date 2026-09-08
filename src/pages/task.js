@@ -2,7 +2,6 @@ import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, toast, esc, videoEmbedHtml } from '../core/ui.js';
 import { getTaskBySlug, getTodayProof, submitProof } from '../core/api.js';
-import { uploadImages } from '../core/upload.js';
 import { TASKS } from '../tasks-data.js';
 
 const slug = document.body.dataset.taskSlug || '';
@@ -108,34 +107,22 @@ bootAppPage({
       box.innerHTML = `
         <a href="${esc(task.url)}" target="_blank" rel="noopener" class="btn btn-gold btn-block"><i class="fa-solid fa-link"></i> লিংক ওপেন করে কাজ করুন</a>
         <div class="card proof-card" style="margin-top:14px">
-          <h4 class="sec-title"><i class="fa-solid fa-camera" style="color:var(--gold-deep)"></i> কাজ শেষ? Proof Submit করুন</h4>
-          <p class="muted" style="font-size:13px;margin-bottom:12px">কাজ সম্পন্ন করার স্ক্রিনশট (১-৩ টা) আপলোড করুন। Admin review করে <b>approve</b> করলেই +৳${Number(task.reward).toFixed(0)} আপনার ব্যালেন্সে যোগ হবে।</p>
-          <label class="proof-drop">
-            <input type="file" id="proofFiles" accept="image/*" multiple>
-            <i class="fa-solid fa-cloud-arrow-up"></i>
-            <span>স্ক্রিনশট select করুন</span>
-            <small>JPG / PNG • সর্বোচ্চ ৩ টা • ৩MB পর্যন্ত</small>
-          </label>
-          <div class="proof-thumbs" id="proofPreviews"></div>
+          <h4 class="sec-title"><i class="fa-solid fa-paper-plane" style="color:var(--gold-deep)"></i> কাজ শেষ? Proof Submit করুন</h4>
+          <div class="steps-list" style="margin-bottom:14px">
+            <div class="step-line"><b class="step-num">১</b><span>উপরের লিংকে গিয়ে কাজ করুন</span></div>
+            <div class="step-line"><b class="step-num">২</b><span>কাজের স্ক্রিনশট <b>এডমিনকে Telegram-এ</b> পাঠিয়ে দিন</span></div>
+            <div class="step-line"><b class="step-num">৩</b><span>নিচের বাটনে submit করুন — admin <b>approve</b> করলেই +৳${Number(task.reward).toFixed(0)} ব্যালেন্সে যোগ হবে</span></div>
+          </div>
+          ${settings.admin1Link ? `<a href="${esc(settings.admin1Link)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> ${esc(settings.admin1Name)}-এর সাথে চ্যাট করুন</a>` : ''}
           <button type="button" id="proofSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> Proof Submit করুন</button>
         </div>`;
 
-      const input = document.getElementById('proofFiles');
-      const previews = document.getElementById('proofPreviews');
       const btn = document.getElementById('proofSubmitBtn');
-      input.addEventListener('change', () => {
-        const files = [...input.files].slice(0, 3);
-        previews.innerHTML = files.map(f => `<img class="proof-thumb" src="${URL.createObjectURL(f)}" alt="preview">`).join('');
-      });
       btn.addEventListener('click', async () => {
-        const files = [...input.files].slice(0, 3);
-        if (!files.length) { toast('কমপক্ষে ১ টা স্ক্রিনশট select করুন', 'error'); return; }
         btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
         try {
-          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Upload হচ্ছে (1/' + files.length + ')...';
-          const urls = await uploadImages(files, (i, n) => { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Upload হচ্ছে (' + i + '/' + n + ')...'; });
-          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
-          await submitProof(user.uid, { taskSlug: slug, taskName: task.nameBn, images: urls, reward: task.reward });
+          await submitProof(user.uid, { taskSlug: slug, taskName: task.nameBn, images: [], reward: task.reward });
           toast('Proof Submit হয়েছে — Admin review করবে');
           render();
         } catch (err) {

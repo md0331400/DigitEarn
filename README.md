@@ -206,19 +206,13 @@ npm run seed       # Firestore seed (বারবার চালানো safe)
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` (সংখ্যা) |
 | `VITE_FIREBASE_APP_ID` | `appId` (web app-এর ID) |
 
-## 📸 ImageKit (proof image upload)
+## 📸 Image upload
 
-Task proof-এর screenshot upload-এ [ImageKit](https://imagekit.io) ব্যবহার হয়।
-**Vercel-এ Environment Variables** (Settings → Environment Variables) — এই ৩টা নাম:
+**Image upload feature বর্তমানে নেই** (ImageKit সরিয়ে দেওয়া হয়েছে)।
+- Task proof: user কাজের screenshot **এডমিনকে Telegram-এ** পাঠায় → admin panel-এ approve/reject
+- Deposit: user **TrxID + sender number** দেয় → admin নিজের bKash/Nagad app-এ ট্রানজেকশন check করে approve/reject
 
-| Variable | কোথায় পাবেন (ImageKit Dashboard → Setup) |
-|---|---|
-| `IMAGEKIT_PUBLIC_KEY` | `Authentication` → Public Key (`ik_...`) |
-| `IMAGEKIT_PRIVATE_KEY` | `Authentication` → Private Key (🔒 শুধু server-এ থাকবে, browser-এ যায় না) |
-| `IMAGEKIT_URL_ENDPOINT` | `General` → URL Endpoint (`https://ik.imagekit.io/xxxxx/`) |
-
-- Signature তৈরি হয় Vercel serverless function-এ (`api/imagekit.js`) — private key client-এ আসে না
-- ছবি থাকে ImageKit-এ (ফ্রি প্ল্যান ৫GB) — Firebase Storage লাগবে না
+Image upload পরে চাইলে আবার add করা যাবে।
 
 ### Firestore Rules-এ Admin সেটআপ (admin panel-এর জন্য)
 

@@ -2,7 +2,6 @@ import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, toast, esc } from '../core/ui.js';
 import { getPendingDeposit, getLastDeposit, submitDeposit } from '../core/api.js';
-import { uploadImage } from '../core/upload.js';
 
 const METHODS = [
   { key: 'bkash', label: 'bKash', color: '#e2136e', icon: 'fa-solid fa-mobile-screen', field: 'bkashNumber' },
@@ -65,22 +64,18 @@ bootAppPage({
           <div class="steps-list">
             ${methods.map((m, i) => `
               <div class="step-line"><b class="step-num">${i + 1}</b><span><b style="color:${m.color}">${m.label}</b> নম্বরে <b>${esc(settings[m.field])}</b> (Send Money) — Amount: <b>৳${fee}</b></span></div>`).join('')}
-            <div class="step-line"><b class="step-num">${methods.length + 1}</b><span>Payment-এর <b>Transaction ID</b> (TrxID) খাতায় লিখে রাখুন</span></div>
-            <div class="step-line"><b class="step-num">${methods.length + 2}</b><span>নিচের ফর্মে <b>payment screenshot</b> + TrxID দিয়ে submit করুন</span></div>
+            <div class="step-line"><b class="step-num">${methods.length + 1}</b><span>Payment-এর <b>Transaction ID (TrxID)</b> খাতায় লিখে রাখুন</span></div>
+            <div class="step-line"><b class="step-num">${methods.length + 2}</b><span>নিচের ফর্মে <b>TrxID + sender number</b> দিয়ে submit করুন</span></div>
           </div>
         </div>
         <div class="card" style="margin-top:14px">
-          <h4 class="sec-title"><i class="fa-solid fa-file-shield" style="color:var(--gold-deep)"></i> Payment Proof Submit</h4>
+          <h4 class="sec-title"><i class="fa-solid fa-file-shield" style="color:var(--gold-deep)"></i> Deposit Submit</h4>
           <select id="depMethod" class="input-field">
             ${methods.map(m => `<option value="${m.key}">${m.label} — ${esc(settings[m.field])}</option>`).join('')}
           </select>
+          <div class="dep-send-box">Send <b>৳${fee}</b> to this <span id="depMethodLabel">${esc(methods[0].label).toUpperCase()}</span> number:<br><span class="dep-num" id="depNumber">${esc(settings[methods[0].field])}</span> <small>(Personal)</small></div>
           <input type="text" id="depTrxId" class="input-field" placeholder="Transaction ID (TrxID)" maxlength="30">
-          <label class="proof-drop">
-            <input type="file" id="depImage" accept="image/*">
-            <i class="fa-solid fa-cloud-arrow-up"></i>
-            <span>Payment Screenshot upload করুন</span>
-            <small>JPG / PNG • ৩MB পর্যন্ত</small>
-          </label>
+          <input type="tel" id="depSender" class="input-field" placeholder="Sender Number — যে নম্বর থেকে টাকা পাঠিয়েছেন (01XXXXXXXXX)" maxlength="13">
           <button type="button" id="depSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন</button>
           <p class="muted" style="font-size:11.5px;margin-top:10px;text-align:center">Admin review করে approve করলেই একাউন্ট অ্যাক্টিভ হবে।</p>
         </div>`
@@ -92,34 +87,24 @@ bootAppPage({
 
     const submitBtn = document.getElementById('depSubmitBtn');
     if (!submitBtn) return;
-    let uploadedUrl = '';
-    const imgInput = document.getElementById('depImage');
-    imgInput.addEventListener('change', async () => {
-      const f = imgInput.files[0];
-      if (!f) return;
-      uploadedUrl = '';
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Upload হচ্ছে...';
-      try {
-        uploadedUrl = await uploadImage(f);
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন';
-        toast('Screenshot upload হয়েছে');
-      } catch (err) {
-        toast(err.message, 'error');
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন';
-      }
+
+    // method বদলালে send box-এর number/label update
+    const methodSelect = document.getElementById('depMethod');
+    methodSelect.addEventListener('change', () => {
+      const m = methods.find(x => x.key === methodSelect.value);
+      if (!m) return;
+      document.getElementById('depMethodLabel').textContent = m.label.toUpperCase();
+      document.getElementById('depNumber').textContent = settings[m.field];
     });
 
     submitBtn.addEventListener('click', async () => {
       const method = document.getElementById('depMethod').value;
       const trxId = document.getElementById('depTrxId').value;
-      if (!uploadedUrl) { toast('Payment screenshot upload করুন', 'error'); return; }
+      const sender = document.getElementById('depSender').value;
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
       try {
-        await submitDeposit(user.uid, { method, trxId, image: uploadedUrl, amount: fee });
+        await submitDeposit(user.uid, { method, trxId, senderNumber: sender, amount: fee });
         toast('Deposit Submit হয়েছে — Admin review করবে');
         location.reload();
       } catch (err) {

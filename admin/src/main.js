@@ -226,7 +226,7 @@ async function viewDeposits(main) {
         <div class="ai-user"><b>${esc(user?.name || d.userId)}</b><span class="muted">${esc(user?.mobile || '')}</span></div>
         <span class="badge ${d.status}">${{ pending: 'PENDING', approved: 'APPROVED', rejected: 'REJECTED' }[d.status] || d.status}</span>
       </div>
-      <div class="ai-meta"><i class="fa-solid fa-money-bill-wave"></i> ${esc(d.method)} • <b class="gold-txt">${fmt(d.amount)}</b> • TrxID: <b>${esc(d.trxId)}</b></div>
+      <div class="ai-meta"><i class="fa-solid fa-money-bill-wave"></i> ${esc(d.method)} • <b class="gold-txt">${fmt(d.amount)}</b> • TrxID: <b>${esc(d.trxId)}</b>${d.senderNumber ? ` • Sender: <b>${esc(d.senderNumber)}</b>` : ''}</div>
       <div class="ai-meta muted-sm">${timeBn(d.createdAt)}${d.status !== 'pending' && d.reviewedAt ? ' • reviewed ' + timeBn(d.reviewedAt) : ''}</div>
       ${d.image ? `<div class="thumb-row"><a href="${esc(d.image)}" target="_blank" rel="noopener"><img class="adm-thumb" src="${esc(d.image)}" loading="lazy" alt="payment proof"></a></div>` : ''}
       ${d.status === 'rejected' && d.note ? `<p class="ai-note"><i class="fa-solid fa-note"></i> ${esc(d.note)}</p>` : ''}
