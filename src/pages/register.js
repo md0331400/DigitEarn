@@ -46,14 +46,17 @@ document.querySelectorAll('.eye').forEach(btn => {
 });
 
 /* ============================================================
-   LIVE VALIDATION — field লেখার সাথে সাথে green/red
+   LIVE VALIDATION — field বদলালেই পুরনো status invalidate হয়
+   (stale green দেখাবে না — sequence guard সহ)
    ============================================================ */
 
 const state = {
-  ref: { ok: false, checked: false, timer: null },
-  mobile: { ok: false, checked: false, timer: null },
-  email: { ok: false, checked: false, timer: null },
+  ref: { ok: false, checked: false },
+  mobile: { ok: false, checked: false },
+  email: { ok: false, checked: false },
 };
+// প্রতি field-এর চেক sequence — পুরনো request-এর result নতুন value-তে apply হয় না
+const seq = { ref: 0, mobile: 0, email: 0 };
 
 function setField(input, msgEl, status, msg) {
   const wrap = input.closest('.field');
@@ -97,7 +100,7 @@ async function vRef(quiet = false) {
   const inp = $f('ref_code');
   const v = inp.value.trim();
   if (!v) {
-    if (!quiet) { setField(inp, $m('msgRef'), '', 'Referral Code দিন — এটা mandatory'); }
+    if (!quiet) setField(inp, $m('msgRef'), '', 'Referral Code দিন — এটা mandatory');
     state.ref.ok = false; state.ref.checked = false;
     return false;
   }
@@ -106,9 +109,12 @@ async function vRef(quiet = false) {
     state.ref.ok = false; state.ref.checked = false;
     return false;
   }
+  const my = ++seq.ref;
   setField(inp, $m('msgRef'), '', 'চেক হচ্ছে...');
+  state.ref.checked = false;
   try {
     const snap = await getDoc(doc(db, 'refs', v));
+    if (my !== seq.ref) return state.ref.ok; // পুরনো চেক-এর result — ignore
     if (snap.exists) {
       setField(inp, $m('msgRef'), 'ok', '✓ Referral Code সঠিক');
       state.ref.ok = true; state.ref.checked = true;
@@ -118,6 +124,7 @@ async function vRef(quiet = false) {
     state.ref.ok = false; state.ref.checked = true;
     return false;
   } catch (_) {
+    if (my !== seq.ref) return state.ref.ok;
     setField(inp, $m('msgRef'), 'err', 'Code verify করতে পারিনি — internet check করুন');
     state.ref.ok = false; state.ref.checked = false;
     return false;
@@ -129,7 +136,7 @@ async function vMobile(quiet = false) {
   const inp = $f('mobile');
   const v = inp.value.trim();
   if (!v) {
-    if (!quiet) { setField(inp, $m('msgMobile'), '', ''); }
+    if (!quiet) setField(inp, $m('msgMobile'), '', '');
     state.mobile.ok = false; state.mobile.checked = false;
     return false;
   }
@@ -138,9 +145,12 @@ async function vMobile(quiet = false) {
     state.mobile.ok = false; state.mobile.checked = false;
     return false;
   }
+  const my = ++seq.mobile;
   setField(inp, $m('msgMobile'), '', 'চেক হচ্ছে...');
+  state.mobile.checked = false;
   try {
     const r = await callApi('/api/user/check', { mobile: v });
+    if (my !== seq.mobile) return state.mobile.ok; // stale
     if (r.mobileTaken) {
       setField(inp, $m('msgMobile'), 'err', 'এই নম্বরে আগেই account আছে — Login করুন');
       state.mobile.ok = false; state.mobile.checked = true;
@@ -150,6 +160,7 @@ async function vMobile(quiet = false) {
     state.mobile.ok = true; state.mobile.checked = true;
     return true;
   } catch (_) {
+    if (my !== seq.mobile) return state.mobile.ok;
     setField(inp, $m('msgMobile'), 'err', 'Check করতে পারিনি — আবার চেষ্টা করুন');
     state.mobile.ok = false; state.mobile.checked = false;
     return false;
@@ -161,7 +172,7 @@ async function vEmail(quiet = false) {
   const inp = $f('email');
   const v = inp.value.trim();
   if (!v) {
-    if (!quiet) { setField(inp, $m('msgEmail'), '', ''); }
+    if (!quiet) setField(inp, $m('msgEmail'), '', '');
     state.email.ok = false; state.email.checked = false;
     return false;
   }
@@ -170,9 +181,12 @@ async function vEmail(quiet = false) {
     state.email.ok = false; state.email.checked = false;
     return false;
   }
+  const my = ++seq.email;
   setField(inp, $m('msgEmail'), '', 'চেক হচ্ছে...');
+  state.email.checked = false;
   try {
     const r = await callApi('/api/user/check', { email: v });
+    if (my !== seq.email) return state.email.ok; // stale
     if (r.emailTaken) {
       setField(inp, $m('msgEmail'), 'err', 'Already registered — Login করুন');
       state.email.ok = false; state.email.checked = true;
@@ -182,23 +196,54 @@ async function vEmail(quiet = false) {
     state.email.ok = true; state.email.checked = true;
     return true;
   } catch (_) {
+    if (my !== seq.email) return state.email.ok;
     setField(inp, $m('msgEmail'), 'err', 'Check করতে পারিনি — আবার চেষ্টা করুন');
     state.email.ok = false; state.email.checked = false;
     return false;
   }
 }
 
-const debounce = (fn, ms = 500) => {
+const debounce = (fn, ms = 450) => {
   let t = null;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 };
 
+const debRef = debounce(() => vRef());
+const debMobile = debounce(() => vMobile());
+const debEmail = debounce(() => vEmail());
+
+/* value বদলালেই পুরনো green/red সাথে সাথে গুঁজে যায় — নতুন চেক আসার আগে */
+$f('ref_code').addEventListener('input', () => {
+  if (state.ref.checked || state.ref.ok) {
+    state.ref.checked = false; state.ref.ok = false;
+    seq.ref++; // pending চেক stale হয়ে যাবে
+    const v = $f('ref_code').value.trim();
+    setField($f('ref_code'), $m('msgRef'), '', v ? 'চেক হচ্ছে...' : 'Referral Code দিন — এটা mandatory');
+  }
+  debRef();
+});
+$f('mobile').addEventListener('input', () => {
+  if (state.mobile.checked || state.mobile.ok) {
+    state.mobile.checked = false; state.mobile.ok = false;
+    seq.mobile++;
+    const v = $f('mobile').value.trim();
+    setField($f('mobile'), $m('msgMobile'), '', v ? 'চেক হচ্ছে...' : '');
+  }
+  debMobile();
+});
+$f('email').addEventListener('input', () => {
+  if (state.email.checked || state.email.ok) {
+    state.email.checked = false; state.email.ok = false;
+    seq.email++;
+    const v = $f('email').value.trim();
+    setField($f('email'), $m('msgEmail'), '', v ? 'চেক হচ্ছে...' : '');
+  }
+  debEmail();
+});
+
 $f('full_name').addEventListener('input', vName);
 $f('password').addEventListener('input', () => { vPassword(); vConfirm(); });
 $f('confirm_password').addEventListener('input', vConfirm);
-$f('ref_code').addEventListener('input', debounce(() => vRef()));
-$f('mobile').addEventListener('input', debounce(() => vMobile()));
-$f('email').addEventListener('input', debounce(() => vEmail()));
 
 /* ============================================================
    SUBMIT — সব field valid না হলে signup HOTE PARE NA
@@ -208,7 +253,7 @@ form?.addEventListener('submit', async e => {
   e.preventDefault();
   errBox.innerHTML = '';
 
-  // সব field re-validate (ref/mobile/email server check সহ)
+  // সব field fresh re-validate (ref/mobile/email server check সহ)
   const [refOk, nameOk, mobOk, emOk, pwOk, cfOk] = await Promise.all([
     vRef(), vName(), vMobile(), vEmail(), vPassword(), vConfirm(),
   ]);
