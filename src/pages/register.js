@@ -152,7 +152,7 @@ async function vMobile(quiet = false) {
   setField(inp, $m('msgMobile'), '', 'চেক হচ্ছে...');
   state.mobile.checked = false;
   try {
-    const r = await callApi('/api/user/check', { mobile: v });
+    const r = await callApi('/api/user/check', { mobile: v }, 'POST', { anonymous: true });
     if (my !== seq.mobile) return state.mobile.ok; // stale
     if (r.mobileTaken) {
       setField(inp, $m('msgMobile'), 'err', 'এই নম্বরে আগেই account আছে — Login করুন');
