@@ -1,6 +1,6 @@
 /* POST /api/account/activate — trusted activation (bonus exactly once, server-side amount). */
-import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, verifyUser } from '../_lib/http.js';
+import { getDb } from '../../lib/firebase-admin.js';
+import { fail, ok, verifyUser } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {

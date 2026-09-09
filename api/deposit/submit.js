@@ -1,7 +1,7 @@
 /* POST /api/deposit/submit — one-time activation fee deposit request (amount server-এর, status=pending).
    Approve শুধু admin API-তে। */
-import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isMobile } from '../_lib/http.js';
+import { getDb } from '../../lib/firebase-admin.js';
+import { fail, ok, readBody, verifyUser, isMobile } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const METHODS = ['bkash', 'nagad', 'rocket'];

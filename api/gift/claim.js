@@ -1,6 +1,6 @@
 /* POST /api/gift/claim — trusted gift code reward (atomic, server-side code+amount). */
-import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser } from '../_lib/http.js';
+import { getDb } from '../../lib/firebase-admin.js';
+import { fail, ok, readBody, verifyUser } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 function today() {

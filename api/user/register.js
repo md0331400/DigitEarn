@@ -1,7 +1,7 @@
 /* POST /api/user/register — referral-সহ রেজিস্ট্রেশন (server-side trusted).
    Auth user client-এ তৈরি হয়; user doc + bonus + referral credit সম্পূর্ণ server-side atomic। */
-import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isNonEmptyStr, isMobile, isEmail } from '../_lib/http.js';
+import { getDb } from '../../lib/firebase-admin.js';
+import { fail, ok, readBody, verifyUser, isNonEmptyStr, isMobile, isEmail } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {

@@ -2,8 +2,8 @@
    - balance/amount server-side check (client-এর balance trust না)
    - atomic: deduct + record এক transaction-এ (balance কখনো negative হতে পারে না)
    - duplicate pending guard (pre-check + balance retry) */
-import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isPosFinite, isMobile } from '../_lib/http.js';
+import { getDb } from '../../lib/firebase-admin.js';
+import { fail, ok, readBody, verifyUser, isPosFinite, isMobile } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const METHODS = ['bKash', 'Nagad', 'Rocket'];

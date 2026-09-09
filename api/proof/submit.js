@@ -3,8 +3,8 @@
    - Submitted fields task config-এর inputFields অনুযায়ী server-side validate হয়
    - username/email server-এ user doc থেকে (client-এর কথা trust না)
    - userId = verified ID token-এর uid (client-এর uid ignore) */
-import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isTaskSlug, isEmail } from '../_lib/http.js';
+import { getDb } from '../../lib/firebase-admin.js';
+import { fail, ok, readBody, verifyUser, isTaskSlug, isEmail } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const FIELD_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url'];

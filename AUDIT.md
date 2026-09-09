@@ -4,6 +4,20 @@
 **Final flow (যেমন চাওয়া হয়েছিল):**
 `USER fills admin-configured fields → SUBMIT (pending) → ADMIN reviews in panel → APPROVE → server-side atomic balance credit`
 
+## ⚠️ 2026-09-09 UPDATE — Vercel Hobby 12-function limit (deploy failure fix)
+**Problem:** Vercel Hobby plan allows **max 12 serverless functions per deployment**. When the admin API merged into the main project, the function count jumped to 17 (9 user + 6 admin + 2 `api/_lib/` helper files) → every deploy failed at "Deploying outputs" with a generic "project or build error".
+
+**Fix (structure change, zero behavior change):**
+| আগে | এখন |
+|---|---|
+| `api/_lib/firebase-admin.js`, `api/_lib/http.js` (2 phantom functions) | `lib/firebase-admin.js`, `lib/http.js` (api/ বাইরে — function নয়) |
+| `api/admin/{verify,proof-review,deposit-review,set-active,withdrawal-review,notice-targeted}.js` (6 functions) | `lib/admin/*.js` (handlers) + **একটিমাত্র** `api/admin.js` router (dispatches by URL path) |
+
+- **Function count এখন: 10** (9 user + 1 admin router) — limit-এর মধ্যে, 2-টা headroom।
+- সব `/api/admin/*` URL path অপরিবর্তিত — client (APK panel) কোনো change লাগেনি।
+- Tests: 61/61 (নতুন [10] section-এ router dispatch + preflight + 404 + 403 tests)।
+- নতুন admin endpoint যোগ করলে: `lib/admin/<name>.js` handler + `api/admin.js`-এর `HANDLERS` map-এ entry — **নতুন function file করবেন না** (12 limit)।
+
 ---
 
 ## 1. Files created

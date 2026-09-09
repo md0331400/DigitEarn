@@ -1,7 +1,7 @@
 /* POST /api/target/claim — trusted referral target bonus (atomic, server-side tier+amount).
    Client শুধু { tier } পাঠায় — bonus settings.targetTiers থেকে server নেয়। */
-import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser } from '../_lib/http.js';
+import { getDb } from '../../lib/firebase-admin.js';
+import { fail, ok, readBody, verifyUser } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {

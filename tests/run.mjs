@@ -3,7 +3,7 @@
 import { store } from './mocks/firestore-fake.mjs';
 
 const submitH = (await import('../api/proof/submit.js')).default;
-const reviewH = (await import('../api/admin/proof-review.js')).default;
+const reviewH = (await import('../lib/admin/proof-review.js')).default;
 
 /* ---------- helpers ---------- */
 function req(method, headers, body) {
@@ -177,7 +177,7 @@ console.log('\n[7] PRE-SIGNUP CHECK ENDPOINT (anonymous)');
 
 console.log('\n[8] WITHDRAWAL REVIEW (admin, atomic, refund on reject)');
 {
-  const wdH = (await import('../api/admin/withdrawal-review.js')).default;
+  const wdH = (await import('../lib/admin/withdrawal-review.js')).default;
   store.docs['users/alice'].balance = 100;
   store.docs['users/alice/withdrawals/w1'] = { uid: 'alice', amount: 30, method: 'bKash', accountNumber: '01700000001', status: 'pending', name: 'Alice' };
   store.docs['withdrawals/w1'] = { userId: 'alice', amount: 30, method: 'bKash', accountNumber: '01700000001', status: 'pending' };
@@ -220,7 +220,7 @@ console.log('\n[8] WITHDRAWAL REVIEW (admin, atomic, refund on reject)');
 
 console.log('\n[9] TARGETED NOTICE LIST (admin-only, server-side scan)');
 {
-  const ntH = (await import('../api/admin/notice-targeted.js')).default;
+  const ntH = (await import('../lib/admin/notice-targeted.js')).default;
   store.docs['users/alice/targetNotices/n1'] = { title: 'T1', body: 'B1', type: 'warning', enabled: true };
   store.docs['users/bob/targetNotices/n2'] = { title: 'T2', body: 'B2', type: 'notice', enabled: true };
 
@@ -243,6 +243,32 @@ console.log('\n[9] TARGETED NOTICE LIST (admin-only, server-side scan)');
   r = res();
   await ntH(req('POST', auth('TOKEN_ADMIN')), r);
   check('POST → 405', r.statusCode === 405, `(got ${r.statusCode})`);
+}
+
+console.log('\n[10] ADMIN ROUTER (single function — Vercel Hobby 12-function limit)');
+{
+  const routerH = (await import('../api/admin.js')).default;
+  const rreq = (method, headers, url, body) => { const q = req(method, headers, body); q.url = url; return q; };
+
+  let r = res();
+  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin/verify'), r);
+  check('router → /api/admin/verify dispatches (200 + isAdmin)', r.statusCode === 200 && json(r).isAdmin === true, `(got ${r.statusCode} ${r.body.slice(0, 80)})`);
+
+  r = res();
+  await routerH(rreq('GET', auth('TOKEN_ADMIN'), '/api/admin/notice-targeted'), r);
+  check('router → /api/admin/notice-targeted dispatches (200)', r.statusCode === 200, `(got ${r.statusCode})`);
+
+  r = res();
+  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin/no-such-thing', {}), r);
+  check('router → unknown path → 404 (not crash)', r.statusCode === 404, `(got ${r.statusCode})`);
+
+  r = res();
+  await routerH(rreq('OPTIONS', {}, '/api/admin/verify'), r);
+  check('router → OPTIONS preflight → 204', r.statusCode === 204, `(got ${r.statusCode})`);
+
+  r = res();
+  await routerH(rreq('POST', auth('TOKEN_ALICE'), '/api/admin/proof-review', { proofId: 'x', action: 'approve' }), r);
+  check('router → normal user still 403 on proof-review', r.statusCode === 403, `(got ${r.statusCode})`);
 }
 
 console.log(`\n=============================`);
