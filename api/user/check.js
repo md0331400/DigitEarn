@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       result.mobileTaken = !m.empty;
     }
   } catch (_) {
-    return fail(res, 500, 'Check করতে পারিনি — আবার চেষ্টা করুন');
+    return fail(res, 500, 'Server setup সমস্যা — কিছুক্ষণ পর আবার চেষ্টা করুন');
   }
   return ok(res, result);
 }

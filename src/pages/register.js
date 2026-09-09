@@ -162,9 +162,9 @@ async function vMobile(quiet = false) {
     setField(inp, $m('msgMobile'), 'ok', '✓ নম্বরটি free');
     state.mobile.ok = true; state.mobile.checked = true;
     return true;
-  } catch (_) {
+  } catch (err) {
     if (my !== seq.mobile) return state.mobile.ok;
-    setField(inp, $m('msgMobile'), 'err', 'Check করতে পারিনি — আবার চেষ্টা করুন');
+    setField(inp, $m('msgMobile'), 'err', (err && err.message) ? err.message : 'Check করতে পারিনি — আবার চেষ্টা করুন');
     state.mobile.ok = false; state.mobile.checked = false;
     return false;
   }
@@ -188,7 +188,7 @@ async function vEmail(quiet = false) {
   setField(inp, $m('msgEmail'), '', 'চেক হচ্ছে...');
   state.email.checked = false;
   try {
-    const r = await callApi('/api/user/check', { email: v });
+    const r = await callApi('/api/user/check', { email: v }, 'POST', { anonymous: true });
     if (my !== seq.email) return state.email.ok; // stale
     if (r.emailTaken) {
       setField(inp, $m('msgEmail'), 'err', 'Already registered — Login করুন');
@@ -198,9 +198,9 @@ async function vEmail(quiet = false) {
     setField(inp, $m('msgEmail'), 'ok', '✓ ইমেইলটি free');
     state.email.ok = true; state.email.checked = true;
     return true;
-  } catch (_) {
+  } catch (err) {
     if (my !== seq.email) return state.email.ok;
-    setField(inp, $m('msgEmail'), 'err', 'Check করতে পারিনি — আবার চেষ্টা করুন');
+    setField(inp, $m('msgEmail'), 'err', (err && err.message) ? err.message : 'Check করতে পারিনি — আবার চেষ্টা করুন');
     state.email.ok = false; state.email.checked = false;
     return false;
   }

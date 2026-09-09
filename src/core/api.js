@@ -42,19 +42,22 @@ export function todayStr() {
 /* ---------- secure API helper ----------
    Verified Firebase ID token পাঠায়; uid/amount/balance client থেকে কখনো পাঠায় না
    (যেখানে লাগে শুধু identifier — taskSlug/code/method/amount-input — server validate করে) */
-export async function callApi(path, body = {}, method = 'POST') {
+export async function callApi(path, body = {}, method = 'POST', { anonymous = false } = {}) {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
-  const cu = auth.currentUser;
-  if (!cu) throw new Error('Login required');
-  const token = await cu.getIdToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (!anonymous) {
+    const cu = auth.currentUser;
+    if (!cu) throw new Error('Login required');
+    headers.Authorization = 'Bearer ' + (await cu.getIdToken());
+  }
   const resp = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    headers,
     body: method === 'GET' ? undefined : JSON.stringify(body),
   });
   let data = {};
   try { data = await resp.json(); } catch (_) {}
-  if (!resp.ok) throw new Error(data.error || 'Operation fail হয়েছে — আবার চেষ্টা করুন');
+  if (!resp.ok) throw new Error(data.error || ('Server error (' + resp.status + ') — আবার চেষ্টা করুন'));
   return data;
 }
 
