@@ -3,7 +3,7 @@
 import { store } from './mocks/firestore-fake.mjs';
 
 const submitH = (await import('../api/proof/submit.js')).default;
-const reviewH = (await import('../admin/api/admin/proof-review.js')).default;
+const reviewH = (await import('../api/admin/proof-review.js')).default;
 
 /* ---------- helpers ---------- */
 function req(method, headers, body) {
@@ -177,7 +177,7 @@ console.log('\n[7] PRE-SIGNUP CHECK ENDPOINT (anonymous)');
 
 console.log('\n[8] WITHDRAWAL REVIEW (admin, atomic, refund on reject)');
 {
-  const wdH = (await import('../admin/api/admin/withdrawal-review.js')).default;
+  const wdH = (await import('../api/admin/withdrawal-review.js')).default;
   store.docs['users/alice'].balance = 100;
   store.docs['users/alice/withdrawals/w1'] = { uid: 'alice', amount: 30, method: 'bKash', accountNumber: '01700000001', status: 'pending', name: 'Alice' };
   store.docs['withdrawals/w1'] = { userId: 'alice', amount: 30, method: 'bKash', accountNumber: '01700000001', status: 'pending' };
@@ -220,7 +220,7 @@ console.log('\n[8] WITHDRAWAL REVIEW (admin, atomic, refund on reject)');
 
 console.log('\n[9] TARGETED NOTICE LIST (admin-only, server-side scan)');
 {
-  const ntH = (await import('../admin/api/admin/notice-targeted.js')).default;
+  const ntH = (await import('../api/admin/notice-targeted.js')).default;
   store.docs['users/alice/targetNotices/n1'] = { title: 'T1', body: 'B1', type: 'warning', enabled: true };
   store.docs['users/bob/targetNotices/n2'] = { title: 'T2', body: 'B2', type: 'notice', enabled: true };
 

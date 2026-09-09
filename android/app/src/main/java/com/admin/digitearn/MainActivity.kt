@@ -15,15 +15,13 @@ import android.widget.ImageButton
 /**
  * Digit Earn Admin — admin panel-এর native Android shell (WebView).
  *
- * ⚙️ SETUP (একবারই):
- *  নিচের ADMIN_URL-এ আপনার admin panel-এর Vercel URL দিন, যেমন:
- *      private const val ADMIN_URL = "https://your-admin-project.vercel.app"
- *  (Vercel Dashboard → admin project-এর URL)
+ * App-এ site-এর same Vercel URL ব্যবহার হচ্ছে — শুধু /admin.html page,
+ * যেখানে admin panel থাকে। সাইটের বাকি অংশ user-দের জন্য।
  */
 class MainActivity : Activity() {
 
     // ================== ADMIN PANEL URL ==================
-    private const val ADMIN_URL = "https://YOUR-ADMIN-URL.vercel.app"
+    private const val ADMIN_URL = "https://digitearn.vercel.app/admin.html"
     // ======================================================
 
     private lateinit var web: WebView

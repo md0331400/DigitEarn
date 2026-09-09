@@ -12,14 +12,11 @@
 1. **Android Studio** খুলুন → **Open** → এই repo-র `android` folder select করুন
 2. প্রথমবার Gradle download হবে (10-15 min, internet লাগবে) — বসে থাকুন, "Sync" complete হতে দিন
    - যদি wrapper নিয়ে warning দেখায় → **Fix** button চাপুন (নিজেই ঠিক করে নেবে)
-3. `app/src/main/java/com/admin/digitearn/MainActivity.kt` file খুলুন
-4. ভেতরে **`ADMIN_URL`** খুঁজুন — সেখানে আপনার **admin panel-এর Vercel URL** দিন:
-   ```kotlin
-   private const val ADMIN_URL = "https://apnar-admin.vercel.app"
-   ```
-   (Vercel Dashboard → admin project-এর URL)
-5. উপরে **Run** button (▶️) চাপুন — phone connect করলে phone-এ install হয়ে যাবে, না করলে emulator-এ চলবে
-6. Phone-এ **Digit Earn Admin** icon দেখবেন → চাপলে admin panel খুলবে → আপনার admin account দিয়ে login
+3. **Run** button (▶️) চাপুন — phone connect করলে phone-এ install হয়ে যাবে, না করলে emulator-এ চলবে
+4. Phone-এ **Digit Earn Admin** icon দেখবেন → চাপলে admin panel খুলবে → আপনার admin account দিয়ে login
+
+> URL আগে থেকেই set করা আছে: `https://digitearn.vercel.app/admin.html`
+> (পরে URL বদলাতে `MainActivity.kt`-এ `ADMIN_URL` line-টা edit করলেই হবে)
 
 ## APK file বানাতে চাইলে (Play Store / অন্য phone-এ পাঠানোর জন্য)
 
