@@ -173,6 +173,17 @@ console.log('\n[7] PRE-SIGNUP CHECK ENDPOINT (anonymous)');
   r = res();
   await checkH(req('GET', {}, {}), r);
   check('GET → 405', r.statusCode === 405, `(got ${r.statusCode})`);
+
+  // refCode — valid হলে refValid + referrer-এর নাম; invalid → refValid false
+  store.docs['refs/55566677'] = { uid: 'alice' };
+  r = res();
+  await checkH(req('POST', {}, { refCode: '55566677' }), r);
+  check('valid refCode → refValid true', json(r).refValid === true, r.body);
+  check('valid refCode → referrer-এর নাম আসে', json(r).refName === 'Alice', `(got ${json(r).refName})`);
+
+  r = res();
+  await checkH(req('POST', {}, { refCode: '00001111' }), r);
+  check('random/unknown refCode → refValid false (fail-closed)', r.statusCode === 200 && json(r).refValid === false, r.body);
 }
 
 console.log('\n[8] WITHDRAWAL REVIEW (admin, atomic, refund on reject)');

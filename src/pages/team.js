@@ -36,6 +36,7 @@ bootAppPage({
           <div><h2 class="team-title">My Referral Team</h2></div>
           <div class="team-size"><span>Team Size:</span><b>${total}</b></div>
         </div>
+        <div class="own-ref">আপনার Referral Code: <b>${esc(user.refCode)}</b><span class="own-ref-note">(নতুন মানুষ register-এ এটা দিবে)</span></div>
         <div class="ref-link-box">
           <input type="text" readonly value="${esc(refLink)}" id="refLink">
           <button type="button" class="copy-btn" id="copyRef"><i class="fa-regular fa-copy"></i> Copy</button>

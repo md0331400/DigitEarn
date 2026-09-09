@@ -1,8 +1,7 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db, firebaseReady } from '../core/firebase.js';
+import { auth, firebaseReady } from '../core/firebase.js';
 import { registerUser, friendlyError, callApi } from '../core/api.js';
 import { toast, videoEmbedHtml, videoSoonHtml } from '../core/ui.js';
 import { getSettings } from '../core/store.js';
@@ -113,17 +112,16 @@ async function vRef(quiet = false) {
   setField(inp, $m('msgRef'), '', 'চেক হচ্ছে...');
   state.ref.checked = false;
   try {
-    const snap = await getDoc(doc(db, 'refs', v));
+    // server-side check (Admin SDK) — valid হলে referrer-এর নামও আসে
+    const r = await callApi('/api/user/check', { refCode: v }, 'POST', { anonymous: true });
     if (my !== seq.ref) return state.ref.ok; // পুরনো চেক-এর result — ignore
-    // আসল ref document-এ সবসময় { uid: "..." } থাকে — empty/manual document = invalid
-    const d = snap.exists ? snap.data() : null;
-    const valid = Boolean(d && typeof d.uid === 'string' && d.uid);
-    if (valid) {
-      setField(inp, $m('msgRef'), 'ok', `✓ ${v} — সঠিক code`);
+    if (r.refValid) {
+      // সঠিক code → referrer-এর নাম green-এ
+      setField(inp, $m('msgRef'), 'ok', r.refName ? `✓ ${r.refName} — সঠিক referral code` : '✓ সঠিক referral code');
       state.ref.ok = true; state.ref.checked = true;
       return true;
     }
-    setField(inp, $m('msgRef'), 'err', 'Referral Code সঠিক নয় — কোনো registered user-এর code দিন');
+    setField(inp, $m('msgRef'), 'err', 'Not registered referral code');
     state.ref.ok = false; state.ref.checked = true;
     return false;
   } catch (_) {

@@ -40,35 +40,48 @@
 
       <form id="registerForm" method="post" action="#">
         <div class="field">
-          <i class="fa-solid fa-gift left"></i>
+          <div class="field-box">
+<i class="fa-solid fa-gift left"></i>
           <input type="text" id="refCode" name="ref_code" placeholder="Referral Code (Required)" autocomplete="off" required>
+          </div>
           <span class="field-msg" id="msgRef"></span>
+          <span class="ref-hint">Referral code কোথায়? — যে user আপনাকে join করতে বলেছে, তার <b>Team</b> পেজে আছে (ID নয়)</span>
         </div>
         <div class="field">
-          <i class="fa-solid fa-user left"></i>
+          <div class="field-box">
+<i class="fa-solid fa-user left"></i>
           <input type="text" name="full_name" placeholder="Full Name" required autocomplete="name">
+          </div>
           <span class="field-msg" id="msgName"></span>
         </div>
         <div class="field">
-          <i class="fa-solid fa-mobile-screen left"></i>
+          <div class="field-box">
+<i class="fa-solid fa-mobile-screen left"></i>
           <input type="tel" name="mobile" placeholder="Bangladeshi Mobile Number" required autocomplete="tel">
+          </div>
           <span class="field-msg" id="msgMobile"></span>
         </div>
         <div class="field">
-          <i class="fa-solid fa-envelope left"></i>
+          <div class="field-box">
+<i class="fa-solid fa-envelope left"></i>
           <input type="email" name="email" placeholder="Email Address" required autocomplete="email">
+          </div>
           <span class="field-msg" id="msgEmail"></span>
         </div>
         <div class="field">
-          <i class="fa-solid fa-lock left"></i>
+          <div class="field-box">
+<i class="fa-solid fa-lock left"></i>
           <input type="password" name="password" placeholder="Password" required autocomplete="new-password">
           <button type="button" class="eye" tabindex="-1"><i class="fa-solid fa-eye"></i></button>
+          </div>
           <span class="field-msg" id="msgPass"></span>
         </div>
         <div class="field">
-          <i class="fa-solid fa-circle-check left"></i>
+          <div class="field-box">
+<i class="fa-solid fa-circle-check left"></i>
           <input type="password" name="confirm_password" placeholder="Confirm Password" required autocomplete="new-password">
           <button type="button" class="eye" tabindex="-1"><i class="fa-solid fa-eye"></i></button>
+          </div>
           <span class="field-msg" id="msgConfirm"></span>
         </div>
         <button type="submit" class="btn btn-gold btn-block">Register Now <i class="fa-solid fa-arrow-right"></i></button>
