@@ -1,4 +1,4 @@
-/* /api/admin/* — sob admin endpoint EKTA Vercel function-e dispatch hoy.
+/* /api/admin/* (catch-all) — sob admin endpoint EKTA Vercel function-e dispatch hoy.
    KARON: Vercel Hobby plan-e ek deployment-e max 12 serverless function —
    6-ta alada file thakle 17 function hoye limit over hoye deploy fail korechilo.
    Route paths PORECHI (client change lagbe na):
@@ -8,13 +8,13 @@
      POST /api/admin/set-active
      POST /api/admin/withdrawal-review
      GET  /api/admin/notice-targeted */
-import { cors, fail } from '../lib/http.js';
-import { default as handleVerify } from '../lib/admin/verify.js';
-import { default as handleProofReview } from '../lib/admin/proof-review.js';
-import { default as handleDepositReview } from '../lib/admin/deposit-review.js';
-import { default as handleSetActive } from '../lib/admin/set-active.js';
-import { default as handleWithdrawalReview } from '../lib/admin/withdrawal-review.js';
-import { default as handleNoticeTargeted } from '../lib/admin/notice-targeted.js';
+import { cors, fail } from '../../lib/http.js';
+import { default as handleVerify } from '../../lib/admin/verify.js';
+import { default as handleProofReview } from '../../lib/admin/proof-review.js';
+import { default as handleDepositReview } from '../../lib/admin/deposit-review.js';
+import { default as handleSetActive } from '../../lib/admin/set-active.js';
+import { default as handleWithdrawalReview } from '../../lib/admin/withdrawal-review.js';
+import { default as handleNoticeTargeted } from '../../lib/admin/notice-targeted.js';
 
 const HANDLERS = {
   verify: handleVerify,

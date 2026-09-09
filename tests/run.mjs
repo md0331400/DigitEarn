@@ -247,7 +247,7 @@ console.log('\n[9] TARGETED NOTICE LIST (admin-only, server-side scan)');
 
 console.log('\n[10] ADMIN ROUTER (single function — Vercel Hobby 12-function limit)');
 {
-  const routerH = (await import('../api/admin.js')).default;
+  const routerH = (await import('../api/admin/[...path].js')).default;
   const rreq = (method, headers, url, body) => { const q = req(method, headers, body); q.url = url; return q; };
 
   let r = res();
