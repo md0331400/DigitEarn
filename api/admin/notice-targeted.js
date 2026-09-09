@@ -2,12 +2,13 @@
    Browser-এ rules-এর কারণে অন্য user-এর targetNotices list করা যায় না — তাই admin panel-এর
    global list-এর জন্য এই server-side endpoint (Admin SDK = rules bypass, trusted)। */
 import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, requireAdmin } from '../_lib/http.js';
+import { fail, ok, requireAdmin, cors } from '../_lib/http.js';
 
 const MAX_USERS = 300;   // বর্তমান scale-এ যথেষ্ট (ভবিষ্যতে index/query আলাদা করলে বড় করা যাবে)
 const BATCH = 15;
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'GET') return fail(res, 405, 'Method Not Allowed');
   const admin = await requireAdmin(req);
   if (!admin || !admin.isAdmin) return fail(res, 403, 'Admin access required');

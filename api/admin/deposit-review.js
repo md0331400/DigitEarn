@@ -1,10 +1,11 @@
 /* POST /api/admin/deposit-review — admin deposit approve/reject (trusted, atomic).
    approve: account active + activation bonus exactly once (server-side amount)। এক deposit একবারই approve। */
 import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, requireAdmin } from '../_lib/http.js';
+import { fail, ok, readBody, requireAdmin, cors } from '../_lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const admin = await requireAdmin(req);
   if (!admin || !admin.isAdmin) return fail(res, 403, 'Admin access required');

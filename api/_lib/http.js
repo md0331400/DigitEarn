@@ -11,6 +11,21 @@ export function sendJson(res, status, data) {
 export const ok = (res, data) => sendJson(res, 200, data);
 export const fail = (res, status, error) => sendJson(res, status, { error: String(error) });
 
+/* CORS — admin APK-তে WebView (file:// origin) থেকে server API call-এর জন্য।
+   Security impact zero: সব endpoint token-verify করে, origin-এ কোনো secret ফাঁক হয় না।
+   Handler-এর শুরুতে:  if (cors(req, res)) return;  */
+export function cors(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return true;
+  }
+  return false;
+}
+
 export async function readBody(req) {
   return new Promise((resolve) => {
     let raw = '';

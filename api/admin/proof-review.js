@@ -1,10 +1,11 @@
 /* POST /api/admin/proof-review — admin proof approve/reject (trusted, atomic).
    approve: reward server-এর proof doc থেকে, user balance-এ transaction সহ। এক proof একবারই approve। */
 import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, requireAdmin } from '../_lib/http.js';
+import { fail, ok, readBody, requireAdmin, cors } from '../_lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const admin = await requireAdmin(req);
   if (!admin || !admin.isAdmin) return fail(res, 403, 'Admin access required');

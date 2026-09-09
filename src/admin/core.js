@@ -8,7 +8,12 @@ import {
   updateDoc, setDoc, deleteDoc, serverTimestamp,
 } from 'firebase/firestore';
 
-const cfg = {
+/* Config order:
+   1. window.__DIGITEARN_FB_CONFIG__ — Android APK-তে app assets-এর firebase.json
+      file read করে inject করে (user নিজে সেট করে)
+   2. import.meta.env.VITE_* — web build (Vercel env vars) */
+const appCfg = (typeof window !== 'undefined' && window.__DIGITEARN_FB_CONFIG__) || {};
+const envCfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -16,7 +21,21 @@ const cfg = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+const cfg = {
+  apiKey: appCfg.apiKey || envCfg.apiKey || '',
+  authDomain: appCfg.authDomain || envCfg.authDomain || '',
+  projectId: appCfg.projectId || envCfg.projectId || '',
+  storageBucket: appCfg.storageBucket || envCfg.storageBucket || '',
+  messagingSenderId: appCfg.messagingSenderId || envCfg.messagingSenderId || '',
+  appId: appCfg.appId || envCfg.appId || '',
+};
 export const firebaseReady = !!(cfg.apiKey && cfg.projectId && cfg.appId);
+
+/* APK-তে (file:// origin) server API-তে absolute URL লাগে; web-এ same-origin */
+export const API_BASE =
+  typeof location !== 'undefined' && location.protocol === 'file:'
+    ? 'https://digitearn.vercel.app'
+    : '';
 
 const app = initializeApp(cfg);
 export const auth = getAuth(app);
@@ -37,7 +56,7 @@ export async function callApi(path, body = {}, method = 'POST') {
   const cu = auth.currentUser;
   if (!cu) throw new Error('Login required');
   const token = await cu.getIdToken();
-  const resp = await fetch(path, {
+  const resp = await fetch(API_BASE + path, {
     method,
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: method === 'GET' ? undefined : JSON.stringify(body),

@@ -3,10 +3,11 @@
    - reject:  status=rejected + amount user-এর balance-এ ফেরত (atomic, transaction record সহ)
    - এক withdrawal একবারই resolve হয় (double-click/parallel — মাত্র একটা request সফল) */
 import { getDb } from '../_lib/firebase-admin.js';
-import { fail, ok, readBody, requireAdmin } from '../_lib/http.js';
+import { fail, ok, readBody, requireAdmin, cors } from '../_lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const admin = await requireAdmin(req);
   if (!admin || !admin.isAdmin) return fail(res, 403, 'Admin access required');

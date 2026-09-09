@@ -11,28 +11,36 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ImageButton
+import android.widget.Toast
+import org.json.JSONObject
 
 /**
- * Digit Earn Admin — admin panel-এর native Android shell (WebView).
+ * Digit Earn Admin — self-contained admin app.
  *
- * App-এ site-এর same Vercel URL ব্যবহার হচ্ছে — শুধু /admin.html page,
- * যেখানে admin panel থাকে। সাইটের বাকি অংশ user-দের জন্য।
+ * Admin panel APK-এর ভেতরেই embedded (assets/admin/) — public website-তে
+ * admin page থাকে না। Server action (approve/reject ইত্যাদি) Vercel API-তে
+ * (https://digitearn.vercel.app/api/admin/*) — token-verified।
+ *
+ * Firebase config: assets/firebase.json (user নিজে সেট করে —
+ * Firebase Console → Project settings → Your apps → Web app-এর config)।
  */
 class MainActivity : Activity() {
 
-    // ================== ADMIN PANEL URL ==================
-    private const val ADMIN_URL = "https://digitearn.vercel.app/admin.html"
-    // ======================================================
-
     private lateinit var web: WebView
+    private var fbConfigJson: String = ""
 
-    private val setupHtml = """
+    private val missingConfigHtml = """
         <html><body style="font-family:sans-serif;background:#fffbeb;padding:24px;color:#1f2937">
         <h2 style="color:#d97706">Digit Earn Admin</h2>
-        <p><b>Admin URL set করা নেই।</b></p>
-        <p>App-এর <b>MainActivity.kt</b> ফাইল খুলে <b>ADMIN_URL</b>-এ আপনার
-        admin panel-এর Vercel URL দিন (যেমন: https://xyz.vercel.app), তারপর
-        আবার Run করুন।</p>
+        <p><b>Firebase config পাওয়া যায়নি।</b></p>
+        <p>APK build করার আগে <b>app/src/main/assets/firebase.json</b> ফাইলে
+        আপনার Firebase project-এর web app config বসান:</p>
+        <p><b>Firebase Console → Project settings → Your apps → (Web app) →
+        SDK setup and configuration</b> — সেখানকার <code>firebaseConfig</code>-এর
+        ৬টা value (apiKey, authDomain, projectId, storageBucket,
+        messagingSenderId, appId) firebase.json-এ বসিয়ে আবার build করুন।</p>
+        <p style="color:#dc2626">⚠️ Service account-এর private key JSON এখানে দেবেন না —
+        সেটা শুধু server-এ থাকবে।</p>
         </body></html>
     """.trimIndent()
 
@@ -42,36 +50,48 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.webview)
 
+        // assets-এর firebase.json পড় + validate
+        val raw = try { assets.open("firebase.json").bufferedReader().readText() } catch (e: Exception) { "" }
+        val valid = try { JSONObject(raw).has("apiKey") } catch (e: Exception) { false }
+        if (valid && !raw.contains("PASTE-YOUR")) {
+            fbConfigJson = raw.trim()
+        }
+
         web.settings.apply {
-            javaScriptEnabled = true            // Firebase web auth-এর জন্য লাগবে
-            domStorageEnabled = true             // localStorage (session save)
+            javaScriptEnabled = true
+            domStorageEnabled = true
             cacheMode = WebSettings.LOAD_DEFAULT
-            allowFileAccess = false
+            // local (file://) admin panel load + সেখান থেকে server API call-এর জন্য
+            allowFileAccess = true
+            allowFileAccessFromFileURLs = true
+            allowUniversalAccessFromFileURLs = true
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         web.webViewClient = object : WebViewClient() {
-            // সব navigation এই WebView-এর ভেতরে (নতুন tab-এ না)
+            // page-র script চলা আগেই config inject করি (core.js window-এ থেকে পড়ে)
+            override fun onPageStarted(view: WebView?, url: String?, extra: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, extra)
+                if (fbConfigJson.isNotEmpty()) {
+                    view?.evaluateJavascript("window.__DIGITEARN_FB_CONFIG__ = $fbConfigJson;", null)
+                }
+            }
+            // admin site-এর বাইরের link (telegram ইত্যাদি) → system browser
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
-                // admin site-এর বাইরে (telegram ইত্যাদি) → system browser-এ
-                if (!url.startsWith(ADMIN_URL.trimEnd('/'))) {
+                if (url.startsWith("http://") || url.startsWith("https://")) {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     return true
                 }
                 return false
             }
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                findViewById<ImageButton>(R.id.refreshBtn).visibility = android.view.View.VISIBLE
-            }
         }
-
         findViewById<ImageButton>(R.id.refreshBtn).setOnClickListener { web.reload() }
 
-        if (ADMIN_URL.contains("YOUR-ADMIN-URL")) {
-            web.loadDataWithBaseURL(null, setupHtml, "text/html", "utf-8", null)
+        if (fbConfigJson.isEmpty()) {
+            Toast.makeText(this, "firebase.json set করুন — বিস্তারিত নিচে", Toast.LENGTH_LONG).show()
+            web.loadDataWithBaseURL("file:///android_asset/admin/", missingConfigHtml, "text/html", "utf-8", null)
         } else {
-            web.loadUrl(ADMIN_URL)
+            web.loadUrl("file:///android_asset/admin/index.html")
         }
     }
 
@@ -84,7 +104,6 @@ class MainActivity : Activity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    // memory save (session fresh রাখতে)
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         web.saveState(outState)

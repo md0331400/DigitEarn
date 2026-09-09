@@ -3,12 +3,13 @@
   "private": true,
   "version": "2.0.0",
   "type": "module",
-  "description": "DigitEarn — digital task earning platform (Vite + Firebase, Vercel-ready, SEO optimized)",
+  "description": "DigitEarn \u2014 digital task earning platform (Vite + Firebase, Vercel-ready, SEO optimized)",
   "scripts": {
     "dev": "node scripts/gen-task-pages.mjs && vite",
     "build": "node scripts/gen-task-pages.mjs && vite build",
     "preview": "vite preview",
-    "seed": "node scripts/seed.mjs"
+    "seed": "node scripts/seed.mjs",
+    "build:admin-app": "node scripts/build-admin-app.mjs"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.5.2",

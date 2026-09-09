@@ -1,39 +1,67 @@
 # 📱 Digit Earn Admin — Android App (Build Guide)
 
-এই folder-টা (**android/**) একটা complete Android Studio project। এটা আপনার **admin panel-এর native app version** — ভেতরে সেই admin panel-টাই চলবে (web app), কিন্তু app-এর মতো থাকবে: apnar phone-এর home screen-এ icon, app name **"Digit Earn Admin"**, package **com.admin.digitearn**。
+এই app **self-contained**: admin panel-এর সব file APK-এর ভেতরেই আছে (`assets/admin/`) —
+public website-তে কোনো admin page থাকে না। App-এ admin action (approve/reject) করার সময়
+server API-তে (digitearn.vercel.app) token-সহ call যায় — security আগের মতোই।
+
+- **App name:** Digit Earn Admin
+- **Package:** com.admin.digitearn
+- **Firebase config:** নিজে সেট করতে হবে (নিচে step ৩)
 
 ## কী লাগবে
 
-1. **Android Studio** — https://developer.android.com/studio (free, install করুন)
-2. একটা Android phone (USB cable ছাড়াও চালানো যায় — wireless debugging)
+1. **Android Studio** — https://developer.android.com/studio (free)
+2. একটা Android phone (অথবা emulator)
 
-## Build করবেন যেভাবে (একবারই, ~10-15 min)
+## Build করবেন যেভাবে (~15-20 min, একবারই)
 
-1. **Android Studio** খুলুন → **Open** → এই repo-র `android` folder select করুন
-2. প্রথমবার Gradle download হবে (10-15 min, internet লাগবে) — বসে থাকুন, "Sync" complete হতে দিন
-   - যদি wrapper নিয়ে warning দেখায় → **Fix** button চাপুন (নিজেই ঠিক করে নেবে)
-3. **Run** button (▶️) চাপুন — phone connect করলে phone-এ install হয়ে যাবে, না করলে emulator-এ চলবে
-4. Phone-এ **Digit Earn Admin** icon দেখবেন → চাপলে admin panel খুলবে → আপনার admin account দিয়ে login
+### Step ১: Android Studio-তে project খুলুন
+**Open** → এই repo-র `android` folder → প্রথম sync-এ 10-15 min লাগবে (বসে থাকুন;
+wrapper warning দিলে **Fix** চাপুন)
 
-> URL আগে থেকেই set করা আছে: `https://digitearn.vercel.app/admin.html`
-> (পরে URL বদলাতে `MainActivity.kt`-এ `ADMIN_URL` line-টা edit করলেই হবে)
+### Step ২: (skip) — admin panel আগে থেকেই APK-তে embedded আছে
 
-## APK file বানাতে চাইলে (Play Store / অন্য phone-এ পাঠানোর জন্য)
+### Step ৩: Firebase config file দিতে হবে (একবারই)
+`app/src/main/assets/firebase.json` file খুলুন — এটা এখন placeholder।
+সেখানে আপনার Firebase project-এর **web app config** বসান:
 
-Android Studio → menu **Build** → **Build Bundle(s) / APK(s)** → **Build APK(s)**
-→ `app/release`... না, `app/build/outputs/apk/debug/app-debug.apk` file পাবেন — সেটাই APK (WhatsApp-এ পাঠানো যাবে, install করলে চলবে)
+1. **Firebase Console** → আপনার project → ⚙️ **Project settings**
+2. নিচে **Your apps** section → Web app-টা দেখলে SDK setup-এর `firebaseConfig` object আছে
+   (না থাকলে **Add app → Web app** করে নিন — একই config)
+3. ওই ৬টা value নিয়ে `firebase.json` ঠিক এমন থাকবে:
+```json
+{
+  "apiKey": "AIzaSy...",
+  "authDomain": "apnar-project.firebaseapp.com",
+  "projectId": "apnar-project-id",
+  "storageBucket": "apnar-project.appspot.com",
+  "messagingSenderId": "1234567890",
+  "appId": "1:1234567890:web:abcdef"
+}
+```
+> ⚠️ **Service account-এর private key JSON এখানে দেবেন না** — সেটা শুধু Vercel server-এ থাকবে।
+> এখানে যা লাগবে শুধু ওপরের web app config-টুকু (এটা public nature-এর, site-তেও আছে)।
 
-> ⚠️ Play Store-এ publish করতে হলে আলাদা Google Play Developer account + signed release build লাগবে — প্রয়োজন হলে পরে আলাদা করে বানাব।
+### Step ৪: Run
+**Run (▶️)** চাপুন → phone-এ **Digit Earn Admin** install হবে → চাপলে admin panel →
+আপনার admin email/password দিয়ে login
+
+## APK বানানো (অন্য phone-এ পাঠানোর জন্য)
+Android Studio → **Build → Build APK(s)** → `app/build/outputs/apk/debug/app-debug.apk`
+file পাবেন (WhatsApp-এ পাঠানো যাবে)
+
+> Play Store-এ publish করতে হলে আলাদা Play Developer account + signed release build লাগবে —
+> প্রয়োজন হলে পরে বানাব।
 
 ## যা যা কাজ করে
 
 - ✅ Admin panel-এর সব feature (tasks, submissions, deposits, withdrawals, users, notices/warnings, settings)
-- ✅ Login session phone-এ save থাকবে (localStorage)
-- ✅ Back button = পেছনের page
-- ✅ নিচ-ডানে refresh button
-- ✅ Admin site-এর বাইরের link (telegram) → phone-এর browser-এ খুলবে
-- 🔒 App-এ কোনো key/secret নেই — সব security আগের মতোই (Vercel env vars + Firestore rules + server API)
+- ✅ Panel APK-এর ভেতরে — website-তে admin page public নেই
+- ✅ Login session phone-এ save
+- ✅ Back button = পেছনে • নিচ-ডানে refresh button
+- ✅ Telegram-এর মতো বাইরের link → phone-এর browser-এ
+- 🔒 Private key/secret app-এ নাই — সব financial action Vercel server + token-এ
 
-## নতুন version দিতে
-
-Repo push করলেই admin panel update হবে — app-এ refresh button চাপলেই নতুন version আসবে (কোনো নতুন APK লাগবে না)
+## নতুন admin feature add হলে
+Developer-এ বলা — সে `npm run build:admin-app` চালিয়ে assets update করবে (এই repo-তে
+`src/admin/`-এ source আছে)
