@@ -247,31 +247,31 @@ console.log('\n[9] TARGETED NOTICE LIST (admin-only, server-side scan)');
 
 console.log('\n[10] ADMIN ROUTER (single function — Vercel Hobby 12-function limit)');
 {
-  const routerH = (await import('../api/admin.js')).default;
+  const routerH = (await import('../api/admin/panel.js')).default;
   const rreq = (method, headers, url, body) => { const q = req(method, headers, body); q.url = url; return q; };
 
   let r = res();
-  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin?op=verify'), r);
+  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin/panel?op=verify'), r);
   check('router → ?op=verify dispatches (200 + isAdmin)', r.statusCode === 200 && json(r).isAdmin === true, `(got ${r.statusCode} ${r.body.slice(0, 80)})`);
 
   r = res();
-  await routerH(rreq('GET', auth('TOKEN_ADMIN'), '/api/admin?op=notice-targeted'), r);
+  await routerH(rreq('GET', auth('TOKEN_ADMIN'), '/api/admin/panel?op=notice-targeted'), r);
   check('router → ?op=notice-targeted dispatches (200)', r.statusCode === 200, `(got ${r.statusCode})`);
 
   r = res();
-  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin?op=no-such-thing', {}), r);
+  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin/panel?op=no-such-thing', {}), r);
   check('router → unknown op → 404 (not crash)', r.statusCode === 404, `(got ${r.statusCode})`);
 
   r = res();
-  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin/verify'), r);
-  check('router → path-segment fallback /api/admin/verify works too', r.statusCode === 200, `(got ${r.statusCode})`);
+  await routerH(rreq('POST', auth('TOKEN_ADMIN'), '/api/admin/panel/verify'), r);
+  check('router → path-segment fallback /api/admin/panel/verify works too', r.statusCode === 200, `(got ${r.statusCode})`);
 
   r = res();
-  await routerH(rreq('OPTIONS', {}, '/api/admin?op=verify'), r);
+  await routerH(rreq('OPTIONS', {}, '/api/admin/panel?op=verify'), r);
   check('router → OPTIONS preflight → 204', r.statusCode === 204, `(got ${r.statusCode})`);
 
   r = res();
-  await routerH(rreq('POST', auth('TOKEN_ALICE'), '/api/admin?op=proof-review', { proofId: 'x', action: 'approve' }), r);
+  await routerH(rreq('POST', auth('TOKEN_ALICE'), '/api/admin/panel?op=proof-review', { proofId: 'x', action: 'approve' }), r);
   check('router → normal user still 403 on proof-review', r.statusCode === 403, `(got ${r.statusCode})`);
 }
 

@@ -52,12 +52,12 @@ export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;'
 
 /* ---------- secure API helper (admin) ----------
    NOTE: Vercel Hobby = max 12 function — sob /api/admin/<name> ekta single function-er
-   /api/admin?op=<name> -e map hoy (api/admin.js router). Ei conversion ekhanei. */
+   /api/admin/panel?op=<name> -e map hoy (api/admin/panel.js router). Ei conversion ekhanei. */
 export async function callApi(path, body = {}, method = 'POST') {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
   let url = path;
   const m = String(path).match(/^\/api\/admin\/([a-z0-9-]+)/);
-  if (m) url = '/api/admin?op=' + encodeURIComponent(m[1]);
+  if (m) url = '/api/admin/panel?op=' + encodeURIComponent(m[1]);
   const cu = auth.currentUser;
   if (!cu) throw new Error('Login required');
   const token = await cu.getIdToken();
