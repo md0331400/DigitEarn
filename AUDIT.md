@@ -11,12 +11,13 @@
 | আগে | এখন |
 |---|---|
 | `api/_lib/firebase-admin.js`, `api/_lib/http.js` (2 phantom functions) | `lib/firebase-admin.js`, `lib/http.js` (api/ বাইরে — function নয়) |
-| `api/admin/{verify,proof-review,deposit-review,set-active,withdrawal-review,notice-targeted}.js` (6 functions) | `lib/admin/*.js` (handlers) + **একটিমাত্র** `api/admin.js` router (dispatches by URL path) |
+| `api/admin/{verify,proof-review,deposit-review,set-active,withdrawal-review,notice-targeted}.js` (6 functions) | `lib/admin/*.js` (handlers) + **একটিমাত্র** exact-path `api/admin.js` router — dispatch **`?op=<name>`** query param (path-segment fallback আছে) |
 
 - **Function count এখন: 10** (9 user + 1 admin router) — limit-এর মধ্যে, 2-টা headroom।
-- সব `/api/admin/*` URL path অপরিবর্তিত — client (APK panel) কোনো change লাগেনি।
-- Tests: 61/61 (নতুন [10] section-এ router dispatch + preflight + 404 + 403 tests)।
-- নতুন admin endpoint যোগ করলে: `lib/admin/<name>.js` handler + `api/admin.js`-এর `HANDLERS` map-এ entry — **নতুন function file করবেন না** (12 limit)।
+- Admin panel (APK) এর `callApi()` এক জায়গায় `/api/admin/<name>` → `/api/admin?op=<name>` convert করে (src/admin/core.js)।
+- ⚠️ **`api/admin/[...path].js` catch-all Vercel cloud-e route match করছে না (404)** — local build-এ route generate হলেও cloud-এ না। Exact-path file + query param dispatch-এ সরে আসা হয়েছে (proven working)। Catch-all file আবার যোগ করবেন না।
+- Tests: 62/62 (section [10]: router dispatch ?op= + path fallback + preflight + 404 + 403)।
+- নতুন admin endpoint যোগ করলে: `lib/admin/<name>.js` handler + `api/admin.js`-এর `HANDLERS` map-এ entry + panel-এ `callApi('/api/admin/<name>')` (conversion automatic) — **নতুন function file করবেন না** (12 limit)।
 
 ---
 

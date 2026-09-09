@@ -50,13 +50,18 @@ export const timeBn = ts => {
 };
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/* ---------- secure API helper (admin) ---------- */
+/* ---------- secure API helper (admin) ----------
+   NOTE: Vercel Hobby = max 12 function — sob /api/admin/<name> ekta single function-er
+   /api/admin?op=<name> -e map hoy (api/admin.js router). Ei conversion ekhanei. */
 export async function callApi(path, body = {}, method = 'POST') {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
+  let url = path;
+  const m = String(path).match(/^\/api\/admin\/([a-z0-9-]+)/);
+  if (m) url = '/api/admin?op=' + encodeURIComponent(m[1]);
   const cu = auth.currentUser;
   if (!cu) throw new Error('Login required');
   const token = await cu.getIdToken();
-  const resp = await fetch(API_BASE + path, {
+  const resp = await fetch(API_BASE + url, {
     method,
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: method === 'GET' ? undefined : JSON.stringify(body),
