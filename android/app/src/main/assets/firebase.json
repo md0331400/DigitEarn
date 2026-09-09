@@ -1,8 +1,8 @@
 {
-  "apiKey": "PASTE-YOUR-API-KEY",
-  "authDomain": "your-project.firebaseapp.com",
-  "projectId": "your-project-id",
-  "storageBucket": "your-project.appspot.com",
-  "messagingSenderId": "000000000000",
-  "appId": "1:000000000000:web:xxxxxxxxxxxxxxxxxxxx"
+  "apiKey": "AIzaSyDSt9PaaSF91Kxhl83FeiOpHVprW2M98as",
+  "authDomain": "digitearn.firebaseapp.com",
+  "projectId": "digitearn",
+  "storageBucket": "digitearn.firebasestorage.app",
+  "messagingSenderId": "38273766965",
+  "appId": "1:38273766965:android:64eb282cc775ac01de037c"
 }
