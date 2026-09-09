@@ -8,6 +8,24 @@ server API-তে (digitearn.vercel.app) token-সহ call যায় — secu
 - **Package:** com.admin.digitearn
 - **Firebase config:** নিজে সেট করতে হবে (নিচে step ৩)
 
+## ✅ সবচেয়ে সহজ উপায় — GitHub-এই auto APK build (Android Studio লাগবে না!)
+
+Developer-এর পুশে **GitHub Actions** (`Build Admin APK`) নিজে থেকেই APK বানায়।
+আপনার করণীয়:
+1. Firebase web app config-এর **৬টা value** (apiKey, authDomain, projectId,
+   storageBucket, messagingSenderId, appId) developer-কে দিন → সে
+   `app/src/main/assets/firebase.json`-এ বসিয়ে push করবে
+2. GitHub → **DigitEarn** repo → **Actions** tab → **"Build Admin APK"** →
+   সর্বশেষ run (green ✅) → নিচে **`DigitEarnAdmin-debug.apk`** artifact-এ
+   click → **Download** → phone-এ install করুন
+
+> ⚠️ firebase.json-এ **service account-এর private key JSON দেবেন না** — শুধু
+> web app-এর ৬টা public value।
+
+---
+
+## (Fallback) নিজে phone/PC-তে build করতে চাইলে
+
 ## কী লাগবে
 
 1. **Android Studio** — https://developer.android.com/studio (free)
