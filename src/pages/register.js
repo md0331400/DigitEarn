@@ -115,8 +115,11 @@ async function vRef(quiet = false) {
   try {
     const snap = await getDoc(doc(db, 'refs', v));
     if (my !== seq.ref) return state.ref.ok; // পুরনো চেক-এর result — ignore
-    if (snap.exists) {
-      setField(inp, $m('msgRef'), 'ok', '✓ Referral Code সঠিক');
+    // আসল ref document-এ সবসময় { uid: "..." } থাকে — empty/manual document = invalid
+    const d = snap.exists ? snap.data() : null;
+    const valid = Boolean(d && typeof d.uid === 'string' && d.uid);
+    if (valid) {
+      setField(inp, $m('msgRef'), 'ok', `✓ ${v} — সঠিক code`);
       state.ref.ok = true; state.ref.checked = true;
       return true;
     }
