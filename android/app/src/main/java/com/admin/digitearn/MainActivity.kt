@@ -19,7 +19,7 @@ import org.json.JSONObject
  *
  * Admin panel APK-এর ভেতরেই embedded (assets/admin/) — public website-তে
  * admin page থাকে না। Server action (approve/reject ইত্যাদি) Vercel API-তে
- * (https://digitearn.vercel.app/api/admin/*) — token-verified।
+ * (https://digitearn.vercel.app/api/admin/panel) — token-verified।
  *
  * Firebase config: assets/firebase.json (user নিজে সেট করে —
  * Firebase Console → Project settings → Your apps → Web app-এর config)।
