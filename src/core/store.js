@@ -50,7 +50,7 @@ export async function getSettings(force = false) {
   if (!firebaseReady || !db) return { ...DEFAULTS, _missing: true };
   try {
     const snap = await getDoc(doc(db, 'settings', 'site'));
-    const data = snap.exists() ? snap.data() : {};
+    const data = snap.exists ? snap.data() : {};
     cache = { data, at: Date.now() };
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(cache));
     return { ...DEFAULTS, ...data };
@@ -62,5 +62,5 @@ export async function getSettings(force = false) {
 export async function getUserDoc(uid) {
   if (!firebaseReady || !db || !uid) return null;
   const snap = await getDoc(doc(db, 'users', uid));
-  return snap.exists() ? { uid, ...snap.data() } : null;
+  return snap.exists ? { uid, ...snap.data() } : null;
 }

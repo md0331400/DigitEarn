@@ -34,11 +34,15 @@ bootAppPage({
       grid.innerHTML = projectGrid(tasks);
     }
 
-    // notices marquee
-    const notices = await getNotices().catch(() => []);
+    // notices marquee (all-user + এই user-এর private warning — rules দ্বারা scoped)
+    const notices = await getNotices(user.uid).catch(() => []);
     if (notices.length) {
       const bar = document.getElementById('noticeBar');
-      if (bar) { bar.style.display = 'flex'; setMarquee(bar, notices.map(n => n.text).join('  •  ')); }
+      const line = notices.map(n => {
+        const t = (n.title ? n.title + ': ' : '') + (n.text || '');
+        return n.targeted && n.type === 'warning' ? '⚠️ ' + t : t;
+      }).join('  •  ');
+      if (bar) { bar.style.display = 'flex'; setMarquee(bar, line); }
     }
   },
 });

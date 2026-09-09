@@ -99,7 +99,13 @@ export async function listUsers(limitN = 300) {
 
 export async function getUser(uid) {
   const s = await getDoc(doc(db, 'users', uid));
-  return s.exists() ? { uid, ...s.data() } : null;
+  return s.exists ? { uid, ...s.data() } : null;
+}
+
+export async function getUserWithdrawals(uid, limitN = 20) {
+  const q = query(collection(db, 'users', uid, 'withdrawals'), orderBy('createdAt', 'desc'), limit(limitN));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function getUserTransactions(uid, limitN = 25) {
@@ -144,30 +150,100 @@ export async function saveTask(slug, data) {
 /* ---------- settings ---------- */
 export async function getSettings() {
   const s = await getDoc(doc(db, 'settings', 'site'));
-  return s.exists() ? s.data() : {};
+  return s.exists ? s.data() : {};
+}
+
+/* ---------- withdrawals (admin review) ---------- */
+export async function listWithdrawals(status = 'pending', limitN = 100) {
+  const q = query(collection(db, 'withdrawals'), orderBy('createdAt', 'desc'), limit(limitN));
+  const snap = await getDocs(q);
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return status && status !== 'all' ? all.filter(w => w.status === status) : all;
+}
+
+export async function reviewWithdrawal(userId, id, action, note = '') {
+  await callApi('/api/admin/withdrawal-review', { userId, id, action, note });
 }
 
 export async function saveSettings(data) {
   await setDoc(doc(db, 'settings', 'site'), data, { merge: true });
 }
 
-/* ---------- notices ---------- */
+/* ---------- notices ----------
+   notices/{id}             → all-user notice (public, legacy-compatible)
+   users/{uid}/targetNotices/{id} → private user-specific warning/notice
+   (rules: targeted শুধু owner + admin read; write শুধু admin) */
 export async function listNotices() {
   const q = query(collection(db, 'notices'), orderBy('sort'));
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-export async function addNotice({ title, body, sort = 10 }) {
-  await setDoc(doc(db, 'notices'), { title, body, enabled: true, sort: Number(sort) || 10, createdAt: serverTimestamp() });
+export async function addNotice({ title, body, type = 'notice', expiresAt = null }) {
+  const clean = {
+    title: String(title || '').trim().slice(0, 60),
+    body: String(body || '').trim().slice(0, 300),
+    type: type === 'warning' ? 'warning' : 'notice',
+    targetType: 'all',
+    enabled: true,
+    sort: 10,
+    createdAt: serverTimestamp(),
+  };
+  if (expiresAt) clean.expiresAt = expiresAt; // JS Date → Firestore Timestamp
+  await setDoc(doc(db, 'notices'), clean);
 }
 
-export async function updateNotice(id, { title, body, enabled, sort }) {
-  await updateDoc(doc(db, 'notices', id), { title, body, enabled, sort: Number(sort) || 10 });
+export async function updateNotice(id, { title, body, enabled, sort, type, expiresAt }) {
+  const upd = {
+    title: String(title || '').trim().slice(0, 60),
+    body: String(body || '').trim().slice(0, 300),
+    enabled: !!enabled,
+    sort: Number(sort) || 10,
+  };
+  if (type) upd.type = type === 'warning' ? 'warning' : 'notice';
+  if (expiresAt) upd.expiresAt = expiresAt;
+  await updateDoc(doc(db, 'notices', id), upd);
 }
 
 export async function deleteNotice(id) {
   await deleteDoc(doc(db, 'notices', id));
+}
+
+/* ---------- targeted notices (per-user, private) ---------- */
+export async function listUserTargetNotices(uid) {
+  const snap = await getDocs(query(collection(db, 'users', uid, 'targetNotices'), limit(50)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function addTargetedNotice(uid, { title, body, type = 'warning', expiresAt = null }) {
+  const clean = {
+    title: String(title || '').trim().slice(0, 60),
+    body: String(body || '').trim().slice(0, 300),
+    type: type === 'warning' ? 'warning' : 'notice',
+    targetType: 'user',
+    targetUserId: uid,
+    enabled: true,
+    sort: 10,
+    createdAt: serverTimestamp(),
+    createdBy: 'admin',
+  };
+  if (expiresAt) clean.expiresAt = expiresAt;
+  await setDoc(doc(db, 'users', uid, 'targetNotices'), clean);
+}
+
+export async function updateTargetedNotice(uid, id, { enabled }) {
+  await updateDoc(doc(db, 'users', uid, 'targetNotices', id), { enabled: !!enabled });
+}
+
+export async function deleteTargetedNotice(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'targetNotices', id));
+}
+
+/* global targeted list — browser rules-এ অন্য user-এর subcollection list করা যায় না,
+   তাই server-side (Admin SDK) endpoint */
+export async function listTargetedAll() {
+  const data = await callApi('/api/admin/notice-targeted', {}, 'GET');
+  return data.targeted || [];
 }
 
 /* ---------- overview ---------- */

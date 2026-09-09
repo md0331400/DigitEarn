@@ -12,7 +12,10 @@ bootAppPage({
     box.innerHTML = '<div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> লোড হচ্ছে...</div>';
     const counts = await teamCounts(user.uid).catch(() => [0, 0, 0, 0]);
     const teamTotal = counts.reduce((a, b) => a + b, 0);
-    const tiers = (settings.targetTiers || []).map(t => ({ ...t, claimed: hasTargetClaimed(user.uid, t.tier) }));
+    const tierCfgs = settings.targetTiers || [];
+    // BUGFIX: hasTargetClaimed async — আগে Promise truthy হওয়ায় সব tier "claimed" দেখাতো
+    const claimedFlags = await Promise.all(tierCfgs.map(t => hasTargetClaimed(user.uid, t.tier).catch(() => false)));
+    const tiers = tierCfgs.map((t, i) => ({ ...t, claimed: claimedFlags[i] }));
 
     box.innerHTML = `
       <div class="card" style="text-align:center;border-top:4px solid #ef4444">

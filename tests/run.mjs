@@ -175,6 +175,76 @@ console.log('\n[7] PRE-SIGNUP CHECK ENDPOINT (anonymous)');
   check('GET → 405', r.statusCode === 405, `(got ${r.statusCode})`);
 }
 
+console.log('\n[8] WITHDRAWAL REVIEW (admin, atomic, refund on reject)');
+{
+  const wdH = (await import('../admin/api/admin/withdrawal-review.js')).default;
+  store.docs['users/alice'].balance = 100;
+  store.docs['users/alice/withdrawals/w1'] = { uid: 'alice', amount: 30, method: 'bKash', accountNumber: '01700000001', status: 'pending', name: 'Alice' };
+  store.docs['withdrawals/w1'] = { userId: 'alice', amount: 30, method: 'bKash', accountNumber: '01700000001', status: 'pending' };
+
+  let r = res();
+  await wdH(req('POST', auth('TOKEN_ALICE'), { id: 'w1', action: 'paid' }), r);
+  check('normal user calls withdrawal review → 403', r.statusCode === 403, `(got ${r.statusCode} ${r.body})`);
+
+  r = res();
+  await wdH(req('POST', auth('TOKEN_ADMIN'), { id: 'w1', action: 'paid' }), r);
+  check('admin mark paid → 200', r.statusCode === 200, `(got ${r.statusCode} ${r.body})`);
+  check('user copy status=paid', store.docs['users/alice/withdrawals/w1'].status === 'paid');
+  check('top-level mirror status=paid', store.docs['withdrawals/w1'].status === 'paid');
+  check('balance NOT deducted again (still 100)', store.docs['users/alice'].balance === 100, `(got ${store.docs['users/alice'].balance})`);
+
+  r = res();
+  await wdH(req('POST', auth('TOKEN_ADMIN'), { id: 'w1', action: 'paid' }), r);
+  check('second process (double-click) → 409', r.statusCode === 409, `(got ${r.statusCode})`);
+
+  // reject → atomic refund
+  store.docs['users/alice/withdrawals/w2'] = { uid: 'alice', amount: 20, method: 'Nagad', accountNumber: '01700000002', status: 'pending', name: 'Alice' };
+  store.docs['withdrawals/w2'] = { userId: 'alice', amount: 20, method: 'Nagad', accountNumber: '01700000002', status: 'pending' };
+  r = res();
+  await wdH(req('POST', auth('TOKEN_ADMIN'), { id: 'w2', action: 'rejected', note: 'Wrong number' }), r);
+  check('admin reject → 200', r.statusCode === 200, `(got ${r.statusCode} ${r.body})`);
+  check('reject refunds balance (100 + 20 = 120)', store.docs['users/alice'].balance === 120, `(got ${store.docs['users/alice'].balance})`);
+  const refundTx = Object.keys(store.docs).filter(k => k.startsWith('users/alice/transactions/') && store.docs[k].type === 'withdraw_refund');
+  check('refund transaction record created (audit trail)', refundTx.length === 1, `(got ${refundTx.length})`);
+  check('status=rejected + note stored', store.docs['withdrawals/w2'].status === 'rejected' && store.docs['withdrawals/w2'].note === 'Wrong number');
+
+  r = res();
+  await wdH(req('POST', auth('TOKEN_ADMIN'), { id: 'w2', action: 'rejected' }), r);
+  check('second reject (double-refund attempt) → 409', r.statusCode === 409, `(got ${r.statusCode})`);
+  check('balance still 120 (no double refund)', store.docs['users/alice'].balance === 120, `(got ${store.docs['users/alice'].balance})`);
+
+  r = res();
+  await wdH(req('POST', auth('TOKEN_ADMIN'), { id: 'nope', action: 'paid' }), r);
+  check('unknown id → 409 (not 500/leak)', r.statusCode === 409, `(got ${r.statusCode})`);
+}
+
+console.log('\n[9] TARGETED NOTICE LIST (admin-only, server-side scan)');
+{
+  const ntH = (await import('../admin/api/admin/notice-targeted.js')).default;
+  store.docs['users/alice/targetNotices/n1'] = { title: 'T1', body: 'B1', type: 'warning', enabled: true };
+  store.docs['users/bob/targetNotices/n2'] = { title: 'T2', body: 'B2', type: 'notice', enabled: true };
+
+  let r = res();
+  await ntH(req('GET', {}), r);
+  check('no token → 403/401', r.statusCode === 403 || r.statusCode === 401, `(got ${r.statusCode})`);
+
+  r = res();
+  await ntH(req('GET', auth('TOKEN_ALICE')), r);
+  check('normal user GET → 403', r.statusCode === 403, `(got ${r.statusCode})`);
+
+  r = res();
+  await ntH(req('GET', auth('TOKEN_ADMIN')), r);
+  const data = json(r);
+  check('admin GET → 200', r.statusCode === 200, `(got ${r.statusCode} ${r.body})`);
+  check('lists targeted notices of real users', Array.isArray(data.targeted) && data.targeted.filter(x => x.uid === 'alice' || x.uid === 'bob').length === 2, `(got ${JSON.stringify(data).slice(0, 140)})`);
+  const aliceN = (data.targeted || []).find(x => x.uid === 'alice');
+  check('includes user identity (name) for admin context', aliceN && aliceN.userName === 'Alice', `(got ${aliceN && aliceN.userName})`);
+
+  r = res();
+  await ntH(req('POST', auth('TOKEN_ADMIN')), r);
+  check('POST → 405', r.statusCode === 405, `(got ${r.statusCode})`);
+}
+
 console.log(`\n=============================`);
 console.log(`RESULT: ${pass} passed, ${failN} failed`);
 console.log(`=============================`);

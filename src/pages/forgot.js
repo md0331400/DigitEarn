@@ -1,7 +1,7 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { forgotPassword, friendlyError } from '../core/api.js';
-import { toast } from '../core/ui.js';
+import { toast, esc } from '../core/ui.js';
 
 const form = document.getElementById('forgotForm');
 const doneBox = document.getElementById('forgotDone');
@@ -15,7 +15,7 @@ form?.addEventListener('submit', async e => {
   doneBox.innerHTML = ''; errBox.innerHTML = '';
   try {
     await forgotPassword(email);
-    doneBox.innerHTML = `<div class="ok-box"><i class="fa-solid fa-circle-check"></i> পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে: <b>&nbsp;${email}</b> — ইনবক্স চেক করুন।</div>`;
+    doneBox.innerHTML = `<div class="ok-box"><i class="fa-solid fa-circle-check"></i> পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে: <b>&nbsp;${esc(email)}</b> — ইনবক্স চেক করুন।</div>`;
   } catch (err) {
     errBox.innerHTML = `<div class="error-box"><div><i class="fa-solid fa-circle-exclamation"></i> ${friendlyError(err)}</div></div>`;
   } finally {

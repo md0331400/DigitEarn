@@ -62,9 +62,12 @@ export function projectGrid(tasks) {
     const href = t.kind === 'page' ? t.url : (t.url && t.url.startsWith('http') ? `/task/${t.slug || 'x'}.html` : '/');
     const isTask = t.kind === 'task' && t.slug;
     const link = isTask ? `/task/${t.slug}.html` : (t.kind === 'page' ? t.url : '/');
+    // XSS-hardening: Firestore-এর color/icon value-তে HTML inject করা যাবে না
+    const color = /^#[0-9a-fA-F]{3,8}$/.test(t.color || '') ? t.color : '#f59e0b';
+    const icon = /^fa-(solid|regular|brands) [a-z0-9-]+$/.test(t.icon || '') ? t.icon : 'fa-solid fa-star';
     return `<a href="${link}" class="proj">
-      <div class="ico" style="color:${t.color || '#f59e0b'}">
-        <i class="${t.icon || 'fa-solid fa-star'}"></i>
+      <div class="ico" style="color:${color}">
+        <i class="${icon}"></i>
         ${t.locked ? '<span class="lock"><i class="fa-solid fa-lock"></i></span>' : ''}
       </div>
       <span class="proj-name">${esc(t.nameBn)}</span>

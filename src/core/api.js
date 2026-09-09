@@ -63,16 +63,13 @@ export async function callApi(path, body = {}, method = 'POST', { anonymous = fa
 
 /* ---------- auth ---------- */
 
-/* Register: auth user client-এ, তারপর server-এ user doc + bonus + referral (atomic) */
+/* Register: auth user client-এ, তারপর server-এ user doc + bonus + referral (atomic).
+   Ref code server-ই validate করে — invalid হলে error throw (profile-less orphan রোধের
+   জন্য client আগেই pre-check করে, server fail-closed)। */
 export async function registerUser({ name, mobile, email, password, refCodeInput }) {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
   const cred = await createUserWithEmailAndPassword(auth, email, password);
-  try {
-    await callApi('/api/user/register', { name, mobile, email, refCode: refCodeInput || '' });
-  } catch (err) {
-    // auth user তৈরি হয়ে গেছে; profile doc server heal করবে (ensure)
-    throw err;
-  }
+  await callApi('/api/user/register', { name, mobile, email, refCode: refCodeInput || '' });
   return cred.user.uid;
 }
 
@@ -171,24 +168,24 @@ export async function getTasks() {
 export async function getTaskBySlug(slug) {
   if (!firebaseReady) return null;
   const snap = await getDoc(doc(db, 'tasks', slug));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
 export async function hasClaimedToday(uid, taskSlug) {
   const snap = await getDoc(doc(db, 'users', uid, 'taskClaims', `${taskSlug}_${todayStr()}`));
-  return snap.exists();
+  return snap.exists;
 }
 
 /* ---------- gift / target (read) ---------- */
 
 export async function hasGiftClaimedToday(uid) {
   const snap = await getDoc(doc(db, 'users', uid, 'giftClaims', todayStr()));
-  return snap.exists();
+  return snap.exists;
 }
 
 export async function hasTargetClaimed(uid, tier) {
   const snap = await getDoc(doc(db, 'users', uid, 'targetClaims', String(tier)));
-  return snap.exists();
+  return snap.exists;
 }
 
 export async function teamCounts(uid) {
@@ -282,11 +279,36 @@ export async function getDirectTeam(uid) {
 
 /* ---------- misc (read) ---------- */
 
-export async function getNotices() {
+/* Notice visibility (privacy):
+   - notices/{id}            → all-user notices (সাধারণ সকলের জন্য)
+   - users/{uid}/targetNotices/{id} → শুধু সেই user-এর private warning/notice
+   দুটোই শুধু enabled + (expiresAt থাকলে) expiry-এর পর দেখাবে। */
+function noticeExpired(n) {
+  const e = n.expiresAt;
+  if (!e) return false;
+  const d = e.toDate ? e.toDate() : new Date(e);
+  return !isNaN(d) && d < new Date();
+}
+function noticeOut(d) {
+  const n = d.data();
+  if (!n.enabled) return null;
+  if (noticeExpired(n)) return null;
+  return { ...n, text: n.body || n.text || '' };
+}
+
+export async function getNotices(uid) {
   if (!firebaseReady) return [];
-  const snap = await getDocs(query(collection(db, 'notices'), limit(50)));
-  return snap.docs
-    .map(d => d.data())
-    .filter(n => n.enabled)
-    .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
+  const out = [];
+  try {
+    const a = await getDocs(query(collection(db, 'notices'), limit(50)));
+    a.docs.forEach(d => { const n = noticeOut(d); if (n) out.push({ ...n, targeted: false }); });
+  } catch (_) {}
+  if (uid) {
+    try {
+      const t = await getDocs(query(collection(db, 'users', uid, 'targetNotices'), limit(20)));
+      t.docs.forEach(d => { const n = noticeOut(d); if (n) out.push({ ...n, targeted: true }); });
+    } catch (_) {}
+  }
+  out.sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
+  return out;
 }

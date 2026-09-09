@@ -56,6 +56,12 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // ---------- top-level withdrawal review queue (admin-only; write শুধু server-এ) ----------
+    match /withdrawals/{wdId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     // ---------- admins/ ----------
     // get: শুধু signed-in user (isAdmin() function-এর internal get()-এর জন্য দরকার)
     // list/write সম্পূর্ণ বন্ধ — browser থেকে collection enumerate করা যায় না
@@ -112,10 +118,22 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
-      // team — public referral tree (write শুধু server-এ)
+      // team — referral tree. Anonymous enumeration বন্ধ (আগে if true ছিল)।
+      // Signed-in user শুধু minimum fields দেখে (name/refCode/isActive/createdAt —
+      // balance/email/mobile কখনো নেই)। Multi-level team count-এর জন্য অন্য user-এর
+      // subtree read দরকার (rules-এ "descendant-only" express করা সম্ভব নয়) —
+      // তাই signed-in scope-এ রাখা হয়েছে।
       match /team/{childUid} {
-        allow get, list: if true;
+        allow get, list: if isSignedIn();
         allow create, update, delete: if false;
+      }
+
+      // targetNotices — user-specific PRIVATE warning/notice (privacy-critical)
+      // শুধু target user নিজে + admin পড়তে/লিস্ট করতে পারে; write শুধু admin
+      // (অন্য কোনো user-এর warning list/download করা rules-এই বন্ধ)
+      match /targetNotices/{nid} {
+        allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow create, update, delete: if isAdmin();
       }
     }
   }

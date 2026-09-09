@@ -6,10 +6,12 @@ import {
   isAdminEmail, esc, fmt, timeBn,
   overviewStats, listProofs, approveProof, rejectProof, getUser,
   listDeposits, approveDeposit, rejectDeposit,
-  listUsers, getUserTransactions, setUserActive,
+  listWithdrawals, reviewWithdrawal,
+  listUsers, getUserWithdrawals, getUserTransactions, setUserActive,
   listTasks, saveTask,
   getSettings, saveSettings,
   listNotices, addNotice, updateNotice, deleteNotice,
+  listUserTargetNotices, addTargetedNotice, updateTargetedNotice, deleteTargetedNotice, listTargetedAll,
 } from './core.js';
 
 const app = document.getElementById('app');
@@ -79,6 +81,7 @@ const NAV = [
   { id: 'overview', label: 'Overview', icon: 'fa-gauge-high' },
   { id: 'proofs', label: 'Submissions', icon: 'fa-clipboard-list' },
   { id: 'deposits', label: 'Deposits', icon: 'fa-money-bill-wave' },
+  { id: 'withdrawals', label: 'Withdrawals', icon: 'fa-money-bill-transfer' },
   { id: 'users', label: 'Users', icon: 'fa-users' },
   { id: 'tasks', label: 'Micro Jobs', icon: 'fa-briefcase' },
   { id: 'settings', label: 'Settings', icon: 'fa-gear' },
@@ -109,6 +112,7 @@ async function onHash() {
   try {
     if (view === 'proofs') await viewProofs(main);
     else if (view === 'deposits') await viewDeposits(main);
+    else if (view === 'withdrawals') await viewWithdrawals(main);
     else if (view === 'users') await viewUsers(main);
     else if (view === 'tasks') await viewTasks(main);
     else if (view === 'settings') await viewSettings(main);
@@ -264,6 +268,55 @@ async function viewDeposits(main) {
   }));
 }
 
+/* ---------- withdrawals (admin review queue) ---------- */
+let wdFilter = 'pending';
+async function viewWithdrawals(main) {
+  main.innerHTML = `
+    <div class="chip-row" id="wdChips">
+      ${['pending', 'paid', 'rejected', 'all'].map(f => `<button class="chip ${f === wdFilter ? 'on' : ''}" data-wf="${f}">${{ pending: 'Pending', paid: 'Paid', rejected: 'Rejected', all: 'সব' }[f]}</button>`).join('')}\n    </div>
+    <div id="wdList"></div>`;
+  document.getElementById('wdChips').addEventListener('click', e => {
+    const b = e.target.closest('[data-wf]');
+    if (!b) return;
+    wdFilter = b.dataset.wf;
+    document.querySelectorAll('[data-wf]').forEach(c => c.classList.toggle('on', c.dataset.wf === wdFilter));
+    viewWithdrawals(main);
+  });
+  const list = await listWithdrawals(wdFilter);
+  const box = document.getElementById('wdList');
+  if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো withdrawal নেই। (পুরনো pending request Users tab-এ user-এর detail-এ দেখাবে)</p>'; return; }
+  const items = await Promise.all(list.map(async w => ({ w, user: await getUser(w.userId).catch(() => null) })));
+  box.innerHTML = items.map(({ w, user }) => `
+    <div class="adm-item">
+      <div class="ai-head">
+        <div class="ai-user"><b>${esc(user?.name || w.name || w.userId)}</b><span class="muted">${esc(user?.mobile || '')}</span></div>
+        <span class="badge ${w.status === 'paid' ? 'green' : w.status}">${{ pending: 'PENDING', paid: 'PAID', rejected: 'REJECTED' }[w.status] || w.status}</span>
+      </div>
+      <div class="ai-meta"><i class="fa-solid fa-money-bill-transfer"></i> ${esc(w.method)} • <b class="gold-txt">${fmt(w.amount)}</b> • ${esc(w.accountNumber)}</div>
+      <div class="ai-meta muted-sm">${timeBn(w.createdAt)}${w.processedAt ? ' • processed ' + timeBn(w.processedAt) : ''}</div>
+      ${w.status === 'rejected' && w.note ? `<p class="ai-note"><i class="fa-solid fa-note"></i> ${esc(w.note)}</p>` : ''}
+      ${w.status === 'pending' ? `
+      <div class="ai-actions">
+        <button class="adm-btn green sm" data-wpaid="${w.id}"><i class="fa-solid fa-check"></i> Paid (টাকা পাঠানো হয়েছে)</button>
+        <button class="adm-btn red sm" data-wrej="${w.id}"><i class="fa-solid fa-xmark"></i> Reject (টাকা ফেরত)</button>
+      </div>` : ''}
+    </div>`).join('');
+
+  const doReview = async (btn, action) => {
+    if (action === 'paid' && !confirm('এটা Paid মার্ক করবেন? (টাকা send করে ফেলেছেন মানে)')) return;
+    if (action === 'rejected' && !confirm('Reject করলে amount user-এর balance-এ ফেরত যাবে। নিশ্চিত?')) return;
+    btn.disabled = true;
+    try {
+      const w = list.find(x => x.id === btn.dataset[action === 'paid' ? 'wpaid' : 'wrej']);
+      await reviewWithdrawal(w.userId, w.id, action);
+      toast(action === 'paid' ? 'Withdrawal paid মার্ক হয়েছে' : 'Withdrawal reject — টাকা ফেরত হয়েছে');
+      viewWithdrawals(main);
+    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+  };
+  box.querySelectorAll('[data-wpaid]').forEach(b => b.addEventListener('click', () => doReview(b, 'paid')));
+  box.querySelectorAll('[data-wrej]').forEach(b => b.addEventListener('click', () => doReview(b, 'rejected')));
+}
+
 /* ---------- users ---------- */
 let userQuery = '';
 let selectedUid = null;
@@ -290,7 +343,12 @@ async function viewUsers(main) {
     const dbox = document.getElementById('userDetail');
     if (!selectedUid) { dbox.innerHTML = ''; return; }
     dbox.innerHTML = '<div class="loading-center"><i class="fa-solid fa-spinner fa-spin"></i></div>';
-    const [u, txs] = await Promise.all([getUser(selectedUid), getUserTransactions(selectedUid)]);
+    const [u, txs, wds, tns] = await Promise.all([
+      getUser(selectedUid),
+      getUserTransactions(selectedUid),
+      getUserWithdrawals(selectedUid, 10),
+      listUserTargetNotices(selectedUid).catch(() => []),
+    ]);
     if (!u) { dbox.innerHTML = ''; return; }
     dbox.innerHTML = `
       <div class="adm-card detail-card">
@@ -304,6 +362,19 @@ async function viewUsers(main) {
         <div class="ai-actions">
           ${u.isActive ? `<button class="adm-btn red sm" data-deact="${u.uid}"><i class="fa-solid fa-ban"></i> Inactive করুন</button>` : `<button class="adm-btn green sm" data-act="${u.uid}"><i class="fa-solid fa-check"></i> Active করুন (manual)</button>`}
         </div>
+        <h4 style="margin-top:14px"><i class="fa-solid fa-money-bill-transfer" style="color:#d97706"></i> Withdrawals</h4>
+        ${wds.length ? wds.map(w => `<div class="mini-row">
+          <b>${esc(w.method)} • ${fmt(w.amount)}</b>
+          <span class="muted">${esc(w.accountNumber)} • ${timeBn(w.createdAt)}</span>
+          <span class="badge ${w.status === 'paid' ? 'green' : w.status}">${w.status.toUpperCase()}</span>
+          ${w.status === 'pending' ? `<button class="adm-btn green sm" style="margin-left:6px" data-wd-paid="${w.id}">Paid</button><button class="adm-btn red sm" style="margin-left:4px" data-wd-rej="${w.id}">Reject</button>` : ''}
+        </div>`).join('') : '<p class="muted">কোনো withdrawal নেই।</p>'}
+        <h4 style="margin-top:14px"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626"></i> এই user-এর private Notice/Warning</h4>
+        ${tns.length ? tns.map(n => `<div class="mini-row">
+          <b>${n.type === 'warning' ? '⚠️ ' : ''}${esc(n.title || '')} ${n.enabled ? '' : '<span class="badge gray">OFF</span>'}</b>
+          <span class="muted">${esc(n.body || '')}</span>
+          <span><button class="adm-btn ghost sm" style="margin-left:6px" data-tn-tgl="${n.id}">${n.enabled ? 'Hide' : 'Show'}</button><button class="adm-btn red sm" style="margin-left:4px" data-tn-del="${n.id}">Del</button></span>
+        </div>`).join('') : '<p class="muted">কোনো private notice/warning নেই। (Notices tab থেকে পাঠান)</p>'}
         <h4 style="margin-top:14px"><i class="fa-solid fa-receipt" style="color:#d97706"></i> Recent Transactions</h4>
         ${txs.length ? txs.map(t => `<div class="mini-row"><b>${esc(t.note || t.type)}</b><span class="muted">${timeBn(t.createdAt)}</span><span class="badge ${Number(t.amount) >= 0 ? 'green' : 'gray'}">${Number(t.amount) >= 0 ? '+' : ''}${fmt(t.amount)}</span></div>`).join('') : '<p class="muted">কোনো transaction নেই।</p>'}
       </div>`;
@@ -316,6 +387,24 @@ async function viewUsers(main) {
       if (!confirm('User-কে inactive করবেন?')) return;
       try { await setUserActive(deact.dataset.deact, false); toast('User inactive করা হয়েছে'); doList(); } catch (err) { toast(err.message, 'error'); }
     });
+    dbox.querySelectorAll('[data-wd-paid]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Paid মার্ক করবেন?')) return;
+      b.disabled = true;
+      try { await reviewWithdrawal(selectedUid, b.dataset.wdPaid, 'paid'); toast('Paid মার্ক হয়েছে'); doDetail(); } catch (err) { toast(err.message, 'error'); b.disabled = false; }
+    }));
+    dbox.querySelectorAll('[data-wd-rej]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Reject করলে টাকা user-এর balance-এ ফেরত যাবে। নিশ্চিত?')) return;
+      b.disabled = true;
+      try { await reviewWithdrawal(selectedUid, b.dataset.wdRej, 'rejected'); toast('Reject — টাকা ফেরত'); doDetail(); } catch (err) { toast(err.message, 'error'); b.disabled = false; }
+    }));
+    dbox.querySelectorAll('[data-tn-tgl]').forEach(b => b.addEventListener('click', async () => {
+      const n = tns.find(x => x.id === b.dataset.tnTgl);
+      try { await updateTargetedNotice(selectedUid, n.id, { enabled: !n.enabled }); toast('Notice toggle'); doDetail(); } catch (err) { toast(err.message, 'error'); }
+    }));
+    dbox.querySelectorAll('[data-tn-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Notice মুছে ফেলবেন?')) return;
+      try { await deleteTargetedNotice(selectedUid, b.dataset.tnDel); toast('Notice delete'); doDetail(); } catch (err) { toast(err.message, 'error'); }
+    }));
   };
   document.getElementById('userSearch').addEventListener('input', e => { userQuery = e.target.value; doList(); });
   await doList();
@@ -499,20 +588,42 @@ async function viewSettings(main) {
   });
 }
 
-/* ---------- notices ---------- */
+/* ---------- notices ----------
+   All-user notice (notices/) + user-specific private warning (users/{uid}/targetNotices/)
+   Targeted শুধু সেই user-এই দেখবে (Firestore rules) — অন্য কেউ list করতে পারে না। */
+let ntTargetUid = '';
 async function viewNotices(main) {
-  const notices = await listNotices();
+  const [notices, targeted] = await Promise.all([listNotices(), listTargetedAll().catch(() => [])]);
+  const users = await listUsers(300).catch(() => []);
   main.innerHTML = `
     <div class="adm-card">
-      <h4><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> নতুন Notice</h4>
-      <input class="adm-input" id="ntTitle" placeholder="Title" maxlength="80">
-      <textarea class="adm-input" id="ntBody" rows="3" placeholder="Notice লিখুন..." maxlength="300" style="margin-top:8px"></textarea>
-      <button class="adm-btn gold sm" id="ntAdd" style="margin-top:10px"><i class="fa-solid fa-plus"></i> Add Notice</button>
+      <h4><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> নতুন Notice / Warning</h4>
+      <div class="two-col">
+        <div><label>Type</label>
+          <select class="adm-input" id="ntType"><option value="notice">Notice</option><option value="warning">Warning</option></select>
+        </div>
+        <div><label>Target</label>
+          <select class="adm-input" id="ntTarget"><option value="all">সব user (All)</option><option value="user">Specific user</option></select>
+        </div>
+      </div>
+      <div id="ntUserWrap" hidden style="margin-top:8px">
+        <label>User খুঁজুন (নাম/মোবাইল) + select করুন</label>
+        <input class="adm-input" id="ntUserSearch" placeholder="নাম বা মোবাইল লিখুন...">
+        <div id="ntUserResults" class="user-list" style="max-height:150px;overflow:auto"></div>
+      </div>
+      <input class="adm-input" id="ntTitle" placeholder="Title (ঐচ্ছিক)" maxlength="60" style="margin-top:8px">
+      <textarea class="adm-input" id="ntBody" rows="3" placeholder="Notice/Warning লিখুন..." maxlength="300" style="margin-top:8px"></textarea>
+      <div class="two-col" style="margin-top:8px">
+        <div><label>Expiry (ঐচ্ছিক — তারিখের পর অদৃশ্য)</label><input type="date" class="adm-input" id="ntExpiry"></div>
+        <div style="align-self:flex-end"><button class="adm-btn gold sm" id="ntAdd"><i class="fa-solid fa-plus"></i> Send</button></div>
+      </div>
     </div>
+
+    <h4 style="margin:14px 0 8px"><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> All-User Notices</h4>
     ${notices.map(n => `
       <div class="adm-card">
         <div class="task-row">
-          <div class="task-info"><b>${esc(n.title || '—')}</b><span class="muted">${n.enabled ? 'ON' : 'OFF'} • sort ${n.sort || 0}</span></div>
+          <div class="task-info"><b>${n.type === 'warning' ? '⚠️ ' : ''}${esc(n.title || '—')}</b><span class="muted">${n.enabled ? 'ON' : 'OFF'} • sort ${n.sort || 0}${n.expiresAt ? ' • expire ' + timeBn(n.expiresAt) : ''}</span></div>
           <div class="ai-actions" style="flex-wrap:wrap">
             <button class="adm-btn ghost sm" data-tgl="${n.id}"><i class="fa-solid ${n.enabled ? 'fa-eye-slash' : 'fa-eye'}"></i></button>
             <button class="adm-btn red sm" data-del="${n.id}"><i class="fa-solid fa-trash"></i></button>
@@ -520,15 +631,61 @@ async function viewNotices(main) {
         </div>
         <p class="muted nt-body">${esc(n.body || '')}</p>
       </div>`).join('')}
-    ${notices.length ? '' : '<p class="muted center-note">কোনো notice নেই।</p>'}`;
+    ${notices.length ? '' : '<p class="muted center-note">কোনো all-user notice নেই।</p>'}
+
+    <h4 style="margin:14px 0 8px"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626"></i> Private Warnings (user-specific)</h4>
+    ${targeted.map(n => `
+      <div class="adm-card">
+        <div class="task-row">
+          <div class="task-info">
+            <b>${n.type === 'warning' ? '⚠️ ' : ''}${esc(n.title || '—')}</b>
+            <span class="muted">→ ${esc(n.userName || '—')} (${esc(n.userMobile || n.uid)}) • ${n.enabled ? 'ACTIVE' : 'OFF'}${n.expiresAt ? ' • expire ' + n.expiresAt : ''}</span>
+          </div>
+          <div class="ai-actions" style="flex-wrap:wrap">
+            <button class="adm-btn ghost sm" data-tn-tgl="${n.uid}::${n.id}">${n.enabled ? 'Hide' : 'Show'}</button>
+            <button class="adm-btn red sm" data-tn-del="${n.uid}::${n.id}"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>
+        <p class="muted nt-body">${esc(n.body || '')}</p>
+      </div>`).join('')}
+    ${targeted.length ? '' : '<p class="muted center-note">কোনো private warning নেই।</p>'}`;
+
+  /* target select */
+  const targetSel = document.getElementById('ntTarget');
+  const userWrap = document.getElementById('ntUserWrap');
+  const searchInp = document.getElementById('ntUserSearch');
+  const results = document.getElementById('ntUserResults');
+  targetSel.addEventListener('change', () => { userWrap.hidden = targetSel.value !== 'user'; });
+  const renderResults = (q = '') => {
+    const ql = q.trim().toLowerCase();
+    const m = ql ? users.filter(u => (u.name || '').toLowerCase().includes(ql) || String(u.mobile || '').includes(ql)) : users;
+    results.innerHTML = m.slice(0, 30).map(u => `
+      <div class="user-row ${ntTargetUid === u.uid ? 'on' : ''}" data-ntu="${u.uid}">
+        <div class="ur-avatar">${esc((u.name || '?').trim()[0].toUpperCase())}</div>
+        <div class="ur-info"><b>${esc(u.name || '—')}</b><span class="muted">${esc(u.mobile || '')}</span></div>
+        <div class="ur-right">${ntTargetUid === u.uid ? '<span class="badge green">SELECTED</span>' : ''}</div>
+      </div>`).join('') || '<p class="muted">কোনো user পাওয়া যায়নি</p>';
+    results.querySelectorAll('[data-ntu]').forEach(r => r.addEventListener('click', () => {
+      ntTargetUid = r.dataset.ntu;
+      renderResults(searchInp.value);
+    }));
+  };
+  searchInp.addEventListener('input', () => renderResults(searchInp.value));
 
   document.getElementById('ntAdd').addEventListener('click', async () => {
     const title = document.getElementById('ntTitle').value.trim();
     const body = document.getElementById('ntBody').value.trim();
-    if (!title && !body) { toast('Title বা notice লিখুন', 'error'); return; }
+    const type = document.getElementById('ntType').value;
+    const target = targetSel.value;
+    const expRaw = document.getElementById('ntExpiry').value;
+    if (!title && !body) { toast('Title বা message লিখুন', 'error'); return; }
+    if (target === 'user' && !ntTargetUid) { toast('একটা user select করুন', 'error'); return; }
+    const expiresAt = expRaw ? new Date(expRaw + 'T23:59:59') : null;
     try {
-      await addNotice({ title, body });
-      toast('Notice add হয়েছে');
+      if (target === 'user') await addTargetedNotice(ntTargetUid, { title, body, type, expiresAt });
+      else await addNotice({ title, body, type, expiresAt });
+      toast(target === 'user' ? 'Private warning পাঠানো হয়েছে (শুধু সেই user দেখবে)' : 'Notice add হয়েছে (সব user দেখবে)');
+      ntTargetUid = '';
       viewNotices(main);
     } catch (err) { toast(err.message, 'error'); }
   });
@@ -539,5 +696,15 @@ async function viewNotices(main) {
   main.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('Notice মুছে ফেলবেন?')) return;
     try { await deleteNotice(btn.dataset.del); toast('Notice delete হয়েছে'); viewNotices(main); } catch (err) { toast(err.message, 'error'); }
+  }));
+  main.querySelectorAll('[data-tn-tgl]').forEach(btn => btn.addEventListener('click', async () => {
+    const [tuid, tid] = btn.dataset.tnTgl.split('::');
+    const n = targeted.find(x => x.uid === tuid && x.id === tid);
+    try { await updateTargetedNotice(tuid, tid, { enabled: !n.enabled }); toast('Warning toggle'); viewNotices(main); } catch (err) { toast(err.message, 'error'); }
+  }));
+  main.querySelectorAll('[data-tn-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Warning মুছে ফেলবেন?')) return;
+    const [tuid, tid] = btn.dataset.tnDel.split('::');
+    try { await deleteTargetedNotice(tuid, tid); toast('Warning delete হয়েছে'); viewNotices(main); } catch (err) { toast(err.message, 'error'); }
   }));
 }

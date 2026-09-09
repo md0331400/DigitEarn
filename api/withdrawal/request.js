@@ -51,6 +51,12 @@ export default async function handler(req, res) {
         status: 'pending', note: '',
         createdAt: now, processedAt: null,
       });
+      // admin review queue (top-level mirror — deposit/proof-এর মতো pattern)
+      tx.set(db.collection('withdrawals').doc(wdId), {
+        userId: uid, name, amount, method, accountNumber,
+        status: 'pending', note: '',
+        createdAt: now, processedAt: null,
+      });
       tx.update(userRef, { balance: (Number(d.balance) || 0) - amount });
       tx.set(db.collection('users', uid, 'transactions').doc(`wd_${ts}_${rnd}`), {
         amount: -amount, type: 'withdraw', note: `উইথড্র রিকোয়েস্ট (${method} • ${accountNumber})`, createdAt: now,

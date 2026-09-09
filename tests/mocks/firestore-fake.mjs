@@ -10,6 +10,9 @@ export function makeDb() {
   return {
     collection(...parts) {
       const path = parts.join('/');
+      const listDocs = () => Object.entries(d)
+        .filter(([k]) => k.startsWith(path + '/'))
+        .map(([k, v]) => ({ id: k.split('/').pop(), data: () => v }));
       return {
         doc(id) {
           const key = path + '/' + id;
@@ -30,6 +33,11 @@ export function makeDb() {
             get: async () => { const m = matches(); return { empty: !m.length, docs: toDocs(m) }; },
           };
         },
+        // collection-level list (users, targetNotices ইত্যাদি — admin scan-এর জন্য)
+        limit(n) {
+          return { get: async () => { const m = listDocs().slice(0, n); return { empty: !m.length, docs: m }; } };
+        },
+        get: async () => { const m = listDocs(); return { empty: !m.length, docs: m }; },
       };
     },
     runTransaction: async (fn) => {
