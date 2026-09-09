@@ -19,6 +19,10 @@ server API-তে (digitearn.vercel.app) token-সহ call যায় — secu
 **Open** → এই repo-র `android` folder → প্রথম sync-এ 10-15 min লাগবে (বসে থাকুন;
 wrapper warning দিলে **Fix** চাপুন)
 
+⚠️ **Latest folder নিশ্চিত হোন:** GitHub-এ branch **`arena/01a080f3-digitearn`** select
+করে Download ZIP → সেখানকার `android/` folder টা ব্যবহার করুন (পুরনো/আধো copy-তে
+build error + ভাঙা app হয় — Details: নিচে Troubleshooting)
+
 ### Step ২: (skip) — admin panel আগে থেকেই APK-তে embedded আছে
 
 ### Step ৩: Firebase config file দিতে হবে (একবারই)
@@ -65,3 +69,28 @@ file পাবেন (WhatsApp-এ পাঠানো যাবে)
 ## নতুন admin feature add হলে
 Developer-এ বলা — সে `npm run build:admin-app` চালিয়ে assets update করবে (এই repo-তে
 `src/admin/`-এ source আছে)
+
+## ❌ Build error হলে (Troubleshooting)
+
+**Error: `resource style/Theme.Material3.DayNight.NoActionBar not found`**
+→ আপনার phone-এর `android/` folder **পুরনো copy** (অথবা Android Studio-র template-র
+`themes.xml` বাকি আছে)। এই repo-র themes.xml-এ Material3 নেই — system theme
+(`android:Theme.Material.Light.NoActionBar`) use হয়, কোনো external library লাগে না।
+
+Fix: **পুরো project folder-টা latest repo থেকে আবার নিন:**
+1. GitHub → `md0331400/DigitEarn` → উপরে branch selector-এ `main`-এর বদলে
+   **`arena/01a080f3-digitearn`** select করুন (⚠️ `main`-এ `android/` folder নেই)
+2. **Code** (green button) → **Download ZIP** → unzip করুন
+3. ZIP-এর `android/` folder-এর **সম্পূর্ণ content** দিয়ে আপনার project folder
+   (CodeOnTheGoProjects/Digit Earn Admin/) replace করুন — পুরনো file গুলো delete করে
+   নতুনটা copy করুন (half-half হলে হবে না)
+4. Chack: `app/src/main/res/values/themes.xml`-এ `android:Theme.Material.Light.NoActionBar`
+   লেখা থাকতে হবে (Material3 নয়)
+5. `app/src/main/assets/`-এ `admin/` folder + `firebase.json` ফাইল থাকতে হবে —
+   না থাকলে copy পুরনো
+6. firebase.json-এ config paste করে (Step ৩) আবার Build
+
+**কেন পুরোটা replace করতে হয়:** নতুন app admin panel APK-র ভেতর থেকে লোড করে
+(`file:///android_asset/admin/index.html`) — পুরনো copy-তে assets/admin/ নেই আর সেটা
+`digitearn.vercel.app/admin.html` খুলত, যেটা এখন 404 (admin public নেই)। অর্থাৎ
+পুরনো copy-র APK = ভাঙা app।
