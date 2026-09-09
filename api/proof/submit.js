@@ -24,6 +24,14 @@ export default async function handler(req, res) {
 
   const db = getDb();
   const uid = user.uid;
+  const userRef = db.collection('users').doc(uid);
+
+  // Fail closed before any submission lookup/write. The transaction below repeats
+  // this check to protect against an account being deactivated during a request.
+  const userSnap = await userRef.get();
+  if (!userSnap.exists || userSnap.data().isActive !== true) {
+    return fail(res, 403, 'Submission submit করতে একাউন্ট অ্যাক্টিভ করুন');
+  }
 
   // trusted task config (server-এই পড়ে — client-এর reward/amount কখনো নয়)
   const taskSnap = await db.collection('tasks').doc(taskSlug).get();
@@ -76,7 +84,6 @@ export default async function handler(req, res) {
     if (p.status !== 'rejected') return fail(res, 409, 'আজ এই টাস্কের submission আগেই আছে — review-এর অপেক্ষায় থাকুন');
   }
 
-  const userRef = db.collection('users').doc(uid);
   const now = FieldValue.serverTimestamp();
   const ts = Date.now();
   const rnd = Math.random().toString(36).slice(2, 8);
@@ -92,7 +99,7 @@ export default async function handler(req, res) {
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
       const u = userSnap.data();
-      if (!u.isActive) throw new Error('Submission submit করতে একাউন্ট অ্যাক্টিভ করুন');
+      if (u.isActive !== true) throw new Error('Submission submit করতে একাউন্ট অ্যাক্টিভ করুন');
       proofData.username = u.name || '';
       proofData.userEmail = u.email || '';
       tx.set(db.collection('users', uid, 'proofs').doc(pid), proofData);
