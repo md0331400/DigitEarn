@@ -34,8 +34,8 @@ export default async function handler(req, res) {
       const m = await db.collection('users').where('mobile', '==', mobile).limit(1).get();
       result.mobileTaken = !m.empty;
     }
-  } catch (_) {
-    return fail(res, 500, 'Server setup সমস্যা — কিছুক্ষণ পর আবার চেষ্টা করুন');
+  } catch (err) {
+    return fail(res, 500, 'Server setup সমস্যা: ' + (err && err.message ? err.message : String(err)));
   }
   return ok(res, result);
 }
