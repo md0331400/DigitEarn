@@ -156,6 +156,25 @@ console.log('\n[6] REWARD FROM TASK DOC AT APPROVAL TIME');
   check('approve uses CURRENT task doc reward (60)', store.docs['users/bob'].balance === 60, `(got ${store.docs['users/bob'].balance})`);
 }
 
+console.log('\n[7] PRE-SIGNUP CHECK ENDPOINT (anonymous)');
+{
+  const checkH = (await import('../api/user/check.js')).default;
+  let r = res();
+  await checkH(req('POST', {}, { email: 'alice@test.com', mobile: '01711111111' }), r);
+  check('no token-ও check চলবে (anonymous)', r.statusCode === 200, `(got ${r.statusCode})`);
+  check('known email → emailTaken true', json(r).emailTaken === true, r.body);
+  check('unknown mobile → mobileTaken false', json(r).mobileTaken === false, r.body);
+
+  store.docs['users/carol'] = { mobile: '01812345678', email: 'carol@x.com', balance: 0 };
+  r = res();
+  await checkH(req('POST', {}, { mobile: '01812345678' }), r);
+  check('known mobile → mobileTaken true', json(r).mobileTaken === true, r.body);
+
+  r = res();
+  await checkH(req('GET', {}, {}), r);
+  check('GET → 405', r.statusCode === 405, `(got ${r.statusCode})`);
+}
+
 console.log(`\n=============================`);
 console.log(`RESULT: ${pass} passed, ${failN} failed`);
 console.log(`=============================`);
