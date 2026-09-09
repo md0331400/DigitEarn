@@ -132,7 +132,7 @@ service cloud.firestore {
       // শুধু target user নিজে + admin পড়তে/লিস্ট করতে পারে; write শুধু admin
       // (অন্য কোনো user-এর warning list/download করা rules-এই বন্ধ)
       match /targetNotices/{nid} {
-        allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
         allow create, update, delete: if isAdmin();
       }
     }

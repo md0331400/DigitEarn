@@ -9,3 +9,10 @@ data/
 .env.local
 npm-debug.log*
 .DS_Store
+# Android build outputs (app source থাকে, build artifact না)
+android/app/build/
+android/.gradle/
+android/build/
+android/.idea/
+android/local.properties
+*.iml
