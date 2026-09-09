@@ -16,3 +16,6 @@ android/build/
 android/.idea/
 android/local.properties
 *.iml
+
+# local vercel cli test artifacts
+.vercel/
