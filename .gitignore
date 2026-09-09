@@ -1,0 +1,21 @@
+node_modules/
+dist/
+task/
+data/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.local
+npm-debug.log*
+.DS_Store
+# Android build outputs (app source থাকে, build artifact না)
+android/app/build/
+android/.gradle/
+android/build/
+android/.idea/
+android/local.properties
+*.iml
+
+# local vercel cli test artifacts
+.vercel/

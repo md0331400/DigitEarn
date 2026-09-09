@@ -1,0 +1,140 @@
+rules_version = '2';
+// DigitEarn — Firestore Security Rules (hardened)
+// Firebase Console → Firestore Database → Rules → এটা পুরোটা paste করে PUBLISH করুন
+//
+// আর্কিটেকচার:
+//  - সব financial mutation (balance, totalEarned, transactions, claims, withdrawal,
+//    deposit status, activation) হয় Vercel serverless API + Firebase Admin SDK-তে।
+//    Admin SDK rules bypass করে — তাই নিচের rules শুধু browser client-কে সীমাবদ্ধ করে।
+//  - Normal user: নিজের profile-র safe fields (name), নিজের data READ।
+//  - Admin: tasks/settings/notices content manage + নিজের data read (admins/{email} doc চেক
+//    হয় rules-engine-এর internal get()-এ, browser থেকে admins collection পড়া যায় না)।
+//
+// ⚠️ Real money স্কেলে আরও: Cloud Functions / Vercel cron + audit log।
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/admins/$(request.auth.token.email)).exists();
+    }
+
+    // ---------- public content (read) ----------
+    match /tasks/{taskId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings/{docId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /notices/{noticeId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---------- refs/ — public directory (create শুধু server-এ) ----------
+    match /refs/{code} {
+      allow get: if true;
+      allow list, create, update, delete: if false;
+    }
+
+    // ---------- top-level review queues (admin-only; write শুধু server-এ) ----------
+    match /proofs/{proofId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /deposits/{depositId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // ---------- top-level withdrawal review queue (admin-only; write শুধু server-এ) ----------
+    match /withdrawals/{wdId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // ---------- admins/ ----------
+    // get: শুধু signed-in user (isAdmin() function-এর internal get()-এর জন্য দরকার)
+    // list/write সম্পূর্ণ বন্ধ — browser থেকে collection enumerate করা যায় না
+    match /admins/{email} {
+      allow get: if isSignedIn();
+      allow list, create, update, delete: if false;
+    }
+
+    // ---------- users ----------
+    match /users/{userId} {
+      function isSelf() { return request.auth.uid == userId; }
+
+      // শুধু safe profile fields — balance/totalEarned/refCode/refBy/activationBonusGiven/isActive/createdAt কখনো না
+      function safeProfileWrite() {
+        return isSignedIn() && isSelf() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+      }
+
+      allow get: if isSignedIn() && (isSelf() || isAdmin());
+      allow create: if false;              // server-এ (register/ensure)
+      allow update: if safeProfileWrite() || isAdmin();
+      allow list: if isAdmin();
+      allow delete: if false;
+
+      // transactions — read-only (financial records শুধু server/admin তৈরি করে)
+      match /transactions/{txId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+
+      // claim/withdrawal/deposit/proof records — read-only for owner+admin
+      match /taskClaims/{claimId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /giftClaims/{claimId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /targetClaims/{claimId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /withdrawals/{wdId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /deposits/{depId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+      match /proofs/{proofId} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if false;
+      }
+
+      // team — referral tree. Anonymous enumeration বন্ধ (আগে if true ছিল)।
+      // Signed-in user শুধু minimum fields দেখে (name/refCode/isActive/createdAt —
+      // balance/email/mobile কখনো নেই)। Multi-level team count-এর জন্য অন্য user-এর
+      // subtree read দরকার (rules-এ "descendant-only" express করা সম্ভব নয়) —
+      // তাই signed-in scope-এ রাখা হয়েছে।
+      match /team/{childUid} {
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if false;
+      }
+
+      // targetNotices — user-specific PRIVATE warning/notice (privacy-critical)
+      // শুধু target user নিজে + admin পড়তে/লিস্ট করতে পারে; write শুধু admin
+      // (অন্য কোনো user-এর warning list/download করা rules-এই বন্ধ)
+      match /targetNotices/{nid} {
+        allow get, list: if isSignedIn() && (isSelf() || isAdmin());
+        allow create, update, delete: if isAdmin();
+      }
+    }
+  }
+}

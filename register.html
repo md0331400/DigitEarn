@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>অ্যাকাউন্ট তৈরি করুন | DigitEarn — সাথে সাথে ৳১০ রেজিস্ট্রেশন বোনাস</title>
+<meta name="description" content="DigitEarn-এ অ্যাকাউন্ট তৈরি করুন — রেজিস্ট্রেশনে সাথে সাথে ৳১০ বোনাস, এক্টিভেশনে ৳২০ বোনাস। রেফারেল কোড দিলে আরও সুবিধা। মোবাইলেই ডিজিটাল টাস্ক করে টাকা আর্ন করুন।">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://digitearn.vercel.app/register.html">
+<link rel="icon" type="image/png" href="/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DigitEarn">
+<meta property="og:locale" content="bn_BD">
+<meta property="og:title" content="অ্যাকাউন্ট তৈরি করুন | DigitEarn — সাথে সাথে ৳১০ বোনাস">
+<meta property="og:description" content="রেজিস্ট্রেশনে সাথে সাথে ৳১০ বোনাস! ডিজিটাল টাস্ক করে প্রতিদিন টাকা আর্ন করুন।">
+<meta property="og:url" content="https://digitearn.vercel.app/register.html">
+<meta property="og:image" content="https://digitearn.vercel.app/logo.png">
+<meta name="twitter:card" content="summary">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="phone auth-page">
+  <div class="auth-wrap">
+    <div class="tab-switch">
+      <a href="/login.html">Log In</a>
+      <a href="/register.html" class="active">Sign Up</a>
+    </div>
+    <div class="auth-card">
+      <img src="/logo.png" alt="DigitEarn লোগো" class="auth-logo">
+      <h1 class="auth-title">Create Account</h1>
+      <p class="auth-sub">Start your earning journey with DigitEarn</p>
+      <div id="registerError"></div>
+
+      <div class="video-card">
+        <p class="video-note">আইডি এ্যাক্টিভ ছাড়াও কিভাবে কাজ করবেন<br>ভিডিও টি দেখে নিন</p>
+        <div id="registerVideo" class="video-box"></div>
+      </div>
+
+      <form id="registerForm" method="post" action="#">
+        <div class="field">
+          <div class="field-box">
+<i class="fa-solid fa-gift left"></i>
+          <input type="text" id="refCode" name="ref_code" placeholder="Referral Code (Required)" autocomplete="off" required>
+          </div>
+          <span class="field-msg" id="msgRef"></span>
+          <span class="ref-hint">Referral code কোথায়? — যে user আপনাকে join করতে বলেছে, তার <b>Team</b> পেজে আছে (ID নয়)</span>
+        </div>
+        <div class="field">
+          <div class="field-box">
+<i class="fa-solid fa-user left"></i>
+          <input type="text" name="full_name" placeholder="Full Name" required autocomplete="name">
+          </div>
+          <span class="field-msg" id="msgName"></span>
+        </div>
+        <div class="field">
+          <div class="field-box">
+<i class="fa-solid fa-mobile-screen left"></i>
+          <input type="tel" name="mobile" placeholder="Bangladeshi Mobile Number" required autocomplete="tel">
+          </div>
+          <span class="field-msg" id="msgMobile"></span>
+        </div>
+        <div class="field">
+          <div class="field-box">
+<i class="fa-solid fa-envelope left"></i>
+          <input type="email" name="email" placeholder="Email Address" required autocomplete="email">
+          </div>
+          <span class="field-msg" id="msgEmail"></span>
+        </div>
+        <div class="field">
+          <div class="field-box">
+<i class="fa-solid fa-lock left"></i>
+          <input type="password" name="password" placeholder="Password" required autocomplete="new-password">
+          <button type="button" class="eye" tabindex="-1"><i class="fa-solid fa-eye"></i></button>
+          </div>
+          <span class="field-msg" id="msgPass"></span>
+        </div>
+        <div class="field">
+          <div class="field-box">
+<i class="fa-solid fa-circle-check left"></i>
+          <input type="password" name="confirm_password" placeholder="Confirm Password" required autocomplete="new-password">
+          <button type="button" class="eye" tabindex="-1"><i class="fa-solid fa-eye"></i></button>
+          </div>
+          <span class="field-msg" id="msgConfirm"></span>
+        </div>
+        <button type="submit" class="btn btn-gold btn-block">Register Now <i class="fa-solid fa-arrow-right"></i></button>
+      </form>
+      <p class="auth-switch">Already have an account? <a href="/login.html">Login here</a></p>
+    </div>
+    <div class="powered-by">POWERED BY DIGITEARN</div>
+    <p class="dev-credit"><b>Developer:</b> Ami Sayem • <a href="mailto:support.amisayem@gmail.com">support.amisayem@gmail.com</a></p>
+  </div>
+</div>
+<script type="module" src="/src/pages/register.js"></script>
+</body>
+</html>

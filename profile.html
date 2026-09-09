@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>অ্যাকাউন্ট সেটিংস | DigitEarn</title>
+<meta name="description" content="DigitEarn অ্যাকাউন্ট সেটিংস — আপনার নাম আপডেট করুন বা পাসওয়ার্ড পরিবর্তন করুন।">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://digitearn.vercel.app/profile.html">
+<link rel="icon" type="image/png" href="/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DigitEarn">
+<meta property="og:title" content="অ্যাকাউন্ট সেটিংস | DigitEarn">
+<meta property="og:url" content="https://digitearn.vercel.app/profile.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="phone">
+  <header class="app-header" id="appHeader"></header>
+  <main class="main" id="appMain">
+    <div class="profile-banner">
+      <div class="profile-avatar"><i class="fa-solid fa-user-tie"></i><span class="cam"><i class="fa-solid fa-camera"></i></span></div>
+      <h3 class="profile-title">Account Settings</h3>
+    </div>
+    <form id="profileForm" method="post" action="#" class="card profile-form">
+      <label class="fld-label">Full Name</label>
+      <input type="text" id="fullName" name="full_name" required>
+      <label class="fld-label">Email Address</label>
+      <input type="email" id="emailField" class="disabled" disabled>
+      <p class="hint">Gmail change করা যাবে না।</p>
+      <label class="fld-label">বর্তমান পাসওয়ার্ড</label>
+      <input type="password" name="current_password" placeholder="বর্তমান পাসওয়ার্ড" autocomplete="current-password">
+      <p class="hint">পাসওয়ার্ড পরিবর্তন করতে চাইলে বর্তমান পাসওয়ার্ড দিন।</p>
+      <label class="fld-label">নতুন পাসওয়ার্ড</label>
+      <input type="password" name="new_password" placeholder="নতুন পাসওয়ার্ড" minlength="6" autocomplete="new-password">
+      <button type="submit" class="btn btn-indigo btn-block">SAVE SETTINGS</button>
+    </form>
+    <div class="back-link"><a href="/dashboard.html"><i class="fa-solid fa-arrow-left"></i> Back</a></div>
+  </main>
+  <nav class="bottom-nav" id="appNav"></nav>
+</div>
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer" id="appDrawer"></aside>
+<script type="module" src="/src/pages/profile.js"></script>
+</body>
+</html>

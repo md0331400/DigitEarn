@@ -1,0 +1,152 @@
+/* Generates static SEO task pages: task/<slug>.html
+   Run automatically before `vite build` and `vite dev`. */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { TASKS, SITE } from '../src/tasks-data.js';
+
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const outDir = path.join(scriptsDir, '..', 'task'); // project root /task
+mkdirSync(outDir, { recursive: true });
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function bn(n) {
+  const map = { 0: '০', 1: '১', 2: '২', 3: '৩', 4: '৪', 5: '৫', 6: '৬', 7: '৭', 8: '৮', 9: '৯' };
+  return String(n).split('').map(c => map[c] ?? c).join('');
+}
+
+function head({ title, description, urlPath, jsonLd }) {
+  const canonical = `${SITE.url}${urlPath}`;
+  return `<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(description)}">
+<meta name="keywords" content="ডিজিটাল টাস্ক, টাকা আর্ন, online earn bangladesh, ${esc(title.replace(' | DigitEarn', ''))}">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="${canonical}">
+<link rel="icon" type="image/png" href="/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${SITE.name}">
+<meta property="og:locale" content="bn_BD">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:url" content="${canonical}">
+<meta property="og:image" content="${SITE.url}/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(description)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="application/ld+json">${jsonLd}</script>
+</head>`;
+}
+
+for (const t of TASKS) {
+  const urlPath = `/task/${t.slug}.html`;
+  const canonical = `${SITE.url}${urlPath}`;
+  const jsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    name: `${t.nameEn} Task — DigitEarn`,
+    description: t.seo.description,
+    url: canonical,
+    provider: { '@type': 'Organization', name: SITE.name, url: SITE.url },
+    areaServed: 'BD',
+    offers: { '@type': 'Offer', description: 'প্রতিদিন ৳' + bn(t.reward) + ' রিওয়ার্ড — একাউন্ট অ্যাক্টিভ করলেই আর্ন শুরু' },
+  }).replace(/</g, '\\u003c');
+
+  const stepsHtml = t.steps.map((s, i) => `            <li><span class="step-num">${i + 1}</span>${esc(s)}</li>`).join('\n');
+  const crumbJson = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'হোম', item: SITE.url + '/' },
+      { '@type': 'ListItem', position: 2, name: t.nameBn, item: canonical },
+    ],
+  }).replace(/</g, '\\u003c');
+
+  const html = `${head({ title: t.seo.title, description: t.seo.description, urlPath, jsonLd })}
+<body data-task-slug="${t.slug}">
+<div class="phone task-page">
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo.png" alt="${SITE.name} লোগো" width="34" height="34"><span>${SITE.name}</span></a>
+    <nav class="header-actions" aria-label="হেডার মেনু">
+      <a href="/dashboard.html" class="btn btn-ghost btn-sm" id="hdrDash">Dashboard</a>
+      <a href="/register.html" class="btn btn-gold btn-sm" id="hdrReg">Register</a>
+    </nav>
+  </header>
+
+  <main class="main task-main">
+    <nav class="crumbs" aria-label="breadcrumb">
+      <a href="/">হোম</a> <span>›</span> <b>${esc(t.nameBn)} টাস্ক</b>
+    </nav>
+
+    <div class="card task-hero" style="--task-color:${t.color}">
+      <div class="task-hero-top">
+        <div class="task-ico" style="color:${t.color};background:${t.color}14"><i class="${t.icon}"></i></div>
+        <div>
+          <h1>${esc(t.nameBn)}</h1>
+          <span class="reward-pill">প্রতিদিন ৳${t.reward} রিওয়ার্ড</span>
+          ${t.locked ? '<span class="lock-pill"><i class="fa-solid fa-lock"></i> শীঘ্রই খুলবে</span>' : ''}
+        </div>
+      </div>
+    </div>
+
+    <div id="taskVideo"></div>
+
+    <div class="card">
+      <h2 class="sec-title">কীভাবে কাজ করবেন</h2>
+      <ol class="steps" id="taskSteps">
+${stepsHtml}
+      </ol>
+      <div id="taskActions" data-reward="${t.reward}">
+        <p class="muted claim-hint">লগইন করে টাস্ক সম্পন্ন করলে প্রতিদিন ৳${t.reward} ব্যালেন্সে যোগ হবে।</p>
+        <a href="/login.html?next=/task/${t.slug}.html" class="btn btn-gold btn-block">লগইন করে Claim করুন</a>
+        <a href="/register.html" class="btn btn-outline-gold btn-block">নতুন? আইডি তৈরি করুন (৳১০ বোনাস)</a>
+      </div>
+    </div>
+
+    <div class="card more-card">
+      <h2 class="sec-title">আরও টাস্ক দেখুন</h2>
+      <div class="more-list">
+        ${TASKS.filter(x => x.slug !== t.slug).slice(0, 6).map(x => `<a href="/task/${x.slug}.html"><i class="${x.icon}" style="color:${x.color}"></i> ${esc(x.nameBn)} <b>৳${x.reward}</b></a>`).join('\n        ')}
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="foot-grid">
+      <div>
+        <img src="/logo.png" alt="${SITE.name}" width="40" height="40">
+        <p class="muted" style="font-size:13px;margin-top:8px">সহজ ডিজিটাল টাস্ক করে প্রতিদিন টাকা আর্ন করুন — কাজ শেষ করলেই রিওয়ার্ড! 💰</p>
+      </div>
+      <div>
+        <b>কুইক লিংক</b>
+        <a href="/register.html">রেজিস্টার</a>
+        <a href="/gift.html">গিফট কোড</a>
+        <a href="/target.html">টার্গেট বোনাস</a>
+        <a href="/help.html">সাপোর্ট</a>
+      </div>
+      <div>
+        <b>টাস্কসমূহ</b>
+        ${TASKS.slice(0, 5).map(x => `<a href="/task/${x.slug}.html">${esc(x.nameBn)}</a>`).join('\n        ')}
+      </div>
+    </div>
+    <p class="foot-copy">© ${new Date().getFullYear()} ${SITE.name} — All rights reserved.</p>
+  </footer>
+  <script type="application/ld+json">${crumbJson}</script>
+</div>
+<script src="/src/pages/task.js" type="module"></script>
+</body>
+</html>`;
+
+  writeFileSync(path.join(outDir, `${t.slug}.html`), html);
+  console.log(`[gen] task/${t.slug}.html`);
+}
+console.log(`[gen] ${TASKS.length} task pages generated`);
