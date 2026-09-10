@@ -27,6 +27,15 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // settings/site → public read (siteName, links, rates…)
+    // settings/secret → গিফট কোডের মতো গোপন মান; browser থেকে read সম্পূর্ণ বন্ধ,
+    //                   শুধু server (Admin SDK) পড়ে। Admin panel লিখতে পারে।
+    match /settings/secret {
+      allow get, list: if false;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
     match /settings/{docId} {
       allow get: if true;
       allow list: if false;
@@ -43,6 +52,14 @@ service cloud.firestore {
     match /refs/{code} {
       allow get: if true;
       allow list, create, update, delete: if false;
+    }
+
+    // ---------- accountKeys/ — duplicate account-sale guard (server-only) ----------
+    // এখানে বিক্রি হয়ে যাওয়া account-এর hash key থাকে। কেউ browser থেকে পড়তে/লিখতে
+    // পারবে না — নাহলে কোন account আগে বিক্রি হয়েছে তা enumerate করা যেত।
+    match /accountKeys/{key} {
+      allow get, list: if false;
+      allow create, update, delete: if false;
     }
 
     // ---------- top-level review queues (admin-only; write শুধু server-এ) ----------

@@ -1,12 +1,13 @@
 /* POST /api/deposit/submit — one-time activation fee deposit request (amount server-এর, status=pending).
    Approve শুধু admin API-তে। */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isMobile } from '../../lib/http.js';
+import { cors, fail, ok, readBody, verifyUser, isMobile } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const METHODS = ['bkash', 'nagad', 'rocket'];
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const user = await verifyUser(req);
   if (!user) return fail(res, 401, 'Login required');
@@ -26,7 +27,7 @@ export default async function handler(req, res) {
   const amount = Math.max(0, Number(settings.activationFee) || 0); // amount server-এর — client-এর amount ignore
 
   const userRef = db.collection('users').doc(uid);
-  const pendingQ = await db.collection('users', uid, 'deposits').where('status', '==', 'pending').limit(1).get();
+  const pendingQ = await db.collection('users').doc(uid).collection('deposits').where('status', '==', 'pending').limit(1).get();
   if (!pendingQ.empty) return fail(res, 409, 'আপনার একটা deposit ইতিমধ্যে review-এ আছে — অপেক্ষায় থাকুন');
 
   const now = FieldValue.serverTimestamp();
@@ -42,7 +43,7 @@ export default async function handler(req, res) {
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
       if (userSnap.data().isActive) throw new Error('আপনার একাউন্ট ইতিমধ্যে অ্যাক্টিভ');
-      tx.set(db.collection('users', uid, 'deposits').doc(did), depositData);
+      tx.set(db.collection('users').doc(uid).collection('deposits').doc(did), depositData);
       // admin review queue (top-level mirror)
       tx.set(db.collection('deposits').doc(did), { ...depositData, userId: uid });
     });

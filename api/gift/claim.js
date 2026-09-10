@@ -1,6 +1,6 @@
 /* POST /api/gift/claim — trusted gift code reward (atomic, server-side code+amount). */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser } from '../../lib/http.js';
+import { cors, fail, ok, readBody, verifyUser } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 function today() {
@@ -9,6 +9,7 @@ function today() {
 }
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const user = await verifyUser(req);
   if (!user) return fail(res, 401, 'Login required');
@@ -20,14 +21,20 @@ export default async function handler(req, res) {
   const uid = user.uid;
   const sSnap = await db.collection('settings').doc('site').get();
   const settings = sSnap.exists ? sSnap.data() : {};
-  const activeCode = String(settings.giftCode || '').trim();
+  /* SECURITY: আসল কোড settings/secret-এ (rules-এ সম্পূর্ণ read-blocked)।
+     settings/site public read, তাই সেখানে কোড রাখলে যে কেউ browser console
+     থেকে আজকের গিফট কোড পড়ে নিতে পারত। Legacy fallback রাখা হয়েছে যাতে
+     পুরনো deploy-এ কোড না থাকলেও ভাঙে না — admin panel secret doc-এ লেখে। */
+  const secSnap = await db.collection('settings').doc('secret').get();
+  const secret = secSnap.exists ? secSnap.data() : {};
+  const activeCode = String(secret.giftCode ?? settings.giftCode ?? '').trim();
   if (!activeCode || code.toLowerCase() !== activeCode.toLowerCase()) {
     return fail(res, 400, 'কোডটি সঠিক নয় — কোড আমাদের টেলিগ্রাম চ্যানেলে দেওয়া হয়');
   }
   const reward = Math.max(0, Math.min(300, Number(settings.giftReward) || 0));
   if (reward <= 0) return fail(res, 400, 'গিফট বোনাস সেট করা নেই');
 
-  const claimRef = db.collection('users', uid, 'giftClaims').doc(today());
+  const claimRef = db.collection('users').doc(uid).collection('giftClaims').doc(today());
   const userRef = db.collection('users').doc(uid);
   const now = FieldValue.serverTimestamp();
   const ts = Date.now();
@@ -43,7 +50,7 @@ export default async function handler(req, res) {
       const d = userSnap.data();
       tx.set(claimRef, { code, reward, claimedOn: today(), createdAt: now });
       tx.update(userRef, { balance: (Number(d.balance) || 0) + reward, totalEarned: (Number(d.totalEarned) || 0) + reward });
-      tx.set(db.collection('users', uid, 'transactions').doc(`g_${ts}_${rnd}`), {
+      tx.set(db.collection('users').doc(uid).collection('transactions').doc(`g_${ts}_${rnd}`), {
         amount: reward, type: 'gift_bonus', note: 'গিফট কোড বোনাস', createdAt: now,
       });
     });

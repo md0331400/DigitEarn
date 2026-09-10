@@ -3,12 +3,13 @@
    - atomic: deduct + record এক transaction-এ (balance কখনো negative হতে পারে না)
    - duplicate pending guard (pre-check + balance retry) */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isPosFinite, isMobile } from '../../lib/http.js';
+import { cors, fail, ok, readBody, verifyUser, isPosFinite, isMobile } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const METHODS = ['bKash', 'Nagad', 'Rocket'];
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const user = await verifyUser(req);
   if (!user) return fail(res, 401, 'Login required');
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
   if (amount < minW) return fail(res, 400, `ন্যূনতম উইথড্র পরিমাণ ৳${minW}`);
 
   // duplicate pending guard
-  const pendingQ = await db.collection('users', uid, 'withdrawals').where('status', '==', 'pending').limit(1).get();
+  const pendingQ = await db.collection('users').doc(uid).collection('withdrawals').where('status', '==', 'pending').limit(1).get();
   if (!pendingQ.empty) return fail(res, 409, 'আপনার একটা pending withdrawal request আছে — আগে সেটা resolve হোক');
 
   const userRef = db.collection('users').doc(uid);
@@ -46,7 +47,7 @@ export default async function handler(req, res) {
       const d = userSnap.data();
       if (!d.isActive) throw new Error('উইথড্র করতে একাউন্ট অ্যাক্টিভ করুন');
       if (amount > (Number(d.balance) || 0)) throw new Error('পর্যাপ্ত ব্যালেন্স নেই');
-      tx.set(db.collection('users', uid, 'withdrawals').doc(wdId), {
+      tx.set(db.collection('users').doc(uid).collection('withdrawals').doc(wdId), {
         uid, name, amount, method, accountNumber,
         status: 'pending', note: '',
         createdAt: now, processedAt: null,
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
         createdAt: now, processedAt: null,
       });
       tx.update(userRef, { balance: (Number(d.balance) || 0) - amount });
-      tx.set(db.collection('users', uid, 'transactions').doc(`wd_${ts}_${rnd}`), {
+      tx.set(db.collection('users').doc(uid).collection('transactions').doc(`wd_${ts}_${rnd}`), {
         amount: -amount, type: 'withdraw', note: `উইথড্র রিকোয়েস্ট (${method} • ${accountNumber})`, createdAt: now,
       });
     });

@@ -1,9 +1,10 @@
 /* POST /api/account/activate — trusted activation (bonus exactly once, server-side amount). */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, verifyUser } from '../../lib/http.js';
+import { cors, fail, ok, verifyUser } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const user = await verifyUser(req);
   if (!user) return fail(res, 401, 'Login required');
@@ -33,7 +34,7 @@ export default async function handler(req, res) {
           totalEarned: (Number(d.totalEarned) || 0) + bonus,
           activationBonusGiven: true,
         });
-        tx.set(db.collection('users', uid, 'transactions').doc(`a_${ts}_${rnd}`), {
+        tx.set(db.collection('users').doc(uid).collection('transactions').doc(`a_${ts}_${rnd}`), {
           amount: bonus, type: 'activation_bonus', note: 'একাউন্ট অ্যাক্টিভেশন বোনাস', createdAt: now,
         });
       }

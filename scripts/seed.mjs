@@ -61,7 +61,6 @@ const settings = {
   rocketNumber: '',
   referralBonus: 5,
   minWithdraw: 100,
-  giftCode: 'DIGIEARN01',
   giftReward: 5,
   targetTiers: [
     { tier: 5, bonus: 50 },
@@ -76,6 +75,14 @@ if (existingSettings.exists()) {
 } else {
   await setDoc(doc(db, 'settings', 'site'), settings);
   console.log('✅ settings/site created');
+}
+
+/* গিফট কোড আলাদা private doc-এ — settings/site public read, তাই কোড সেখানে
+   রাখলে যে কেউ browser থেকে পড়ে ফেলতে পারত (firestore.rules দেখুন)। */
+const existingSecret = await getDoc(doc(db, 'settings', 'secret'));
+if (!existingSecret.exists()) {
+  await setDoc(doc(db, 'settings', 'secret'), { giftCode: 'DIGIEARN01' });
+  console.log('✅ settings/secret created (gift code — private)');
 }
 
 let created = 0;
@@ -96,6 +103,12 @@ for (const t of TASKS) {
     sort: t.sort,
     steps: t.steps,
     videoUrl: t.videoUrl || '',
+    // marketplace fields — admin panel থেকে পরে পরিবর্তন করা যাবে
+    password: t.password || '',
+    submitLabel: t.submitLabel || '',
+    historyLabel: t.historyLabel || '',
+    dailyLimit: Number(t.dailyLimit) || 20,
+    inputFields: Array.isArray(t.inputFields) ? t.inputFields : [],
   });
   created++;
 }

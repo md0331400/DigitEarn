@@ -100,9 +100,11 @@ export async function activateAccount(uid) {
   return callApi('/api/account/activate');
 }
 
-export async function claimTask(uid, taskSlug) {
-  const data = await callApi('/api/task/claim', { taskSlug });
-  return data.reward;
+/* NOTE: direct task-claim আর নেই — marketplace model-এ টাকা শুধু admin approve-এ
+   যোগ হয় (api/proof/submit → admin proof-review)। আগে এখানে /api/task/claim কল হতো
+   যে endpoint কখনো তৈরিই হয়নি (404)। ভুল করে কেউ ব্যবহার করলে যাতে বোঝে: */
+export async function claimTask() {
+  throw new Error('Direct claim বন্ধ — account submit করুন, admin approve করলেই টাকা যোগ হবে');
 }
 
 export async function claimGift(uid, code) {
@@ -115,8 +117,9 @@ export async function claimTarget(uid, tier) {
   return data.bonus;
 }
 
+/* Account sale submit — data = { fieldLabel: value }; server task config অনুযায়ী validate করে,
+   duplicate account guard + daily limit সবই server-side। */
 export async function submitProof(uid, { taskSlug, data } = {}) {
-  // data = { fieldLabel: value } — server task config অনুযায়ী validate করে
   const r = await callApi('/api/proof/submit', { taskSlug, data: data || {} });
   return r.id;
 }
@@ -168,24 +171,24 @@ export async function getTasks() {
 export async function getTaskBySlug(slug) {
   if (!firebaseReady) return null;
   const snap = await getDoc(doc(db, 'tasks', slug));
-  return snap.exists ? { id: snap.id, ...snap.data() } : null;
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
 export async function hasClaimedToday(uid, taskSlug) {
   const snap = await getDoc(doc(db, 'users', uid, 'taskClaims', `${taskSlug}_${todayStr()}`));
-  return snap.exists;
+  return snap.exists();
 }
 
 /* ---------- gift / target (read) ---------- */
 
 export async function hasGiftClaimedToday(uid) {
   const snap = await getDoc(doc(db, 'users', uid, 'giftClaims', todayStr()));
-  return snap.exists;
+  return snap.exists();
 }
 
 export async function hasTargetClaimed(uid, tier) {
   const snap = await getDoc(doc(db, 'users', uid, 'targetClaims', String(tier)));
-  return snap.exists;
+  return snap.exists();
 }
 
 export async function teamCounts(uid) {
@@ -213,11 +216,28 @@ export async function getTodayProof(uid, taskSlug) {
   if (!firebaseReady) return null;
   // single-field query (day) + code filter — composite index লাগে না
   const day = todayStr();
-  const q = query(collection(db, 'users', uid, 'proofs'), where('day', '==', day), limit(20));
+  const q = query(collection(db, 'users', uid, 'proofs'), where('day', '==', day), limit(50));
   const snap = await getDocs(q);
   const d = snap.docs.find(x => x.data().taskSlug === taskSlug);
   if (!d) return null;
   return { id: d.id, ...d.data() };
+}
+
+/* MARKETPLACE: আজকে এই প্রজেক্টে জমা দেওয়া SOB account (একাধিক sale সাপোর্ট)।
+   নতুনগুলো আগে দেখানো হয় — composite index লাগে না (single-field where + client sort)। */
+export async function getTodaySales(uid, taskSlug) {
+  if (!firebaseReady) return [];
+  const day = todayStr();
+  const q = query(collection(db, 'users', uid, 'proofs'), where('day', '==', day), limit(100));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(x => x.taskSlug === taskSlug)
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return tb - ta;
+    });
 }
 
 export async function getMyProofs(uid, limitN = 30) {

@@ -1,20 +1,38 @@
-/* POST /api/proof/submit — TASK SUBMISSION (user-এর input fields + pending status).
-   - Balance কখনো change হয় না এখানে — reward শুধু admin approve-এ (atomic)
+/* POST /api/proof/submit — ACCOUNT SELL SUBMISSION (user যে account বিক্রি করছে তার তথ্য).
+   Marketplace model: user একদিনে একাধিক account জমা দিতে পারে (প্রতিটা আলাদা sale)।
+   - Balance কখনো change হয় না এখানে — rate শুধু admin approve-এ (atomic)
    - Submitted fields task config-এর inputFields অনুযায়ী server-side validate হয়
+   - DUPLICATE GUARD: একই account (username/email/UID) আগে জমা পড়লে reject —
+     নিজের হোক বা অন্য user-এর, একই account দুবার বিক্রি করা যাবে না
+   - Daily limit: task.dailyLimit (default 20) — spam রোধ
    - username/email server-এ user doc থেকে (client-এর কথা trust না)
    - userId = verified ID token-এর uid (client-এর uid ignore) */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isTaskSlug, isEmail } from '../../lib/http.js';
+import { cors, fail, ok, readBody, verifyUser, isTaskSlug, isEmail } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const FIELD_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url'];
+const DEFAULT_DAILY_LIMIT = 20;
 
 function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/* account identity key — যে field দিয়ে account চেনা যায় (password/2FA বাদে প্রথম field).
+   duplicate sale ধরার জন্য normalize করা হয়: lowercase + trim + @ প্রিফিক্স বাদ */
+export function accountKeyOf(taskSlug, fields, data) {
+  const idField = fields.find(f => f.type !== 'password' && String(f.label || '').trim());
+  if (!idField) return '';
+  const raw = String(data[String(idField.label).trim().slice(0, 50)] || '').trim().toLowerCase();
+  if (!raw) return '';
+  const norm = raw.replace(/^@+/, '').replace(/\s+/g, '');
+  // Firestore doc id-safe (no '/')
+  return `${taskSlug}__${norm}`.replace(/[/\\#?]/g, '_').slice(0, 200);
+}
+
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const user = await verifyUser(req);
   if (!user) return fail(res, 401, 'Login required');
@@ -25,14 +43,14 @@ export default async function handler(req, res) {
   const db = getDb();
   const uid = user.uid;
 
-  // trusted task config (server-এই পড়ে — client-এর reward/amount কখনো নয়)
+  // trusted task config (server-এই পড়ে — client-এর rate/amount কখনো নয়)
   const taskSnap = await db.collection('tasks').doc(taskSlug).get();
-  if (!taskSnap.exists) return fail(res, 404, 'Task পাওয়া যায়নি');
+  if (!taskSnap.exists) return fail(res, 404, 'Project পাওয়া যায়নি');
   const task = taskSnap.data();
-  if (task.enabled === false) return fail(res, 400, 'এই টাস্কটি বর্তমানে বন্ধ আছে');
-  if (task.locked) return fail(res, 400, 'এই টাস্কটি এখনো লক করা আছে');
+  if (task.enabled === false) return fail(res, 400, 'এই প্রজেক্টটি বর্তমানে বন্ধ আছে');
+  if (task.locked) return fail(res, 400, 'এই প্রজেক্টটি এখনো লক করা আছে');
   const reward = Number(task.reward) || 0;
-  if (reward <= 0) return fail(res, 400, 'টাস্কের রিওয়ার্ড সেট করা নেই');
+  if (reward <= 0) return fail(res, 400, 'প্রজেক্টের rate সেট করা নেই');
 
   /* ---------- submitted fields validate (per admin config) ---------- */
   const fields = Array.isArray(task.inputFields) ? task.inputFields : [];
@@ -66,15 +84,23 @@ export default async function handler(req, res) {
     if (JSON.stringify(submittedData).length > 4096) return fail(res, 400, 'Submission অনেক বড়');
   }
 
-  /* ---------- one-submission-per-day guard (pending/approved block, rejected-তে retry possible) ----------
-     single-field query (day) — composite index লাগে না */
   const day = today();
-  const existingQ = await db.collection('users', uid, 'proofs').where('day', '==', day).limit(20).get();
-  for (const d of existingQ.docs) {
-    const p = d.data();
-    if (p.taskSlug !== taskSlug) continue;
-    if (p.status !== 'rejected') return fail(res, 409, 'আজ এই টাস্কের submission আগেই আছে — review-এর অপেক্ষায় থাকুন');
+  const userProofs = db.collection('users').doc(uid).collection('proofs');
+
+  /* ---------- daily limit (spam রোধ) — একদিনে কত account বিক্রি করা যাবে ---------- */
+  const dailyLimit = Math.max(1, Math.min(200, Number(task.dailyLimit) || DEFAULT_DAILY_LIMIT));
+  const todayQ = await userProofs.where('day', '==', day).limit(dailyLimit + 50).get();
+  const todayForTask = todayQ.docs.filter(d => d.data().taskSlug === taskSlug && d.data().status !== 'rejected');
+  if (todayForTask.length >= dailyLimit) {
+    return fail(res, 429, `আজকের জন্য সর্বোচ্চ ${dailyLimit}টি account জমা দেওয়া যায় — আগামীকাল আবার চেষ্টা করুন`);
   }
+
+  /* ---------- DUPLICATE ACCOUNT GUARD ----------
+     একই account (একই username/email/UID) আগে কেউ জমা দিলে আবার নেওয়া যাবে না।
+     accountKeys/{key} একটা global reservation doc — transaction-এ create হয়,
+     তাই race condition-এও দুটো একসাথে ঢুকতে পারে না। */
+  const accountKey = accountKeyOf(taskSlug, fields, submittedData);
+  const keyRef = accountKey ? db.collection('accountKeys').doc(accountKey) : null;
 
   const userRef = db.collection('users').doc(uid);
   const now = FieldValue.serverTimestamp();
@@ -84,7 +110,7 @@ export default async function handler(req, res) {
   const proofData = {
     taskSlug, taskName: task.nameBn || taskSlug, day,
     images: [], reward, status: 'pending', note: '',
-    submittedData,
+    submittedData, accountKey,
     createdAt: now, reviewedAt: null,
   };
   try {
@@ -92,10 +118,22 @@ export default async function handler(req, res) {
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
       const u = userSnap.data();
-      if (!u.isActive) throw new Error('Submission submit করতে একাউন্ট অ্যাক্টিভ করুন');
+      if (!u.isActive) throw new Error('Account বিক্রি করতে আগে নিজের একাউন্ট অ্যাক্টিভ করুন');
+
+      if (keyRef) {
+        const kSnap = await tx.get(keyRef);
+        if (kSnap.exists) {
+          const k = kSnap.data();
+          throw new Error(k.uid === uid
+            ? 'এই account আপনি আগেই জমা দিয়েছেন — অন্য account দিন'
+            : 'এই account আগেই বিক্রি হয়ে গেছে — অন্য account দিন');
+        }
+        tx.set(keyRef, { uid, taskSlug, proofId: pid, createdAt: now });
+      }
+
       proofData.username = u.name || '';
       proofData.userEmail = u.email || '';
-      tx.set(db.collection('users', uid, 'proofs').doc(pid), proofData);
+      tx.set(userProofs.doc(pid), proofData);
       // admin review queue (top-level mirror)
       tx.set(db.collection('proofs').doc(pid), { ...proofData, userId: uid });
     });

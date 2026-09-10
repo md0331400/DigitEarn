@@ -1,10 +1,11 @@
 /* POST /api/user/ensure — profile doc না থাকলে server-side heal (legacy session).
    নতুন user না — বোনাস দেওয়া হয় না (farming-এর রোধে)। */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, verifyUser } from '../../lib/http.js';
+import { cors, fail, ok, verifyUser } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const user = await verifyUser(req);
   if (!user) return fail(res, 401, 'Login required');

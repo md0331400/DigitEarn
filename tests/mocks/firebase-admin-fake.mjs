@@ -4,6 +4,7 @@ import { makeDb } from './firestore-fake.mjs';
 export const TOKENS = {
   TOKEN_ALICE: { uid: 'alice', email: 'alice@test.com' },
   TOKEN_BOB: { uid: 'bob', email: 'bob@test.com' },
+  TOKEN_CAROL: { uid: 'carol', email: 'carol@test.com' },
   TOKEN_ADMIN: { uid: 'admin1', email: 'admin@digitearn.com' },
 };
 

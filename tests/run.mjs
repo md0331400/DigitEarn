@@ -80,9 +80,21 @@ console.log('\n[2] FAKE REWARD / FAKE UID IGNORED');
   check('status = pending', saved.status === 'pending');
   check('balance NOT changed (still 0)', store.docs['users/alice'].balance === 0);
 
+  // MARKETPLACE: একই দিনে আরেকটা ভিন্ন account বিক্রি করা যাবে (one-per-day নয়)
   r = res();
-  await submitH(req('POST', auth('TOKEN_ALICE'), { taskSlug: 'facebook-account', data: { Email: 'x@y.com', Password: 'z' } }), r);
-  check('duplicate same-day submission → 409 (one per user+task+date)', r.statusCode === 409, `(got ${r.statusCode})`);
+  await submitH(req('POST', auth('TOKEN_ALICE'), { taskSlug: 'facebook-account', data: { Email: 'alice2@fb.com', Password: 'pw999' } }), r);
+  check('2nd DIFFERENT account same day → 200 (marketplace allows multiple sales)', r.statusCode === 200, `(got ${r.statusCode} ${r.body})`);
+  check('now 2 submissions stored for alice',
+    Object.keys(store.docs).filter(k => k.startsWith('users/alice/proofs/')).length === 2);
+
+  // DUPLICATE ACCOUNT GUARD: একই account আবার জমা দিলে reject
+  r = res();
+  await submitH(req('POST', auth('TOKEN_ALICE'), { taskSlug: 'facebook-account', data: { Email: 'alice@fb.com', Password: 'other' } }), r);
+  check('SAME account resubmitted by same user → 409 (duplicate guard)', r.statusCode === 409, `(got ${r.statusCode})`);
+
+  r = res();
+  await submitH(req('POST', auth('TOKEN_BOB'), { taskSlug: 'facebook-account', data: { Email: 'ALICE@fb.com ', Password: 'x' } }), r);
+  check('SAME account submitted by ANOTHER user → 409 (case/space-insensitive)', r.statusCode === 409, `(got ${r.statusCode})`);
 
   r = res();
   await submitH(req('POST', auth('TOKEN_BOB'), { taskSlug: 'facebook-account', userId: 'alice', data: { Email: 'bob@fb.com', Password: 'pw456' } }), r);

@@ -416,6 +416,7 @@ function fieldRowHtml(f = {}) {
   return `<div class="if-row" data-if-row>
     <input class="adm-input if-label" placeholder="Field name (যেমন: Email)" value="${esc(f.label || '')}" maxlength="40">
     <select class="adm-input if-type">${TF_TYPES.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <input class="adm-input if-ph" placeholder="Placeholder (খালি রাখলে default)" value="${esc(f.placeholder || '')}" maxlength="60">
     <label class="chk if-req"><input type="checkbox" data-ifreq ${f.required ? 'checked' : ''}> Required</label>
     <button type="button" class="adm-btn red sm if-del" data-ifdel><i class="fa-solid fa-trash"></i></button>
   </div>`;
@@ -452,8 +453,13 @@ async function viewTasks(main) {
             <div><label>Amount / Reward (৳)</label><input type="number" step="0.5" class="adm-input" data-f="reward" value="${Number(t.reward) || 0}"></div>
             <div><label>Sort order</label><input type="number" class="adm-input" data-f="sort" value="${Number(t.sort) || 10}"></div>
           </div>
-          <label>Task Password / Instruction (user-কে দেখাতে হবে? খালি রাখলে hide)</label><input class="adm-input" data-f="password" value="${esc(t.password || '')}" maxlength="60">
-          <label>Description / Instructions (task page-এ description)</label><textarea class="adm-input" data-f="description" rows="3" maxlength="300">${esc(t.description || '')}</textarea>
+          <label>Account Password (seller যে পাসওয়ার্ড সেট করবে — খালি রাখলে hide)</label><input class="adm-input" data-f="password" value="${esc(t.password || '')}" maxlength="60">
+          <label>Description / Instructions (project page-এ description)</label><textarea class="adm-input" data-f="description" rows="3" maxlength="300">${esc(t.description || '')}</textarea>
+          <div class="two-col">
+            <div><label>Submit বাটনের লেখা</label><input class="adm-input" data-f="submitLabel" value="${esc(t.submitLabel || '')}" placeholder="SUBMIT GMAIL" maxlength="40"></div>
+            <div><label>History বাটনের লেখা</label><input class="adm-input" data-f="historyLabel" value="${esc(t.historyLabel || '')}" placeholder="View Gmail History" maxlength="40"></div>
+          </div>
+          <label>দৈনিক সর্বোচ্চ কয়টি account জমা দেওয়া যাবে (per seller)</label><input type="number" min="1" max="200" class="adm-input" data-f="dailyLimit" value="${Number(t.dailyLimit) || 20}">
           ${inputFieldsEditorHtml(t)}
           <label>Video URL (YouTube link বা mp4) — task page-এ guide video</label><input class="adm-input" data-f="videoUrl" value="${esc(t.videoUrl || '')}">
           <div class="two-col">
@@ -496,6 +502,7 @@ async function viewTasks(main) {
     const inputFields = [...card.querySelectorAll('[data-ifrows] [data-if-row]')].map(r => ({
       label: r.querySelector('.if-label').value.trim(),
       type: r.querySelector('.if-type').value,
+      placeholder: r.querySelector('.if-ph')?.value.trim() || '',
       required: r.querySelector('[data-ifreq]').checked,
     })).filter(x => x.label);
     btn.disabled = true;
@@ -507,6 +514,9 @@ async function viewTasks(main) {
         sort: Number(f('sort').value) || 10,
         password: f('password').value.trim(),
         description: f('description').value.trim(),
+        submitLabel: f('submitLabel').value.trim(),
+        historyLabel: f('historyLabel').value.trim(),
+        dailyLimit: Math.max(1, Math.min(200, Number(f('dailyLimit').value) || 20)),
         inputFields,
         videoUrl: f('videoUrl').value.trim(),
         enabled: f('enabled').checked,

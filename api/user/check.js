@@ -3,9 +3,10 @@
    Anonymous (token লাগে না) — response-এ শুধু boolean + নাম, কোনো sensitive data না।
    Actual account creation শুধু /api/user/register-এ (verified token + valid ref code)। */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, readBody, isEmail, isMobile } from '../../lib/http.js';
+import { cors, fail, ok, readBody, isEmail, isMobile } from '../../lib/http.js';
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const body = await readBody(req);
   const email = String(body.email || '').trim();

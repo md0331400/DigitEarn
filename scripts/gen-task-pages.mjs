@@ -58,7 +58,7 @@ for (const t of TASKS) {
     url: canonical,
     provider: { '@type': 'Organization', name: SITE.name, url: SITE.url },
     areaServed: 'BD',
-    offers: { '@type': 'Offer', description: 'প্রতিদিন ৳' + bn(t.reward) + ' রিওয়ার্ড — একাউন্ট অ্যাক্টিভ করলেই আর্ন শুরু' },
+    offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(t.reward), description: 'প্রতি account ৳' + bn(t.reward) + ' — account জমা দিন, approve হলেই টাকা' },
   }).replace(/</g, '\\u003c');
 
   const stepsHtml = t.steps.map((s, i) => `            <li><span class="step-num">${i + 1}</span>${esc(s)}</li>`).join('\n');
@@ -84,7 +84,7 @@ for (const t of TASKS) {
 
   <main class="main task-main">
     <nav class="crumbs" aria-label="breadcrumb">
-      <a href="/">হোম</a> <span>›</span> <b>${esc(t.nameBn)} টাস্ক</b>
+      <a href="/">হোম</a> <span>›</span> <b>${esc(t.nameBn)}</b>
     </nav>
 
     <div class="card task-hero" style="--task-color:${t.color}">
@@ -92,7 +92,7 @@ for (const t of TASKS) {
         <div class="task-ico" style="color:${t.color};background:${t.color}14"><i class="${t.icon}"></i></div>
         <div>
           <h1>${esc(t.nameBn)}</h1>
-          <span class="reward-pill">প্রতিদিন ৳${t.reward} রিওয়ার্ড</span>
+          <span class="reward-pill">Rate: ৳${Number(t.reward).toFixed(2)}</span>
           ${t.locked ? '<span class="lock-pill"><i class="fa-solid fa-lock"></i> শীঘ্রই খুলবে</span>' : ''}
         </div>
       </div>
@@ -101,19 +101,19 @@ for (const t of TASKS) {
     <div id="taskVideo"></div>
 
     <div class="card">
-      <h2 class="sec-title">কীভাবে কাজ করবেন</h2>
+      <h2 class="sec-title">কীভাবে বিক্রি করবেন</h2>
       <ol class="steps" id="taskSteps">
 ${stepsHtml}
       </ol>
       <div id="taskActions" data-reward="${t.reward}">
-        <p class="muted claim-hint">লগইন করে টাস্ক সম্পন্ন করলে প্রতিদিন ৳${t.reward} ব্যালেন্সে যোগ হবে।</p>
-        <a href="/login.html?next=/task/${t.slug}.html" class="btn btn-gold btn-block">লগইন করে Claim করুন</a>
+        <p class="muted claim-hint">লগইন করে account জমা দিন — admin approve করলেই ৳${Number(t.reward).toFixed(2)} ব্যালেন্সে যোগ হবে।</p>
+        <a href="/login.html?next=/task/${t.slug}.html" class="btn btn-gold btn-block">লগইন করে Account জমা দিন</a>
         <a href="/register.html" class="btn btn-outline-gold btn-block">নতুন? আইডি তৈরি করুন (৳১০ বোনাস)</a>
       </div>
     </div>
 
     <div class="card more-card">
-      <h2 class="sec-title">আরও টাস্ক দেখুন</h2>
+      <h2 class="sec-title">আরও প্রজেক্ট দেখুন</h2>
       <div class="more-list">
         ${TASKS.filter(x => x.slug !== t.slug).slice(0, 6).map(x => `<a href="/task/${x.slug}.html"><i class="${x.icon}" style="color:${x.color}"></i> ${esc(x.nameBn)} <b>৳${x.reward}</b></a>`).join('\n        ')}
       </div>
@@ -124,7 +124,7 @@ ${stepsHtml}
     <div class="foot-grid">
       <div>
         <img src="/logo.png" alt="${SITE.name}" width="40" height="40">
-        <p class="muted" style="font-size:13px;margin-top:8px">সহজ ডিজিটাল টাস্ক করে প্রতিদিন টাকা আর্ন করুন — কাজ শেষ করলেই রিওয়ার্ড! 💰</p>
+        <p class="muted" style="font-size:13px;margin-top:8px">Facebook, Gmail, Instagram account বিক্রি করে টাকা আর্ন করুন — approve হলেই পেমেন্ট! 💰</p>
       </div>
       <div>
         <b>কুইক লিংক</b>
@@ -134,7 +134,7 @@ ${stepsHtml}
         <a href="/help.html">সাপোর্ট</a>
       </div>
       <div>
-        <b>টাস্কসমূহ</b>
+        <b>প্রজেক্টসমূহ</b>
         ${TASKS.slice(0, 5).map(x => `<a href="/task/${x.slug}.html">${esc(x.nameBn)}</a>`).join('\n        ')}
       </div>
     </div>

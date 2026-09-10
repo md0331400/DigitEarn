@@ -123,7 +123,7 @@ export async function listUsers(limitN = 300) {
 
 export async function getUser(uid) {
   const s = await getDoc(doc(db, 'users', uid));
-  return s.exists ? { uid, ...s.data() } : null;
+  return s.exists() ? { uid, ...s.data() } : null;
 }
 
 export async function getUserWithdrawals(uid, limitN = 20) {
@@ -156,11 +156,15 @@ export async function saveTask(slug, data) {
     throw new Error('Task URL শুধু http/https হতে পারে (javascript:/data: allowed না)');
   }
   const clean = { ...data, updatedAt: serverTimestamp() };
+  if (data.dailyLimit !== undefined) {
+    clean.dailyLimit = Math.max(1, Math.min(200, Number(data.dailyLimit) || 20));
+  }
   if (Array.isArray(data.inputFields)) {
     clean.inputFields = data.inputFields
       .map(f => ({
         label: String(f.label || '').trim().slice(0, 50),
         type: ['text', 'email', 'password', 'tel', 'number', 'url'].includes(f.type) ? f.type : 'text',
+        placeholder: String(f.placeholder || '').trim().slice(0, 60),
         required: !!f.required,
       }))
       .filter(f => f.label);
@@ -171,10 +175,19 @@ export async function saveTask(slug, data) {
   await setDoc(doc(db, 'tasks', slug), clean, { merge: true });
 }
 
-/* ---------- settings ---------- */
+/* ---------- settings ----------
+   settings/site   → public (siteName, links, rates…)
+   settings/secret → গোপন মান (giftCode) — user browser থেকে read blocked */
+const SECRET_KEYS = ['giftCode'];
+
 export async function getSettings() {
-  const s = await getDoc(doc(db, 'settings', 'site'));
-  return s.exists ? s.data() : {};
+  const [s, sec] = await Promise.all([
+    getDoc(doc(db, 'settings', 'site')),
+    getDoc(doc(db, 'settings', 'secret')).catch(() => null),
+  ]);
+  const base = s.exists() ? s.data() : {};
+  const secret = sec && sec.exists() ? sec.data() : {};
+  return { ...base, ...secret };
 }
 
 /* ---------- withdrawals (admin review) ---------- */
@@ -190,7 +203,16 @@ export async function reviewWithdrawal(userId, id, action, note = '') {
 }
 
 export async function saveSettings(data) {
-  await setDoc(doc(db, 'settings', 'site'), data, { merge: true });
+  // গোপন key গুলো আলাদা doc-এ — settings/site public read, তাই সেখানে গেলে leak হতো
+  const pub = { ...data };
+  const secret = {};
+  for (const k of SECRET_KEYS) {
+    if (k in pub) { secret[k] = pub[k]; delete pub[k]; }
+  }
+  await setDoc(doc(db, 'settings', 'site'), pub, { merge: true });
+  if (Object.keys(secret).length) {
+    await setDoc(doc(db, 'settings', 'secret'), secret, { merge: true });
+  }
 }
 
 /* ---------- notices ----------

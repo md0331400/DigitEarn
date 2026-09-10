@@ -1,10 +1,11 @@
 /* POST /api/user/register — referral-সহ রেজিস্ট্রেশন (server-side trusted).
    Auth user client-এ তৈরি হয়; user doc + bonus + referral credit সম্পূর্ণ server-side atomic। */
 import { getDb } from '../../lib/firebase-admin.js';
-import { fail, ok, readBody, verifyUser, isNonEmptyStr, isMobile, isEmail } from '../../lib/http.js';
+import { cors, fail, ok, readBody, verifyUser, isNonEmptyStr, isMobile, isEmail } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
   const user = await verifyUser(req);
   if (!user) return fail(res, 401, 'Login required');
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
     });
     tx.set(db.collection('refs').doc(newRefCode), { uid });
     if (regBonus > 0) {
-      tx.set(db.collection('users', uid, 'transactions').doc(`r_${ts}_${rnd}`), {
+      tx.set(db.collection('users').doc(uid).collection('transactions').doc(`r_${ts}_${rnd}`), {
         amount: regBonus, type: 'register_bonus', note: 'রেজিস্ট্রেশন বোনাস', createdAt: now,
       });
     }
@@ -71,11 +72,11 @@ export default async function handler(req, res) {
             balance: (Number(rSnap.data().balance) || 0) + refBonus,
             totalEarned: (Number(rSnap.data().totalEarned) || 0) + refBonus,
           });
-          tx.set(db.collection('users', refBy, 'transactions').doc(`ref_${ts}_${rnd}`), {
+          tx.set(db.collection('users').doc(refBy).collection('transactions').doc(`ref_${ts}_${rnd}`), {
             amount: refBonus, type: 'referral_bonus', note: `নতুন রেফারেল: ${name}`, uid, refBy, createdAt: now,
           });
         }
-        tx.set(db.collection('users', refBy, 'team').doc(uid), {
+        tx.set(db.collection('users').doc(refBy).collection('team').doc(uid), {
           refBy, name, refCode: newRefCode, isActive: false, createdAt: now,
         });
       }
