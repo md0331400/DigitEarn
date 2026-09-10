@@ -25,33 +25,6 @@ const HANDLERS = {
   'set-active': handleSetActive,
   'withdrawal-review': handleWithdrawalReview,
   'notice-targeted': handleNoticeTargeted,
-  health: async (req, res) => {
-    // Diagnostic: env var presence booleans + cert() error code (no secrets)
-    const env = {
-      FIREBASE_TYPE: !!process.env.FIREBASE_TYPE,
-      FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
-      FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
-    };
-    // cert() error info (no private key data)
-    let certError = null;
-    try {
-      const admin = require('firebase-admin');
-      // Just check if the module loads; actual cert() won't run without keys
-      if (admin && admin.credential) {
-        // Probe: attempt a non-destructive check of credential config
-        const cred = admin.credential.cert;
-        // If we have the private key env var, try to detect common misconfig
-        if (process.env.FIREBASE_PRIVATE_KEY) {
-          // Check if the private key format looks valid (starts with "-----BEGIN")
-          const keyPreview = process.env.FIREBASE_PRIVATE_KEY.substring(0, 20);
-          certError = keyPreview.startsWith('-----BEGIN') ? null : 'possible malformed private key';
-        }
-      }
-    } catch (e) {
-      certError = 'cert() check failed: ' + (e.message || 'unknown');
-    }
-    return ok(res, { env, certError });
-  },
 };
 
 export default async function handler(req, res) {
