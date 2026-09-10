@@ -1,7 +1,6 @@
 /* Shared UI: header, drawer, bottom nav, toast, timer, marquee, app bootstrap. */
 import { auth, db, firebaseReady, notConfiguredMsg } from './firebase.js';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
 import { getSettings, getUserDoc } from './store.js';
 import { TASKS, INTERNAL_PAGES, SITE } from '../tasks-data.js';
 
@@ -253,12 +252,7 @@ export async function bootAppPage({ active = 'home', onReady }) {
     location.replace('/login.html');
   });
 
-  // Keep activation status fresh. Admin activation is reflected without a reload,
-  // and pages can re-render their submit controls immediately.
-  const stopProfileWatch = onSnapshot(doc(db, 'users', user.uid), snap => {
-    if (snap.exists()) onReady && onReady({ uid: user.uid, user: { ...profile, ...snap.data() }, settings, profileUpdate: true });
-  });
-  onReady && onReady({ uid: user.uid, user: profile, settings, profileUpdate: false, stopProfileWatch });
+  onReady && onReady({ uid: user.uid, user: profile, settings });
 }
 
 export { SITE };
