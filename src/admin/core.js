@@ -9,10 +9,23 @@ import {
 } from 'firebase/firestore';
 
 /* Config order:
-   1. window.__DIGITEARN_FB_CONFIG__ — Android APK-তে app assets-এর firebase.json
-      file read করে inject করে (user নিজে সেট করে)
-   2. import.meta.env.VITE_* — web build (Vercel env vars) */
-const appCfg = (typeof window !== 'undefined' && window.__DIGITEARN_FB_CONFIG__) || {};
+   1. Android APK: window.DigitEarnBridge.getFirebaseConfig() — native bridge,
+      synchronous, page load timing-এর উপর নির্ভর করে না (সবচেয়ে নির্ভরযোগ্য)
+   2. window.__DIGITEARN_FB_CONFIG__ — evaluateJavascript injection (fallback)
+   3. import.meta.env.VITE_* — web build (Vercel env vars)
+   আগে শুধু (2) ছিল — WebView-তে onPageStarted injection না পৌঁছালে panel খালি
+   config দিয়ে boot হয়ে "Firebase env variables set নেই" দেখাত। */
+function readAppConfig() {
+  try {
+    const bridge = typeof window !== 'undefined' && window.DigitEarnBridge;
+    if (bridge && typeof bridge.getFirebaseConfig === 'function') {
+      const raw = String(bridge.getFirebaseConfig() || '');
+      if (raw.length > 2) return JSON.parse(raw) || {};
+    }
+  } catch (_) {}
+  return (typeof window !== 'undefined' && window.__DIGITEARN_FB_CONFIG__) || {};
+}
+const appCfg = readAppConfig();
 const envCfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -31,11 +44,12 @@ const cfg = {
 };
 export const firebaseReady = !!(cfg.apiKey && cfg.projectId && cfg.appId);
 
-/* APK-তে (file:// origin) server API-তে absolute URL লাগে; web-এ same-origin */
-export const API_BASE =
-  typeof location !== 'undefined' && location.protocol === 'file:'
-    ? 'https://digitearn.vercel.app'
-    : '';
+/* APK-তে (file:// origin) server API-তে absolute URL লাগে; web-এ same-origin।
+   BUGFIX: আগে শুধু 'file:' দেখা হতো — WebView loadData/other shell origin
+   (about:, content:, capacitor://) হলে relative URL fetch fail করত।
+   এখন http/https ছাড়া যেকোনো origin-ই absolute base নেয়। */
+const isWebOrigin = typeof location !== 'undefined' && /^https?:$/.test(location.protocol);
+export const API_BASE = isWebOrigin ? '' : 'https://digitearn.vercel.app';
 
 const app = initializeApp(cfg);
 export const auth = getAuth(app);
@@ -58,26 +72,70 @@ export async function callApi(path, body = {}, method = 'POST') {
   let url = path;
   const m = String(path).match(/^\/api\/admin\/([a-z0-9-]+)/);
   if (m) url = '/api/admin/panel?op=' + encodeURIComponent(m[1]);
-  const cu = auth.currentUser;
-  if (!cu) throw new Error('Login required');
-  const token = await cu.getIdToken();
-  const resp = await fetch(API_BASE + url, {
-    method,
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: method === 'GET' ? undefined : JSON.stringify(body),
-  });
-  let data = {};
-  try { data = await resp.json(); } catch (_) {}
-  if (!resp.ok) throw new Error(data.error || 'Operation fail হয়েছে — আবার চেষ্টা করুন');
-  return data;
+  const send = async (forceRefresh) => {
+    const cu = auth.currentUser;
+    if (!cu) throw new Error('Login required — আবার লগইন করুন');
+    const resp = await fetch(API_BASE + url, {
+      method,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await cu.getIdToken(forceRefresh)) },
+      body: method === 'GET' ? undefined : JSON.stringify(body),
+    });
+    /* text() আগে, তারপর parse — Vercel protection page / build error HTML এলে
+       resp.json() ফেল করলে error message পুরোপুরি হারাত ("Operation fail হয়েছে") */
+    let raw = '';
+    try { raw = await resp.text(); } catch (_) {}
+    let data = null;
+    try { data = raw ? JSON.parse(raw) : {}; } catch (_) {}
+    return { resp, data: data || {}, isJson: !!data };
+  };
+  let r = await send(false);
+  /* ID token ~১ ঘণ্টা পর expire। APK দিন-তিনেক বন্ধ থাকলে admin-এর ক্যাশ করা token
+     নিয়ে approve/reject চাপা হতো → server 401 → "Login required" (admin বারবার
+     লগইন করত)। এখন force-refresh করে একবার retry হয়। */
+  if (!r.resp.ok && (r.resp.status === 401 || r.data.sessionExpired === true)) r = await send(true);
+  if (!r.resp.ok) {
+    const d = r.data || {};
+    if (d.protection || (d.error && typeof d.error === 'object' && String(d.error.code) === '401')) {
+      throw new Error('Vercel Deployment Protection ব্লক করছে — এই deployment URL থেকে admin API চলে না। '
+        + 'Production URL (digitearn.vercel.app) ব্যবহার করুন বা Vercel → Settings → Deployment Protection off করুন।');
+    }
+    const msg = typeof d.error === 'string' ? d.error : String((d.error && (d.error.message || d.error.code)) || d.message || '');
+    throw new Error(msg || (r.isJson ? '' : `সার্ভার JSON দেয়নি (HTTP ${r.resp.status})`) || `Operation fail হয়েছে (${r.resp.status}) — আবার চেষ্টা করুন`);
+  }
+  return r.data;
 }
 
-/* ---------- admin auth (server-side verify — client check নয়) ---------- */
-export async function isAdminEmail() {
+/* ?op=health — কেন "Login required" আসছে (env/project mismatch নাকি token) তার
+   server-side উত্তর; secret value আসে না, শুধু boolean + project id + error code। */
+export async function checkHealth() {
+  try {
+    return await callApi('/api/admin/health', {});
+  } catch (err) {
+    const m = String((err && err.message) || err);
+    /* router-এ ?op=health নেই মানে server এখনো পুরোনো build-এ চলছে — admin যেন
+       "panel-এর বাটন নষ্ট" না ভাবে, সেটা স্পষ্ট বলা */
+    if (/Unknown admin endpoint|404/i.test(m)) {
+      throw new Error('সার্ভারের build পুরোনো — `?op=health` নেই, মানে নতুন api/ + lib/ এখনো deploy হয়নি। Push করে Vercel-এ Redeploy করুন।');
+    }
+    throw err;
+  }
+}
+
+/* ---------- admin auth (server-side verify — client check নয়) ----------
+   BUGFIX: আগে error হলে isAdminEmail() চুপচাপ `false` দিত → main.js admin-কে
+   signOut করে "আপনার email admin list-এ নেই" দেখাত — অর্থাৎ server 503/নেটওয়ার্ক
+   সমস্যা হলেও দোষ admin-এর account-এর উপর চাপত, আর কাজের session টাও নষ্ট হতো।
+   এখন error আলাদা করে ফেরায় (main.js session রেখে retry দেখায়)। */
+export async function adminVerify() {
   try {
     const data = await callApi('/api/admin/verify', {});
-    return !!data.isAdmin;
-  } catch (_) { return false; }
+    return { isAdmin: !!data.isAdmin, authenticated: !!data.authenticated, authState: data.authState || '', error: '' };
+  } catch (err) {
+    return { isAdmin: false, authenticated: false, error: String((err && err.message) || 'Admin verify fail') };
+  }
+}
+export async function isAdminEmail() {
+  return (await adminVerify()).isAdmin;
 }
 
 /* ---------- proofs ---------- */
@@ -163,7 +221,7 @@ export async function saveTask(slug, data) {
     clean.inputFields = data.inputFields
       .map(f => ({
         label: String(f.label || '').trim().slice(0, 50),
-        type: ['text', 'email', 'password', 'tel', 'number', 'url'].includes(f.type) ? f.type : 'text',
+        type: ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea'].includes(f.type) ? f.type : 'text',
         placeholder: String(f.placeholder || '').trim().slice(0, 60),
         required: !!f.required,
       }))
@@ -177,17 +235,26 @@ export async function saveTask(slug, data) {
 
 /* ---------- settings ----------
    settings/site   → public (siteName, links, rates…)
-   settings/secret → গোপন মান (giftCode) — user browser থেকে read blocked */
+   settings/secret → গোপন মান (giftCode) — user browser থেকে read blocked
+   ⚠️ rules: `settings/secret` browser থেকে পড়া সবাই For বন্ধ (admin-ও) — তাই admin
+   panel secret পড়ে/লিখে server endpoint (?op=secret, Admin SDK) দিয়ে। আগে সরাসরি
+   getDoc() → permission-denied (চুপচাপ ধরা) → field খালি দেখাত → Save করলে
+   giftCode:'' লিখে gift claim পুরো সাইটে ভেঙে দিত। */
 const SECRET_KEYS = ['giftCode'];
 
 export async function getSettings() {
-  const [s, sec] = await Promise.all([
+  const [s, secret] = await Promise.all([
     getDoc(doc(db, 'settings', 'site')),
-    getDoc(doc(db, 'settings', 'secret')).catch(() => null),
+    // server থেকে পড়া (rules-bypass); API না চললে {} — কখনোই permission-denied ফেল করবে না
+    callApi('/api/admin/secret', { get: true }).catch(() => ({})),
   ]);
   const base = s.exists() ? s.data() : {};
-  const secret = sec && sec.exists() ? sec.data() : {};
-  return { ...base, ...secret };
+  const sec = {};
+  const secretLoaded = secret && typeof secret.giftCode === 'string';
+  for (const k of SECRET_KEYS) if (typeof secret[k] === 'string') sec[k] = secret[k];
+  // _secretLoaded=false মানে giftCode পড়া যায়নি (network/API issue) — তখন
+  // field খালি দেখালে Save-এ কোড মুছে যাবে, তাই UI সেটা disable করে রাখে।
+  return { ...base, ...sec, _secretLoaded: secretLoaded };
 }
 
 /* ---------- withdrawals (admin review) ---------- */
@@ -203,16 +270,29 @@ export async function reviewWithdrawal(userId, id, action, note = '') {
 }
 
 export async function saveSettings(data) {
-  // গোপন key গুলো আলাদা doc-এ — settings/site public read, তাই সেখানে গেলে leak হতো
+  // গোপন key গুলো server endpoint দিয়ে (Admin SDK) — rules browser থেকে লেখা
+  // allow করলেও পড়া বন্ধ, তাই read+write এক জায়গায় server-এই রাখা হয়েছে।
+  // key না পাওয়া গেলে সেটা মোছে না (undefined → sendই হয় না)।
   const pub = { ...data };
   const secret = {};
   for (const k of SECRET_KEYS) {
     if (k in pub) { secret[k] = pub[k]; delete pub[k]; }
   }
   await setDoc(doc(db, 'settings', 'site'), pub, { merge: true });
-  if (Object.keys(secret).length) {
-    await setDoc(doc(db, 'settings', 'secret'), secret, { merge: true });
+  const payload = { ...secret };
+  // খালি giftCode = "পড়া যায়নি/ছোঁয়া হয়নি" হওয়ার সম্ভাবনা বেশি — মুছে ফেলা হবে না।
+  // সত্যিই কোড বন্ধ করতে চাইলে panel-এর "Clear gift code" ব্যবহার করুন।
+  for (const k of Object.keys(payload)) {
+    if (String(payload[k]).trim() === '' && !payload.__clear) delete payload[k];
   }
+  if (Object.keys(payload).length) {
+    await callApi('/api/admin/secret', payload);
+  }
+}
+
+/* giftCode সত্যিই বন্ধ করতে চাইলে (admin panel-এর "Clear" checkbox) */
+export async function clearGiftCode() {
+  await callApi('/api/admin/secret', { giftCode: '', __clear: true });
 }
 
 /* ---------- notices ----------
@@ -220,9 +300,13 @@ export async function saveSettings(data) {
    users/{uid}/targetNotices/{id} → private user-specific warning/notice
    (rules: targeted শুধু owner + admin read; write শুধু admin) */
 export async function listNotices() {
-  const q = query(collection(db, 'notices'), orderBy('sort'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // BUGFIX: orderBy('sort') থাকা docs বাদ দেয় — যে notice-এ `sort` field নেই
+  // (Firebase console/manual seeding ইত্যাদি) সেটা admin panel-এ লুকিয়ে যেত।
+  // এখন index-free list + client-side sort (বাকি সব list-এর মতো)।
+  const snap = await getDocs(query(collection(db, 'notices'), limit(100)));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
 }
 
 export async function addNotice({ title, body, type = 'notice', expiresAt = null }) {
@@ -236,7 +320,10 @@ export async function addNotice({ title, body, type = 'notice', expiresAt = null
     createdAt: serverTimestamp(),
   };
   if (expiresAt) clean.expiresAt = expiresAt; // JS Date → Firestore Timestamp
-  await setDoc(doc(db, 'notices'), clean);
+  // BUGFIX: doc(db, 'notices') — ১টা segment → Firestore throw করত
+  // "Document references must have an even number of segments" → Notice কখনোই
+  // create হতো না (Send চাপলেই error)। auto-id লাগতে collection ref দিয়ে doc()।
+  await setDoc(doc(collection(db, 'notices')), clean);
 }
 
 export async function updateNotice(id, { title, body, enabled, sort, type, expiresAt }) {
@@ -274,7 +361,10 @@ export async function addTargetedNotice(uid, { title, body, type = 'warning', ex
     createdBy: 'admin',
   };
   if (expiresAt) clean.expiresAt = expiresAt;
-  await setDoc(doc(db, 'users', uid, 'targetNotices'), clean);
+  // BUGFIX: doc(db,'users',uid,'targetNotices') = ৩টা segment (odd) → Firestore
+  // throw: "Document references must have an even number of segments" → private
+  // warning/notice পাঠানোই যেত না। subcollection ref দিয়ে auto-id doc লাগে।
+  await setDoc(doc(collection(db, 'users', uid, 'targetNotices')), clean);
 }
 
 export async function updateTargetedNotice(uid, id, { enabled }) {

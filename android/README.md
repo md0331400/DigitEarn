@@ -37,15 +37,20 @@ Developer-এর পুশে **GitHub Actions** (`Build Admin APK`) নিজ�
 **Open** → এই repo-র `android` folder → প্রথম sync-এ 10-15 min লাগবে (বসে থাকুন;
 wrapper warning দিলে **Fix** চাপুন)
 
-⚠️ **Latest folder নিশ্চিত হোন:** GitHub-এ branch **`arena/01a080f3-digitearn`** select
-করে Download ZIP → সেখানকার `android/` folder টা ব্যবহার করুন (পুরনো/আধো copy-তে
-build error + ভাঙা app হয় — Details: নিচে Troubleshooting)
+✅ **Latest folder:** repo-র default branch **`main`** (এখানেই সব code) — branch
+`arena/01a080f3-digitearn`-এর দিকে তাকাবেন না, সেটা ২০২৬-০৯-০৯ থেকে স্থির ও পুরনো।
+Download ZIP চাইলে: Code (green) → **Download ZIP** (main) → `android/` folder নিন।
+পুরনো/আধো copy নিলে build error + ভাঙা app হয় — Details: নিচে Troubleshooting
 
 ### Step ২: (skip) — admin panel আগে থেকেই APK-তে embedded আছে
 
 ### Step ৩: Firebase config file দিতে হবে (একবারই)
-`app/src/main/assets/firebase.json` file খুলুন — এটা এখন placeholder।
-সেখানে আপনার Firebase project-এর **web app config** বসান:
+`app/src/main/assets/firebase.json` file খুলুন — এটা placeholder **নয়**, এতে আগে থেকেই
+`digitearn` project-এর real config (apiKey / authDomain / projectId / storageBucket /
+messagingSenderId / appId) বসানো আছে, তাই এই project-এর জন্য Step ৩ skip করা যায়
+(Build API চলবে)। আপনি অন্য project ব্যবহার করলে, বা Web app-এর বদলে আলাদা Android app
+রাজিস্টার করলে, সেখানকার **web/Android app config**-এর ৬টা value এখানে বসান
+(এখানকার `appId` `…:android:…` — মানে Android app থেকে নেওয়া)।
 
 1. **Firebase Console** → আপনার project → ⚙️ **Project settings**
 2. নিচে **Your apps** section → Web app-টা দেখলে SDK setup-এর `firebaseConfig` object আছে
@@ -85,8 +90,18 @@ file পাবেন (WhatsApp-এ পাঠানো যাবে)
 - 🔒 Private key/secret app-এ নাই — সব financial action Vercel server + token-এ
 
 ## নতুন admin feature add হলে
-Developer-এ বলা — সে `npm run build:admin-app` চালিয়ে assets update করবে (এই repo-তে
-`src/admin/`-এ source আছে)
+1. `src/admin/` এ change করুন
+2. `npm run build:admin-app` → `android/app/src/main/assets/admin/` update হবে
+3. `src/admin` + rebuilt assets দুটোই একসাথে commit করুন
+   (নাহলে APK-তে পুরনো panel embed থাকে — এটা আগে ঠিক এই ভুলেই APK ভাঙা হয়েছে)
+4. `main`-এ push → GitHub Actions `Build Admin APK` এখন স্বয়ংক্রিয়ভাবে আগে
+   `npm run build:admin-app` চালায়, তাই committed assets পুরনো থাকলেও artifact-এ
+   নতুন panel-ই থাকে (repo-তে warning হিসেবেও দেখায়)
+
+> Admin-only নতুন server action যোগ করতে চাইলে: `lib/admin/<name>.js` +
+> `api/admin/panel.js`-এর `HANDLERS` map-এ entry + panel থেকে
+> `callApi('/api/admin/<name>')` — **নতুন `api/**` file খুলবেন না** (Vercel Hobby
+> 12-function limit)।
 
 ## ❌ Build error হলে (Troubleshooting)
 
@@ -96,8 +111,8 @@ Developer-এ বলা — সে `npm run build:admin-app` চালিয়�
 (`android:Theme.Material.Light.NoActionBar`) use হয়, কোনো external library লাগে না।
 
 Fix: **পুরো project folder-টা latest repo থেকে আবার নিন:**
-1. GitHub → `md0331400/DigitEarn` → উপরে branch selector-এ `main`-এর বদলে
-   **`arena/01a080f3-digitearn`** select করুন (⚠️ `main`-এ `android/` folder নেই)
+1. GitHub → `md0331400/DigitEarn` → branch selector **`main`** রাখুন (পুরনো docs
+   "main-এ android/ নেই" বলত — এখন main-এ-ই আছে)
 2. **Code** (green button) → **Download ZIP** → unzip করুন
 3. ZIP-এর `android/` folder-এর **সম্পূর্ণ content** দিয়ে আপনার project folder
    (CodeOnTheGoProjects/Digit Earn Admin/) replace করুন — পুরনো file গুলো delete করে

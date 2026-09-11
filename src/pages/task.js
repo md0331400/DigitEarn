@@ -90,25 +90,35 @@ bootAppPage({
          আগের submission গুলো নিচে "আজকের জমা" লিস্টে দেখা যাবে। */
       const sales = await getTodaySales(user.uid, slug).catch(() => []);
 
-      const F_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url'];
+      /* ⚠️ Dynamic fields only — admin panel (Micro Jobs → Input Fields) যা যা configure করবে
+         ঠিক সেগুলোই এখানে আসে। কোনো task-specific field (Facebook UID / Gmail address ইত্যাদি)
+         এখানে hardcode করা যাবে না; type list + length limit server-এর lib/http.js
+         (FIELD_TYPES/FIELD_MAXLEN) এর mirror — tests/web-and-apk.mjs [L] মিল check করে। */
+      const F_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea'];
+      const F_MAXLEN = { url: 300, email: 120, tel: 20, number: 60, textarea: 2000, text: 100, password: 100 };
+      const ftype = t => (F_TYPES.includes(t) ? t : 'text');
+      const maxlen = t => (t in F_MAXLEN ? F_MAXLEN[t] : 100);
       const fields = (Array.isArray(task.inputFields) ? task.inputFields : []).filter(f => typeof f.label === 'string' && f.label.trim());
       const fkey = f => String(f.label).trim().slice(0, 50);
-      const iconOf = { text: 'fa-pen', email: 'fa-envelope', password: 'fa-lock', tel: 'fa-mobile-screen', number: 'fa-hashtag', url: 'fa-link' };
-      const phOf = { text: 'এখানে লিখুন', email: 'example@gmail.com', password: 'পাসওয়ার্ড লিখুন', tel: '01XXXXXXXXX', number: 'সংখ্যা লিখুন', url: 'https://…' };
+      const iconOf = { text: 'fa-pen', email: 'fa-envelope', password: 'fa-lock', tel: 'fa-mobile-screen', number: 'fa-hashtag', url: 'fa-link', textarea: 'fa-align-left' };
+      const phOf = { text: 'এখানে লিখুন', email: 'example@gmail.com', password: 'পাসওয়ার্ড লিখুন', tel: '01XXXXXXXXX', number: 'সংখ্যা লিখুন', url: 'https://…', textarea: 'এখানে লিখুন…' };
       const safeUrl = /^https?:\/\//i.test(task.url || '') ? task.url : '';
       // admin panel থেকে সেট করা per-project লেখা (না থাকলে fallback)
       const submitLabel = String(task.submitLabel || '').trim() || `SUBMIT ${(task.nameEn || task.nameBn || 'ACCOUNT').toUpperCase()}`;
       const historyLabel = String(task.historyLabel || '').trim() || 'View Sales History';
 
       const fieldsHtml = fields.map((f, i) => {
-        const type = F_TYPES.includes(f.type) ? f.type : 'text';
-        const maxLen = type === 'url' ? 300 : type === 'email' ? 120 : type === 'tel' ? 20 : 100;
+        const type = ftype(f.type);
+        const maxLen = maxlen(type);
         const ph = String(f.placeholder || '').trim() || phOf[type];
-        return `
-          <label class="fld-label">${esc(fkey(f))} ${f.required ? '<b style="color:#dc2626">*</b>' : ''}</label>
-          <div class="field">
+        const label = `<label class="fld-label">${esc(fkey(f))} ${f.required ? '<b style="color:#dc2626">*</b>' : ''}</label>`;
+        const control = type === 'textarea'
+          ? `<textarea class="tf-area" data-tf="${i}" rows="4" maxlength="${maxLen}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false"></textarea>`
+          : `<input type="${type}" data-tf="${i}" maxlength="${maxLen}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false">`;
+        return `${label}
+          <div class="field${type === 'textarea' ? ' field-area' : ''}">
             <i class="fa-solid ${iconOf[type]} left"></i>
-            <input type="${type}" data-tf="${i}" maxlength="${maxLen}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false">
+            ${control}
           </div>`;
       }).join('');
 
@@ -177,22 +187,41 @@ bootAppPage({
 
       const btn = document.getElementById('proofSubmitBtn');
       btn.addEventListener('click', async () => {
-        // client pre-check (server-এ আবার পুরো validation হয়)
+        /* client pre-check — নিয়মগুলো api/proof/submit.js-এর হুবহু mirror (চাইলেও বেশি
+           কড়া না: আগে "সব required field সঠিকভাবে পূরণ করুন" বলে কোন field ভুল বোঝা
+           যেত না, user বারবার চাপত)। এখন field-এর নাম + কী ঠিক করবে সেটা বলে, আর
+           input-এর নিচে লাল inline messageও দেখায়। */
         const data = {};
-        let firstBad = null;
+        const bad = [];
+        const clearErr = () => box.querySelectorAll('.tf-err').forEach(el => el.remove());
         fields.forEach((f, i) => {
           const inp = box.querySelector(`[data-tf="${i}"]`);
           const v = inp ? inp.value.trim() : '';
-          const type = F_TYPES.includes(f.type) ? f.type : 'text';
-          if (f.required && !v && !firstBad) firstBad = inp;
-          if (v && type === 'email' && !/^\S+@\S+\.\S+$/.test(v) && !firstBad) firstBad = inp;
+          const type = ftype(f.type);
+          const label = String(f.label || `ফিল্ড ${i + 1}`).slice(0, 50);
+          const maxLen = maxlen(type);
+          let why = '';
+          if (f.required && !v) why = `“${label}” খালি রাখা যাবে না`;
+          else if (v && v.length > maxLen) why = `“${label}” সর্বোচ্চ ${maxLen} অক্ষর`;
+          else if (v && type === 'email' && !/^\S+@\S+\.\S+$/.test(v)) why = `“${label}”-এ সঠিক ইমেইল দিন (যেমন name@gmail.com)`;
+          else if (v && type === 'number' && !/^\d{1,30}(\.\d{1,6})?$/.test(v)) why = `“${label}”-এ শুধু সংখ্যা লিখুন`;
+          else if (v && type === 'url' && !/^https?:\/\/\S+$/i.test(v)) why = `“${label}” লিংকটি http:// বা https:// দিয়ে শুরু করুন`;
+          if (why && inp) {
+            bad.push([inp, why]);
+            const p = document.createElement('p');
+            p.className = 'tf-err';
+            p.style.cssText = 'color:#dc2626;font-size:12px;margin:6px 0 0';
+            p.textContent = why;
+            inp.closest('div')?.appendChild(p);
+          }
           data[fkey(f)] = v;
         });
-        if (firstBad) {
-          toast('সব required field সঠিকভাবে পূরণ করুন', 'error');
-          firstBad.focus();
+        if (bad.length) {
+          toast(bad[0][1], 'error');
+          bad[0][0].focus();
           return;
         }
+        clearErr();
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
         try {
@@ -202,7 +231,7 @@ bootAppPage({
         } catch (err) {
           toast(err.message, 'error');
           btn.disabled = false;
-          btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> ${submitLabel}`;
+          btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> ${esc(submitLabel)}`;  /* admin-controlled text — esc() */
         }
       });
     };

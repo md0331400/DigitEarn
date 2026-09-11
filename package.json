@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "seed": "node scripts/seed.mjs",
     "build:admin-app": "node scripts/build-admin-app.mjs",
-    "test": "node --import ./tests/register.mjs tests/run.mjs && node --import ./tests/register.mjs tests/marketplace.mjs"
+    "test": "node --import ./tests/register.mjs tests/run.mjs && node --import ./tests/register.mjs tests/marketplace.mjs && node --import ./tests/register.mjs tests/bugfixes.mjs && node tests/web-and-apk.mjs"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.5.2",
@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "vite": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

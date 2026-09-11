@@ -1,13 +1,28 @@
 name: Build Admin APK
 
+# BUGFIX: আগে শুধু branch `arena/01a080f3-digitearn`-এ trigger করত — ওই branch-টা
+# 2026-09-09 থেকে স্থির (main-এর চেয়ে ৩৩ commit পিছে)। মানে main-এ push করলেই
+# APK কখনো build হতো না, আর build হলেও সেটা পুরনো কোডের। এখন main + dispatch + PR।
 on:
   push:
     branches:
-      - arena/01a080f3-digitearn
+      - main
     paths:
       - 'android/**'
+      - 'src/admin/**'
+      - 'lib/admin/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
       - '.github/workflows/build-apk.yml'
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - 'src/admin/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch: {}
 
 jobs:
   build-apk:
@@ -21,6 +36,27 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # BUGFIX: APK-র ভেতরে embedded panel (android/app/src/main/assets/admin/)
+      # committed থাকে — সেটা src/admin/ এর চেয়ে পিছে থাকলে APK-তে পুরনো panel
+      # চলে যায় (নতুন field/feature দেখা যায় না)। তাই gradle-এর আগে সবসময়
+      # source থেকে panel rebuild করা হয়।
+      - name: Rebuild embedded admin panel from src/admin
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:admin-app
+          if [ -z "$(git status --porcelain android/app/src/main/assets/admin)" ]; then
+            echo "✅ committed assets/admin already matches src/admin"
+          else
+            echo "::warning::repo-র assets/admin পুরনো — এই run-এ নতুনটা build করে APK দেওয়া হয়েছে। commit-ও করে দিন (npm run build:admin-app)"
+            git diff --stat android/app/src/main/assets/admin
+          fi
 
       - name: Install Gradle 8.7
         run: |

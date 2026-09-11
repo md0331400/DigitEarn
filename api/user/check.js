@@ -50,7 +50,11 @@ export default async function handler(req, res) {
       }
     }
   } catch (err) {
-    return fail(res, 500, 'Server setup সমস্যা: ' + (err && err.message ? err.message : String(err)));
+    /* ⚠️ আগে err.message সরাসরি anonymous caller-কে দেখানো হতো — সেটাতে internal
+       detail (env var name, SDK code, "app.auth is not a function" জাতীয় code-level
+       তথ্য) ফাঁকি পেত। কারণটা log-এ, client-এ generic message। */
+    console.error('[api/user/check] failed:', (err && (err.code || err.name)) || '', (err && err.message) || err);
+    return fail(res, 503, 'চেক করা যায়নি — একটু পরে আবার চেষ্টা করুন');
   }
   return ok(res, result);
 }

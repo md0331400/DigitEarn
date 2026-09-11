@@ -34,9 +34,13 @@ export function friendlyError(err) {
   return 'কিছু একটা সমস্যা হয়েছে — আবার চেষ্টা করুন';
 }
 
+/* Day key (yyyy-mm-dd) — ⚠️ UTC, কারণ server-ও UTC day key লেখে (Vercel TZ=UTC):
+   api/gift/claim.js এবং api/proof/submit.js। আগে এটা browser-এর local date ছিল,
+   তাই বাংলাদেশের (UTC+6) user-এর কাছে রাত ১২টা–সকাল ৬টার মধ্যে দুটো key আলাদা
+   হতো → "গিফট আগেই claim করেছেন"/"আজকের জমা" লিস্ট ভুল, daily-limit count মিলত না।
+   দুই পাশেই একই key = দুই পাশের result একই। */
 export function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Date().toISOString().slice(0, 10);
 }
 
 /* ---------- secure API helper ----------
@@ -44,21 +48,77 @@ export function todayStr() {
    (যেখানে লাগে শুধু identifier — taskSlug/code/method/amount-input — server validate করে) */
 export async function callApi(path, body = {}, method = 'POST', { anonymous = false } = {}) {
   if (!firebaseReady) throw new Error('Firebase configure করা নেই');
-  const headers = { 'Content-Type': 'application/json' };
-  if (!anonymous) {
-    const cu = auth.currentUser;
-    if (!cu) throw new Error('Login required');
-    headers.Authorization = 'Bearer ' + (await cu.getIdToken());
+  const send = async (forceRefresh) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (!anonymous) {
+      const cu = auth.currentUser;
+      if (!cu) throw new Error('Login required — আগে লগইন করুন');
+      const tok = await cu.getIdToken(forceRefresh);
+      /* খালি token হলে 'Bearer undefined' পাঠানো মানে server-এ "Login required" —
+         কারণটা এখানেই বলানো ভালো (Firebase config/projectId ভুল হলে এমন হয়) */
+      if (!tok || typeof tok !== 'string') {
+        throw new Error('Firebase token পাওয়া যায়নি — একবার লগআউট করে আবার লগইন করুন; বারবার হলে admin-কে জানান (Firebase config দেখা দরকার)');
+      }
+      headers.Authorization = 'Bearer ' + tok;
+    }
+    const resp = await fetch(path, {
+      method,
+      headers,
+      body: method === 'GET' ? undefined : JSON.stringify(body),
+    });
+    /* resp.json() instead of text() would hide non-JSON failures (Vercel protection
+       page / build error HTML) as a blank error — তা আগে text, তারপর parse */
+    let raw = '';
+    try { raw = await resp.text(); } catch (_) {}
+    let data = null;
+    try { data = raw ? JSON.parse(raw) : {}; } catch (_) {}
+    return { resp, data: data || {}, isJson: !!data, serverApi: (resp.headers && resp.headers.get('x-digitearn-api')) || '' };
+  };
+  let r = await send(false);
+  /* ID token ~১ ঘণ্টা পর expire — long-idle tab/app-এর পুরোনো token নিয়ে submit করলে
+     server 401 দিত; এখন force-refresh করে একবারই retry হয় (আবার লগইন লাগে না)।
+     NOTE: এবারের "Login required" report-এর আসল কারণটা আরও গভীর ছিল — server-এর
+     `app.auth()` (firebase-admin v14-তে নেই) → সব request 401; সেটা lib/http.js-তে ঠিক
+     করা, আর নিচের apiErrorMessage এখন সেই ধরনের server-side failure আলাদা করে দেখায়। */
+  if (!anonymous && shouldRetryWithFreshToken(r.resp.status, r.data, auth.currentUser)) {
+    r = await send(true);
   }
-  const resp = await fetch(path, {
-    method,
-    headers,
-    body: method === 'GET' ? undefined : JSON.stringify(body),
-  });
-  let data = {};
-  try { data = await resp.json(); } catch (_) {}
-  if (!resp.ok) throw new Error(data.error || ('Server error (' + resp.status + ') — আবার চেষ্টা করুন'));
-  return data;
+  if (!r.resp.ok) throw new Error(apiErrorMessage(r.resp.status, r.data, { json: r.isJson, serverApi: r.serverApi }));
+  return r.data;
+}
+
+/* 401 (বা server-এর sessionExpired flag) + এখনো currentUser থাকলে → refresh করে retry।
+   আলাদা ফাংশন করা হয়েছে যাতে test-এ ধরা যায়। */
+export function shouldRetryWithFreshToken(status, data, currentUser) {
+  if (!currentUser) return false;
+  if (data && data.sessionExpired === true) return true;
+  return status === 401;
+}
+
+/* server-এর message-কে user-বোধগম্য করা (lib/http.js authReject-এর reason অনুযায়ী)।
+   data.error string না object-ও হতে পারে (Vercel নিজে `{"error":{"code":"401",...}}` দেয়) —
+   আগে String(obj) → "[object Object]" দেখাত, সেটাও এখানে ঠিক। */
+export function apiErrorMessage(status, data = {}, opts = {}) {
+  const { json = true, serverApi = '' } = opts;
+  const d = data && typeof data === 'object' ? data : {};
+  /* Vercel Deployment Protection: function-এর আগেই 401 — preview URL/APK থেকে API চলে না */
+  if (d.protection || (d.error && typeof d.error === 'object' && String(d.error.code) === '401')) {
+    return 'সার্ভার Vercel Deployment Protection-এ ঢাকা — এই URL থেকে API call করা যায় না। '
+      + 'Production URL (digitearn.vercel.app) ব্যবহার করুন, নয়তো Vercel → Settings → '
+      + 'Deployment Protection → “Protected Deployment URLs” off করুন (না করলে Vercel-এ লগইন করা ব্রাউজারে চালান)।';
+  }
+  if (!json) return `সার্ভার JSON দেয়নি (HTTP ${status}) — deploy/build ঠিক আছে কিনা দেখুন`;
+  const msg = typeof d.error === 'string' ? d.error : String((d.error && (d.error.message || d.error.code)) || d.message || '');
+  if (status === 503 || /configuration|verify করতে পারছে/i.test(msg)) {
+    return 'সার্ভার সেটআপ ঠিক নেই — API token verify হচ্ছে না, admin-কে জানান' + (msg ? ` (${msg})` : '');
+  }
+  /* serverApi খালি মানে এই response আমাদের নতুন api/ code-এর না (lib/http.js API_VERSION
+     header পাঠায়) → পুরোনো/অসম্পূর্ণ deploy */
+  const stale = (status === 401 || status === 403) && !serverApi
+    ? ' (সার্ভারের build পুরোনো মনে হচ্ছে — api/ + lib/ ফাইলগুলো deploy হয়েছে কিনা Vercel-এ দেখুন)'
+    : '';
+  if (status === 401) return 'লগইন হারিয়ে গেছে — একবার refresh করে আবার চেষ্টা করুন' + (msg ? ` (${msg})` : '') + stale;
+  return msg || `Server error (${status}) — আবার চেষ্টা করুন`;
 }
 
 /* ---------- auth ---------- */
@@ -75,12 +135,47 @@ export async function registerUser({ name, mobile, email, password, refCodeInput
 
 /* Login/session restore-এ profile না থাকলে server-side heal (বোনাস ছাড়া) */
 export async function ensureUserProfile(uid, { email = '', name = '' } = {}) {
-  if (!firebaseReady) return null;
+  const r = await ensureUserProfileResult(uid, { email, name });
+  return r.profile;
+}
+
+/* ⚠️ আগের version error চুপচাপ `null` দিত → UI শুধু "প্রোফাইল লোড হয়নি" দেখাত, আর
+   আসল কারণ (server-এর app.auth break / 401 / নেটওয়ার্ক) কোথাও বের হতো না।
+   এখন reason সহ ফেরায় — bootAppPage সেটাই user-কে দেখায়। */
+export async function ensureUserProfileResult(uid, { email = '', name = '' } = {}) {
+  if (!firebaseReady) return { profile: null, error: 'Firebase configure করা নেই' };
   try {
     const data = await callApi('/api/user/ensure', { email, name });
-    return data.profile;
+    return { profile: data && data.profile ? data.profile : null, error: '' };
+  } catch (err) {
+    return { profile: null, error: String((err && err.message) || err) };
+  }
+}
+
+/* ---------- deploy self-check ----------
+   একটা token-free endpoint হিট করে response header দেখে: server-এ আসলেই নতুন
+   api/ code চলছে কি না (lib/http.js-এর API_VERSION = EXPECTED_API_BUILD হতে হবে)।
+   Vercel কখনো client বান্ডেল নতুন করে আর functions cache রেখে দেয় — তখন user
+   ভাবে "fix কাজ করেনি"। এই check সেটা ১ সেকেন্ডে বলে দেয়। */
+export const EXPECTED_API_BUILD = 'v3';
+
+export async function checkApiBuild() {
+  try {
+    const resp = await fetch('/api/user/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const version = (resp.headers && resp.headers.get('x-digitearn-api')) || '';
+    return {
+      ok: version === EXPECTED_API_BUILD,
+      version,
+      status: resp.status,
+      /* 401 + header নেই → Vercel Deployment Protection (preview URL / WebView) */
+      blocked: !version && resp.status === 401,
+    };
   } catch (_) {
-    return null;
+    return { ok: false, version: '', status: 0, blocked: false };
   }
 }
 

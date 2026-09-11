@@ -62,10 +62,13 @@ npm run seed
 ### ধাপ ৫: Push
 
 ```bash
-git push origin arena/01a080f3-digitearn
+git push origin main
 ```
 
-(যদি branch থেকে main-এ merge করে deploy করতে চান — Vercel যে branch connect করা আছে সেই branch-এ merge করুন।)
+⚠️ আগে এখানে `arena/01a080f3-digitearn` লেখা ছিল — ওই branch-টা ২০২৬-০৯-০৯ থেকে
+স্থির (main-এর ৩৩ commit পিছে)। সেখানে push করলে Vercel-ও পুরনো কোড deploy করত,
+আর `Build Admin APK` workflow চলত, কিন্তু আসল সাইট update হতো না। **এখন সব work
+`main`-এ** (Vercel production + GitHub Actions দুটোই `main` ধরে)।
 
 ---
 
@@ -129,10 +132,38 @@ git push origin arena/01a080f3-digitearn
 | `targetTiers` | টার্গেট বোনাস (৫/১০/২০ জন → ৳৫০/৳১০০/৳৩০০) | — |
 
 টাস্ক add/বন্ধ করতে: **Firestore → tasks** collection (প্রতি task-এ `enabled: true/false`, `reward`, `sort`)।
+
+### Dynamic Input Fields (প্রতিটা task-এর form admin-এর হাতে)
+
+`tasks/{slug}.inputFields = [{ label, type, placeholder, required }]` — **কোনো task-specific
+field code-এ hardcode করা নেই** (Facebook/Gmail/Instagram সব একই সিস্টেমে)।
+
+| `type` | User side | Limit |
+|---|---|---|
+| `text` / `number` / `tel` | input | 100 / 60 / 20 |
+| `email` / `url` | input + server format check (url = শুধু `http(s)://`) | 120 / 300 |
+| `password` | masked input (👁 show/hide) | 100 |
+| `textarea` | multi-line box | 2000 |
+
+- Admin: **Micro Jobs → Task → Input Fields → "Add Input Field"** — Field Title (যেমন `UID`,
+  `Password`, `Cookies`), Field Type, placeholder, Required; বাদ দিতে 🗱 → **Save**। Save করলেই
+  user task page-এর form updated হয় (নতুন build/deploy লাগে না)।
+- User submit করলে server **admin config** অনুযায়ী validate করে এবং `submittedFields`
+  (title + type + value) + `submittedData` (পুরোনো consumer-এর জন্য) দুটোই save করে —
+  তাই admin পরে field বদলে/মুছে দিলেও পুরোনো submission ঠিকভাবেই দেখা যায়।
+- **পাসওয়ার্ড রিকোয়ারমেন্ট** = `tasks/{slug}.password`: admin কিছু সেট না করলে user page-এ
+  পুরো box টা **empty** থাকে (কোনো default লেখা নেই); সেট করলে value + COPY বাটন।
+- Admin Proofs card-এ submitted fields dynamically দেখা যায়, `password` type ডিফল্ট **masked**
+  ("দেখুন" দিয়ে reveal), সাথে **Copy All Data** (real values)।
+- প্রতিটা task-এ সর্বোচ্চ ২০টা field; এক submission-এর মোট data ~24KB (server-side guard)।
+- পুরোনো task-এ `inputFields` না থাকলে: শুধু link + submit দেখায় — panel থেকে field যোগ করুন,
+  অথবা `npm run seed` চালালে `src/tasks-data.js`-এর config merge হয়ে বসে যাবে।
 Notice marquee: **Firestore → notices** collection (`enabled`, `sort`, `text`)।
 
-> ⚠️ **`referralBonus` ৫ আর টার্গেট বোনাস ৩০০-এর বেশি না** — এই দুইটা সংখ্যা `firestore.rules`-এ hard-code করা
-> (নিরাপত্তার জন্য)। বোনাস বদলাতে হলে rules-এর `5` ও `300` মানটাও একসাথে বদলাতে হবে।
+> ✅ **সব financial value শুধু server API থেকে লেখে** — `users/{uid}.balance` সহ প্রায় সব collection
+> rules-এ `allow write: if false`, তাই browser/console থেকে টাকা বা referral bonus increase করা যায় না।
+> আগের version-এ এখানে লেখা ছিল "rules-এ ৫ ও ৩০০ hard-code করা" — সেটা সঠিক ছিল না: bonus cap
+> এখন `lib/rates.js`-এর মতো server-side validation + API-তেই আছে (settings-এর মানই ব্যবহার হয়)।
 
 ---
 
@@ -216,7 +247,6 @@ npm run seed       # Firestore seed (বারবার চালানো safe)
 |---|---|
 | `POST /api/user/register` | রেজিস্ট্রেশন — bonus + referral credit server-side (atomic) |
 | `POST /api/user/ensure` | profile doc heal (legacy session, bonus ছাড়া) |
-| `POST /api/task/claim` | task reward — amount Firestore-এর task doc থেকে |
 | `POST /api/gift/claim` | gift code — code + amount server validate |
 | `POST /api/target/claim` | referral target bonus — tier + bonus server-side |
 | `POST /api/account/activate` | activation + bonus (exactly once) |
@@ -224,6 +254,7 @@ npm run seed       # Firestore seed (বারবার চালানো safe)
 | `POST /api/deposit/submit` | deposit request (amount server-এর settings থেকে) |
 | `POST /api/withdrawal/request` | withdrawal — server balance check, atomic deduct |
 | `POST /api/admin/verify` | admin token check (server-side) |
+| `POST /api/admin/health` | (ভেতরে `?op=health`) auth/env self-check — **শুধু admin**, কারণ "Login required" বলে দেয় |
 | `POST /api/admin/proof-review` | admin proof approve/reject (reward credit) |
 | `POST /api/admin/deposit-review` | admin deposit approve/reject (account active) |
 | `POST /api/admin/set-active` | manual activate/inactivate |
@@ -256,19 +287,53 @@ Image upload পরে চাইলে আবার add করা যাবে�
 2. **Firestore** → নতুন collection **`admins`** → document ID = আপনার **admin email** (field: `role: "admin"`)
 3. `firestore.rules` পাস্ট করা থাকলে সেই email-এ login করলেই admin full access পাবে
 
-## 🛠️ Admin Panel (আলাদা অ্যাপ — `admin/` folder)
+## 🛠️ Admin Panel (APK-তে embedded — আলাদা Vercel project লাগে না)
 
-User site-এর সাথে **কোনো লিংক নেই** — আলাদা Vercel project, আলাদা URL।
+**⚠️ repo-তে `admin/` folder নেই** — আগে এই docs-এ "Root Directory: `admin`" বলে
+দ্বিতীয় Vercel project বানাতে বলা হতো, সেটা এখন ভুল (project-ই build হতো না)।
+এখন panel:
 
-### Vercel-এ নতুন project (একবারই করতে হবে)
+- Source: `src/admin/` (এই project-এর ভেতরেই) — public website-তে admin page নেই,
+  `vite.config.js` `admin` dir build থেকে বাদ দেয়
+- Distribution: **শুধু Android APK-তে embedded** — `npm run build:admin-app`
+  panel build করে `android/app/src/main/assets/admin/`-এ বসায়; GitHub Actions
+  (`Build Admin APK`, `main` push) প্রতিবার সেটা source থেকে নতুন করে build করে
+- Server action: একই Vercel project-এর **একটিমাত্র** function
+  `/api/admin/panel?op=<name>` (Hobby 12-function limit — নতুন `api/**` file বানাবেন না;
+  handler চাইলে `lib/admin/<name>.js` + `api/admin/panel.js`-এর `HANDLERS` map)
 
-1. Vercel Dashboard → **Add New → Project**
-2. Repo: `DigitEarn` select করুন
-3. **Root Directory: `admin`** ← (এটাই সবচেয়ে গুরুত্বপূর্ণ)
-4. Framework Preset: **Other** (auto-detect হবে)
-5. Build Command: `npm run build` • Output Directory: `dist`
-6. Environment Variables: একই **৬টা `VITE_FIREBASE_*`** variable (Production)
-7. Deploy → আপনার admin panel-এর আলাদা URL পাবেন (যেমন `xxx-admin.vercel.app`)
+ফায়দা: panel-এর কোনো public URL নেই (scan/bot পাবে না), আর APK offline খোলে;
+শুধু approve/reject-এর সময় server-এ token-সহ call যায়।
+
+> ⚠️ **`firebase-admin` v13/v14 upgrade করলে সতর্ক:** legacy `app.auth()` / `app.firestore()` আর নেই —
+> `getAuth(app)` / `getFirestore(app)` ব্যবহার করুন (wrapper: `lib/firebase-admin.js` → `getAdminAuth()`)।
+> ভুললে **প্রতিটা** API `401 "Login required"` দেবে (এই round-এর আসল bug); `npm test` ধরবে, কারণ test
+> mock-ও এখন v14-এর আসল surface-ই মানে।
+>
+> **Preview URL বা APK থেকে API 401 এলে:** সেটা Vercel-এর **Deployment Protection** (Vercel → Settings →
+> Deployment Protection) — request function-এ পৌঁছানোর আগেই ব্লক হয়। Production domain ব্যবহার করুন,
+> নয়তো protection off করুন/bypass token দিন।
+>
+> **Node version:** `firebase-admin@14` requires **Node ≥ 22** — `package.json`-এ `engines.node`
+> দেওয়া আছে, তাই Vercel matching function runtime বেছে নেয় (`npm ci`-তে EBADENGINE warning আসলে
+> মানে runtime পুরোনো)।
+>
+> **নতুন code deploy হয়েছে কিনা:** যেকোনো `/api/*` response-এ `X-DigitEarn-API: v3` header থাকবে; না থাকলে
+> server-এর functions এখনো পুরোনো (clientও সেটা toast-এ বলে দেয়)।
+>
+> **Auth error গুলো এখন সত্যি বলে:** token expire হলে `401` + "Session শেষ হয়েছে"
+> (client নিজে থেকেই token refresh করে একবার retry করে), আর server-এর Firebase env/
+> project ঠিক না থাকলে `503` with "Server configuration সমস্যা (token project: X, server project: Y)" —
+> আগে দুটোরই একই message ছিল "Login required", যা logged-in user-কেও বিভ্রান্ত করত।
+> কারণ খুঁজতে: Admin panel → Overview → **সিস্টেম চেক**, অথবা Vercel Function log-এ
+> `[auth] verifyIdToken failed: …` লাইন।
+
+### চাইলে web থেকেও চালানো যায় (dev only)
+
+```bash
+npx vite build --config <(echo "export default {build:{outDir:'dist-admin',rollupOptions:{input:{index:'src/admin/index.html'}}}}")
+```
+(production-এ আলাদা hosting-এ put না করলেও চলবে — সাধারণত লাগে না।)
 
 ### Admin সেটআপ (Firebase-এ)
 
@@ -281,12 +346,16 @@ User site-এর সাথে **কোনো লিংক নেই** — আল
 
 | Section | কাজ |
 |---|---|
-| **Overview** | মোট user, pending proof/deposit count, total balance |
+| **Overview** | মোট user, pending proof/deposit count, total balance, **সিস্টেম চেক** (API auth/env) |
 | **Proofs** | User-এর task proof review — **Approve** (reward auto balance-এ) / **Reject** (reason সহ) |
 | **Deposits** | bKash/Nagad payment proof + TrxID check — **Approve** (account active + bonus) / **Reject** |
 | **Users** | Search, balance/transactions দেখা, manual activate/inactivate |
-| **Micro Jobs** | Task-এর reward, link, on/off, lock, video — save করলেই site-তে update |
+| **Micro Jobs** | Task-র reward, link, on/off, lock, video + **Add Input Field** (dynamic form fields) — save করলেই site-তে update |
 | **Settings** | Deposit fee, bonus, bKash/Nagad/Rocket number, admin contact (name/phone/email), gift, links |
-| **Notices** | Dashboard-এর notice bar add/edit/delete |
+| **Notices** | Dashboard-এর notice bar — all-user notice + **specific user-এর private warning** (দুটোই এখন কাজ করে) |
+| **Withdrawals** | Top-level queue — Paid মার্ক / Reject (টাকা balance-এ ফেরত, atomic) |
+
+> Settings-এর **Gift Code** পড়া/লেখা এখন server op (`?op=secret`) দিয়ে হয়, কারণ
+> `settings/secret` browser থেকে পড়া rules-এ বন্ধ — খালি field হলেও কোড আর মুছে যাবে না।
 
 > নতুন task (নতুন page) add করতে চাইলে developer-কে জানান — static SEO page generate হয় build time-এ।

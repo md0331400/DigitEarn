@@ -26,7 +26,7 @@ export const TASKS = [
     inputFields: [
       { label: 'UID', type: 'text', placeholder: 'UID', required: true },
       { label: 'Password', type: 'password', placeholder: 'Password', required: true },
-      { label: 'Cookies', type: 'text', placeholder: 'Cookies দিন', required: false },
+      { label: 'Cookies', type: 'textarea', placeholder: 'Cookies এখানে পেস্ট করুন', required: false },
     ],
     steps: [
       'যে Facebook account বিক্রি করবেন তার পাসওয়ার্ড উপরের পাসওয়ার্ডে পরিবর্তন করুন',

@@ -3,13 +3,13 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import './styles.css';
 import {
   auth, firebaseReady, onAuthStateChanged, signInWithEmailAndPassword, signOut,
-  isAdminEmail, esc, fmt, timeBn,
+  isAdminEmail, adminVerify, checkHealth, esc, fmt, timeBn,
   overviewStats, listProofs, approveProof, rejectProof, getUser,
   listDeposits, approveDeposit, rejectDeposit,
   listWithdrawals, reviewWithdrawal,
   listUsers, getUserWithdrawals, getUserTransactions, setUserActive,
   listTasks, saveTask,
-  getSettings, saveSettings,
+  getSettings, saveSettings, clearGiftCode,
   listNotices, addNotice, updateNotice, deleteNotice,
   listUserTargetNotices, addTargetedNotice, updateTargetedNotice, deleteTargetedNotice, listTargetedAll,
 } from './core.js';
@@ -32,10 +32,24 @@ if (!firebaseReady) {
   app.innerHTML = `<div class="loading-center"><p style="max-width:340px;text-align:center">Firebase env variables set নেই।<br>Vercel-এ ৬টা <b>VITE_FIREBASE_*</b> variable দিন।</p></div>`;
 }
 
-onAuthStateChanged(auth, async fbUser => {
+onAuthStateChanged(auth, fbUser => {
   if (!fbUser) { me = null; renderLogin(); return; }
-  const admin = await isAdminEmail();
-  if (!admin) {
+  adminGate(fbUser);
+});
+
+/* Admin check — server 5xx/নেটওয়ার্ক সমস্যা হলে session ঠিক রেখে retry দেখায়
+   (আগে signOut + "আপনি admin নন" — ভুল বার্তা + লগআউটের ঝামেলা)। */
+async function adminGate(fbUser) {
+  const v = await adminVerify();
+  if (v.error) {
+    app.innerHTML = `<div class="loading-center" style="display:block;text-align:center;padding:28px">
+      <p style="margin-bottom:12px">Admin check করা যায়নি:<br><b style="font-size:13px">${esc(v.error)}</b></p>
+      <button class="adm-btn gold" id="gateRetry"><i class="fa-solid fa-rotate"></i> আবার চেষ্টা করুন</button>
+      <p class="muted" style="margin-top:12px;font-size:12px">লগইন ভাঙেনি — শুধু সার্ভার উত্তর দেয়নি।</p></div>`;
+    document.getElementById('gateRetry').addEventListener('click', () => adminGate(fbUser));
+    return;
+  }
+  if (!v.isAdmin) {
     await signOut(auth);
     renderLogin('এই email টা admin list-এ নেই — Firestore-এর admins collection-এ এই email-এর document আছে কিনা দেখুন।');
     return;
@@ -44,7 +58,7 @@ onAuthStateChanged(auth, async fbUser => {
   window.location.hash = window.location.hash || '#/overview';
   renderShell();
   window.addEventListener('hashchange', onHash);
-});
+}
 
 function renderLogin(errMsg = '') {
   app.innerHTML = `
@@ -149,15 +163,66 @@ async function viewOverview(main) {
       ${s.recentDeposits.map(d => `<div class="mini-row"><b>${esc(d.method)}</b> <span class="muted">${timeBn(d.createdAt)}</span><span class="badge gold">${fmt(d.amount)}</span></div>`).join('')}
       <a href="#/deposits" class="link-more">সব দেখুন →</a>
     </div>` : ''}
-    ${!s.recentProofs.length && !s.recentDeposits.length ? '<p class="muted center-note">কোনো pending item নেই ✓</p>' : ''}`;
+    ${!s.recentProofs.length && !s.recentDeposits.length ? '<p class="muted center-note">কোনো pending item নেই ✓</p>' : ''}
+    <div class="adm-card">
+      <h4><i class="fa-solid fa-stethoscope" style="color:#d97706"></i> সিস্টেম চেক (API auth)</h4>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">ইউজার যদি “Login required” দেখায় বা approve/reject fail করে, এখানে চাপলে কারণটা দেখাবে — Vercel-এর Firebase env, service account-এর project, আর Firestore পড়া যাচ্ছে কিনা।</p>
+      <button class="adm-btn ghost sm" id="healthBtn"><i class="fa-solid fa-heart-pulse"></i> Check করুন</button>
+      <div id="healthOut" style="margin-top:10px"></div>
+    </div>`;
+  document.getElementById('healthBtn').addEventListener('click', runHealthCheck);
+}
+
+async function runHealthCheck() {
+  const out = document.getElementById('healthOut');
+  if (out) out.innerHTML = '<span class="muted"><i class="fa-solid fa-spinner fa-spin"></i> চেক হচ্ছে…</span>';
+  let h;
+  try { h = await checkHealth(); } catch (err) {
+    if (out) out.innerHTML = `<div class="form-err">${esc(String(err.message || err))}</div>`;
+    return;
+  }
+  const row = (pass, label, detail) => `<div class="mini-row"><span class="badge ${pass ? 'green' : 'red'}">${pass ? '✓' : '✗'}</span> ${esc(label)}${detail ? ` <span class="muted">${esc(detail)}</span>` : ''}</div>`;
+  const rows = [
+    row(!!h.ok, 'সামগ্রিক', h.ok ? 'server ঠিক আছে — ইউজারের “Login required” হলে সেটা deployment-এর dosh নয়' : 'server-side সেটআপে সমস্যা'),
+    row(!!h.firestore && !!h.firestore.reachable, 'Firestore পড়া', h.firestore && h.firestore.settingsDoc ? 'settings/site পাওয়া গেছে' : 'পড়া যাচ্ছে না'),
+    row(!!h.privateKeyShape, 'Private key ফরম্যাট', ''),
+    row(!!h.projectMatch, 'Project match', `site: ${h.tokenProject || h.serverProject || '?'} / server: ${h.serverProject || '?'} / SA: ${h.serviceAccountProject || '?'}`),
+    row(!!h.authed, 'আপনার token verify', h.authed ? 'OK' : `ব্যর্থ (${esc(h.authState || '')} ${esc(h.authCode || '')})`),
+  ].join('');
+  const notes = (h.notes || []).map(n => `<p class="muted" style="font-size:12px;margin-top:6px"><i class="fa-solid fa-circle-info"></i> ${esc(n)}</p>`).join('');
+  if (out) out.innerHTML = rows + notes;
 }
 
 /* ---------- task submissions (proof review queue) ---------- */
 let proofFilter = 'pending';
-function submittedFieldsHtml(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.keys(data).length) return '';
-  return `<div class="sub-fields">${Object.entries(data).map(([k, v]) => `
-    <div class="sub-row"><span class="muted">${esc(k)}:</span><b>${esc(v || '—')}</b></div>`).join('')}</div>`;
+/* Submission-এ save হওয়া dynamic fields — title + type + value (admin পরে config বদলালেও
+   পুরোনো submission ঠিকভাবেই দেখা যাবে)। পুরোনো doc-এ snapshot না থাকলে submittedData
+   থেকে fallback (backward compatible)। password টাইপের value ডিফল্ট লুকানো, "দেখুন" দিয়ে
+   reveal, যাতে screen-share/log-এ ফাঁকি না পড়ে (raw value copy-all এ যায়)। */
+function submittedFieldsHtml(data, snapshot) {
+  const rows = [];
+  if (Array.isArray(snapshot) && snapshot.length) {
+    for (const f of snapshot) {
+      if (!f || typeof f !== 'object') continue;
+      const label = String(f.label || '').slice(0, 50) || 'Field';
+      const type = String(f.type || 'text');
+      const value = f.value === undefined || f.value === null || f.value === '' ? '' : String(f.value);
+      rows.push({ label, type, value, required: !!f.required });
+    }
+  } else if (data && typeof data === 'object' && !Array.isArray(data)) {
+    for (const [k, v] of Object.entries(data)) rows.push({ label: k, type: 'text', value: String(v ?? ''), required: false });
+  }
+  if (!rows.length) return '';
+  const body = rows.map(r => {
+    const masked = r.type === 'password' && r.value;
+    const shown = masked ? '•'.repeat(Math.min(r.value.length, 14)) : (r.value || '—');
+    const reveal = masked ? `<button type="button" class="adm-btn ghost sm" data-reveal data-raw="${esc(r.value)}" style="margin-left:6px"><i class="fa-solid fa-eye"></i> দেখুন</button>` : '';
+    const cls = [masked ? 'sub-secret' : '', r.type === 'textarea' ? 'sub-multi' : ''].filter(Boolean).join(' ');
+    return `<div class="sub-row"><span class="muted">${esc(r.label)}:</span><b${cls ? ` class="${cls}"` : ''}>${esc(shown)}</b>${reveal}${!r.value && r.required ? ' <span class="muted">(required খালি)</span>' : ''}</div>`;
+  }).join('');
+  const all = rows.map(r => `${r.label}: ${r.value}`).join('\n');
+  return `<div class="sub-fields">${body}</div>
+    <button type="button" class="adm-btn ghost sm" data-copyall data-all="${esc(all)}" style="margin-top:6px"><i class="fa-solid fa-clipboard"></i> Copy All Data</button>`;
 }
 async function viewProofs(main) {
   main.innerHTML = `
@@ -184,7 +249,7 @@ async function viewProofs(main) {
       </div>
       <div class="ai-meta"><i class="fa-solid fa-user"></i> UID: ${esc(p.userId)}${user?.mobile ? ` • ${esc(user.mobile)}` : ''}</div>
       <div class="ai-meta"><i class="fa-solid fa-briefcase"></i> ${esc(p.taskName || p.taskSlug)} • <b class="gold-txt">${fmt(p.reward)}</b> • ${timeBn(p.createdAt)}</div>
-      ${submittedFieldsHtml(p.submittedData)}
+      ${submittedFieldsHtml(p.submittedData, p.submittedFields)}
       ${(p.images || []).length ? `<div class="thumb-row">${p.images.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img class="adm-thumb" src="${esc(u)}" loading="lazy" alt="proof"></a>`).join('')}</div>` : ''}
       ${p.status === 'rejected' && p.note ? `<p class="ai-note"><i class="fa-solid fa-note"></i> ${esc(p.note)}</p>` : ''}
       ${p.status !== 'pending' && p.reviewedAt ? `<p class="ai-meta muted-sm">reviewed ${timeBn(p.reviewedAt)}${p.approvedBy ? ' by ' + esc(p.approvedBy) : ''}${p.rejectedBy ? ' by ' + esc(p.rejectedBy) : ''}</p>` : ''}
@@ -202,6 +267,19 @@ async function viewProofs(main) {
       toast('Proof approve — reward balance-এ যোগ হয়েছে');
       viewProofs(main);
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+  }));
+  box.querySelectorAll('[data-reveal]').forEach(btn => btn.addEventListener('click', () => {
+    const cell = btn.previousElementSibling;
+    if (!cell) return;
+    const showing = btn.dataset.on === '1';
+    cell.textContent = showing ? '•'.repeat(Math.min(String(btn.dataset.raw).length, 14)) : btn.dataset.raw;
+    btn.innerHTML = showing ? '<i class="fa-solid fa-eye"></i> দেখুন' : '<i class="fa-solid fa-eye-slash"></i> লুকান';
+    btn.dataset.on = showing ? '' : '1';
+  }));
+  box.querySelectorAll('[data-copyall]').forEach(btn => btn.addEventListener('click', async () => {
+    const txt = btn.dataset.all || '';
+    try { await navigator.clipboard.writeText(txt); toast('সব field data copy হয়েছে'); }
+    catch (_) { prompt('Copy করুন:', txt); }
   }));
   box.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', async () => {
     const note = prompt('Reject reason (user দেখবে):') || '';
@@ -411,10 +489,12 @@ async function viewUsers(main) {
 }
 
 /* ---------- tasks ---------- */
-const TF_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url'];
+/* dynamic field types — lib/http.js FIELD_TYPES + src/pages/task.js F_TYPES এর mirror
+   (তিনটা copy; tests/web-and-apk.mjs [L] হুবহু মিল check করে) */
+const TF_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea'];
 function fieldRowHtml(f = {}) {
   return `<div class="if-row" data-if-row>
-    <input class="adm-input if-label" placeholder="Field name (যেমন: Email)" value="${esc(f.label || '')}" maxlength="40">
+    <input class="adm-input if-label" placeholder="Field Title (যেমন: UID, Password, Cookies)" value="${esc(f.label || '')}" maxlength="50">
     <select class="adm-input if-type">${TF_TYPES.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <input class="adm-input if-ph" placeholder="Placeholder (খালি রাখলে default)" value="${esc(f.placeholder || '')}" maxlength="60">
     <label class="chk if-req"><input type="checkbox" data-ifreq ${f.required ? 'checked' : ''}> Required</label>
@@ -427,7 +507,7 @@ function inputFieldsEditorHtml(t) {
     <div class="if-editor">
       <div class="if-head">
         <label>Input Fields — user task page-এ এই field গুলো পূরণ করে submit করবে</label>
-        <button type="button" class="adm-btn ghost sm" data-ifadd><i class="fa-solid fa-plus"></i> Field যোগ করুন</button>
+        <button type="button" class="adm-btn ghost sm" data-ifadd><i class="fa-solid fa-plus"></i> Add Input Field</button>
       </div>
       <div class="if-rows" data-ifrows>${fields.map(fieldRowHtml).join('') || '<p class="muted if-empty">কোনো field নেই — task শুধু "link + submit" flow-এ থাকবে।</p>'}</div>
     </div>`;
@@ -567,22 +647,36 @@ const SET_FIELDS = [
 
 async function viewSettings(main) {
   const s = await getSettings();
+  // secret (giftCode) server থেকে পড়া যায়নি → field disable, নাহলে খালি value
+  // Save করলে gift code মুছে যেত — আগের version-এ ঠিক এটাই হতো
+  const secretOff = s._secretLoaded !== true;
   main.innerHTML = `
     <form id="settingsForm">
     ${SET_FIELDS.map(g => `
       <div class="adm-card">
         <h4><i class="fa-solid fa-sliders" style="color:#d97706"></i> ${g.group}</h4>
         <div class="set-grid">
-          ${g.fields.map(([k, label, type]) => `
-            <div><label>${label}</label><input type="${type}" step="${type === 'number' ? '0.5' : undefined}" class="adm-input" data-sf="${k}" value="${esc(s[k] ?? '')}"></div>`).join('')}
+          ${g.fields.map(([k, label, type]) => {
+            const locked = k === 'giftCode' && secretOff;
+            return `
+            <div><label>${label}</label><input type="${type}" step="${type === 'number' ? '0.5' : undefined}" class="adm-input" data-sf="${k}" value="${locked ? '' : esc(s[k] ?? '')}" ${locked ? 'disabled placeholder="লোড করা যায়নি — API দেখুন"' : ''}></div>`;
+          }).join('')}
         </div>
+        ${g.group === 'Gift' && secretOff ? '<p class="muted" style="margin-top:8px"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626"></i> Gift Code server API থেকে পড়া যায়নি — এই ঘরটা এখন change হবে না (ভুলবশত কোড মুছে যাবে না)।</p>' : ''}
+        ${g.group === 'Gift' && !secretOff ? `<p class="muted" style="margin-top:8px">কোড: <b>${esc(s.giftCode || '(খালি)')}</b> <button type="button" class="adm-btn ghost sm" id="clearGiftBtn" style="margin-left:8px">Clear</button></p>` : ''}
       </div>`).join('')}
       <button type="submit" class="adm-btn gold"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
     </form>`;
+  document.getElementById('clearGiftBtn')?.addEventListener('click', async () => {
+    if (!confirm('Gift code মুছে ফেলবেন? তাহলে কেউই আর gift claim করতে পারবে না।')) return;
+    try { await clearGiftCode(); toast('Gift code cleared'); viewSettings(main); }
+    catch (err) { toast(err.message, 'error'); }
+  });
   document.getElementById('settingsForm').addEventListener('submit', async e => {
     e.preventDefault();
     const data = {};
     main.querySelectorAll('[data-sf]').forEach(inp => {
+      if (inp.disabled) return; // load না হওয়া field পাঠানো হয় না — overwrite রোধ
       const k = inp.dataset.sf;
       data[k] = inp.type === 'number' ? (Number(inp.value) || 0) : inp.value.trim();
     });

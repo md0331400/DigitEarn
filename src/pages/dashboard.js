@@ -24,8 +24,17 @@ bootAppPage({
         </div>`);
     }
 
-    // welcome modal — login/reload-এর পরেই দেখাবে (Telegram + admin links admin panel থেকে change হয়)
-    showWelcomeModal(settings);
+    // Welcome modal — আগে প্রতিবার dashboard load-এই উঠত (refresh দিলেই বারবার
+    // modal)। profile-এর `welcomeShown` field সেট আছে কিন্তু client সেটা লিখতে
+    // পারে না (rules শুধু `name` allow করে), তাই flag = server field + device
+    // localStorage। Modal বন্ধ করলে/দেখার পর আর আসবে না।
+    const WKEY = 'de_welcome_seen_v1';
+    let seen = false;
+    try { seen = localStorage.getItem(WKEY) === '1'; } catch (_) {}
+    if (!seen && !user.welcomeShown) {
+      showWelcomeModal(settings, () => { try { localStorage.setItem(WKEY, '1'); } catch (_) {} });
+      try { localStorage.setItem(WKEY, '1'); } catch (_) {}
+    }
 
     // tasks grid
     const grid = document.getElementById('projGrid');

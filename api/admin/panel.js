@@ -9,7 +9,10 @@
      POST /api/admin/panel?op=deposit-review
      POST /api/admin/panel?op=set-active
      POST /api/admin/panel?op=withdrawal-review
-     GET  /api/admin/panel?op=notice-targeted */
+     GET  /api/admin/panel?op=notice-targeted
+     POST /api/admin/panel?op=secret          (settings/secret read+write — Admin SDK)
+   POST /api/admin/panel?op=health          (auth/env self-check — "Login required" er karon ber korar jonno)
+   নতুন op যোগ করা = lib/admin/<name>.js + এই HANDLERS map — নতুন function file না। */
 import { cors, fail } from '../../lib/http.js';
 import { default as handleVerify } from '../../lib/admin/verify.js';
 import { default as handleProofReview } from '../../lib/admin/proof-review.js';
@@ -17,6 +20,8 @@ import { default as handleDepositReview } from '../../lib/admin/deposit-review.j
 import { default as handleSetActive } from '../../lib/admin/set-active.js';
 import { default as handleWithdrawalReview } from '../../lib/admin/withdrawal-review.js';
 import { default as handleNoticeTargeted } from '../../lib/admin/notice-targeted.js';
+import { default as handleSecret } from '../../lib/admin/secret.js';
+import { default as handleHealth } from '../../lib/admin/health.js';
 
 const HANDLERS = {
   verify: handleVerify,
@@ -25,6 +30,8 @@ const HANDLERS = {
   'set-active': handleSetActive,
   'withdrawal-review': handleWithdrawalReview,
   'notice-targeted': handleNoticeTargeted,
+  secret: handleSecret,
+  health: handleHealth,
 };
 
 export default async function handler(req, res) {

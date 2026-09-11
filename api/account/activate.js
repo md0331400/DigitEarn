@@ -1,13 +1,14 @@
 /* POST /api/account/activate — trusted activation (bonus exactly once, server-side amount). */
 import { getDb } from '../../lib/firebase-admin.js';
-import { cors, fail, ok, verifyUser } from '../../lib/http.js';
+import { cors, fail, ok, authenticate, authReject, AUTH_OK, ApiError, opFail } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
-  const user = await verifyUser(req);
-  if (!user) return fail(res, 401, 'Login required');
+  const a = await authenticate(req);
+  if (a.state !== AUTH_OK) return authReject(res, a);
+  const user = { uid: a.uid, email: a.email };
 
   const db = getDb();
   const uid = user.uid;
@@ -23,9 +24,9 @@ export default async function handler(req, res) {
     let bonusGiven = false;
     await db.runTransaction(async tx => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+      if (!userSnap.exists) throw new ApiError(409, 'আপনার প্রোফাইল পাওয়া যায়নি');
       const d = userSnap.data();
-      if (d.isActive) throw new Error('একাউন্টটি ইতিমধ্যে অ্যাক্টিভ আছে');
+      if (d.isActive) throw new ApiError(409, 'একাউন্টটি ইতিমধ্যে অ্যাক্টিভ আছে');
       tx.update(userRef, { isActive: true, lastLogin: now });
       if (bonus > 0 && !d.activationBonusGiven) {
         bonusGiven = true;
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
       }
     });
   } catch (err) {
-    return fail(res, 409, err.message || 'Operation fail হয়েছে');
+    return opFail(res, err);
   }
 
   return ok(res, { bonusGiven });

@@ -33,6 +33,21 @@ export function makeDb() {
           path: key,
           get: async () => ({ exists: d[key] !== undefined, data: () => d[key] }),
           collection: sub => makeColl(key + '/' + sub),
+          // real Admin SDK DocumentReference also has set/update/delete — without
+          // them a handler using docRef.set() would look broken in tests only.
+          set: async (data, opts) => {
+            d[key] = (opts && opts.merge) ? { ...(d[key] || {}), ...data } : { ...data };
+            return { writeTime: Date.now() };
+          },
+          update: async data => {
+            if (d[key] === undefined) {
+              const e = new Error(`NOT_FOUND: no document to update: ${key}`);
+              e.code = 5;
+              throw e;
+            }
+            d[key] = { ...d[key], ...data };
+          },
+          delete: async () => { delete d[key]; },
         };
       },
 
@@ -40,17 +55,17 @@ export function makeDb() {
         const matches = () => Object.entries(d).filter(([k, v]) => inColl(k) && v && v[field] === value);
         return {
           limit(n) {
-            return { get: async () => { const m = matches().slice(0, n); return { empty: !m.length, docs: toDocs(m) }; } };
+            return { get: async () => { const m = matches().slice(0, n); const docs = toDocs(m); return { empty: !docs.length, size: docs.length, docs }; } };
           },
-          get: async () => { const m = matches(); return { empty: !m.length, docs: toDocs(m) }; },
+          get: async () => { const docs = toDocs(matches()); return { empty: !docs.length, size: docs.length, docs }; },
         };
       },
 
       // collection-level list (users, targetNotices ইত্যাদি — admin scan-এর জন্য)
       limit(n) {
-        return { get: async () => { const m = listDocs().slice(0, n); return { empty: !m.length, docs: m }; } };
+        return { get: async () => { const docs = listDocs().slice(0, n); return { empty: !docs.length, size: docs.length, docs }; } };
       },
-      get: async () => { const m = listDocs(); return { empty: !m.length, docs: m }; },
+      get: async () => { const docs = listDocs(); return { empty: !docs.length, size: docs.length, docs }; },
     };
   }
 
@@ -60,7 +75,12 @@ export function makeDb() {
 
     runTransaction: async (fn) => {
       const tx = {
-        get: async (ref) => ({ exists: d[ref._key] !== undefined, data: () => d[ref._key] }),
+        get: async (ref) => {
+          /* real Firestore allows tx.get(query) too (guard reads inside a transaction) —
+             our query objects expose .get(), so delegate instead of reading a doc key */
+          if (ref && ref._key === undefined && typeof ref.get === 'function') return ref.get();
+          return { exists: d[ref._key] !== undefined, data: () => d[ref._key] };
+        },
         set: (ref, data) => { d[ref._key] = data; },
         update: (ref, data) => {
           // real Firestore: update() on a missing doc throws NOT_FOUND

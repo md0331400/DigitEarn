@@ -8,15 +8,16 @@
    - username/email server-এ user doc থেকে (client-এর কথা trust না)
    - userId = verified ID token-এর uid (client-এর uid ignore) */
 import { getDb } from '../../lib/firebase-admin.js';
-import { cors, fail, ok, readBody, verifyUser, isTaskSlug, isEmail } from '../../lib/http.js';
+import { cors, fail, ok, readBody, authenticate, authReject, AUTH_OK, isTaskSlug, isEmail, ApiError, opFail, fieldMaxLen, fieldType } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
-const FIELD_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url'];
 const DEFAULT_DAILY_LIMIT = 20;
 
+/* Day key = UTC (client-এর todayStr()-ও এখন UTC — src/core/api.js)।
+   এলোমেলো container TZ / browser local date হলে client আর server-এর "আজকের"
+   key আলাদা হয়ে daily-limit + "আজকের জমা" লিস্ট ভুল দেখাতো। */
 function today() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Date().toISOString().slice(0, 10);
 }
 
 /* account identity key — যে field দিয়ে account চেনা যায় (password/2FA বাদে প্রথম field).
@@ -34,8 +35,9 @@ export function accountKeyOf(taskSlug, fields, data) {
 export default async function handler(req, res) {
   if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
-  const user = await verifyUser(req);
-  if (!user) return fail(res, 401, 'Login required');
+  const a = await authenticate(req);
+  if (a.state !== AUTH_OK) return authReject(res, a);
+  const user = { uid: a.uid, email: a.email };
   const body = await readBody(req);
   const taskSlug = String(body.taskSlug || '');
   if (!isTaskSlug(taskSlug)) return fail(res, 400, 'Invalid task');
@@ -52,9 +54,16 @@ export default async function handler(req, res) {
   const reward = Number(task.reward) || 0;
   if (reward <= 0) return fail(res, 400, 'প্রজেক্টের rate সেট করা নেই');
 
-  /* ---------- submitted fields validate (per admin config) ---------- */
+  /* ---------- submitted fields validate (per admin config) ----------
+     label = field key, type = admin-selected field type — দুটোই submission-এর সাথে
+     snapshot হিসেবে save হয় (admin পরে field config বদলালেও পুরোনো submission সঠিকভাবে
+     দেখানো যায়, আর password-type value mask করা যায়)। */
   const fields = Array.isArray(task.inputFields) ? task.inputFields : [];
+  /* একটা task-এ সর্বোচ্চ ২০টা dynamic field (admin config) — নাহলে submission doc
+     আর review queue অসীম বড় হতে পারে */
+  if (fields.length > 20) return fail(res, 400, 'Field সংখ্যা ২০-এর বেশি হতে পারবে না');
   const submittedData = {};
+  const submittedFields = [];
   if (fields.length) {
     if (typeof body.data !== 'object' || body.data === null || Array.isArray(body.data)) {
       return fail(res, 400, 'Submission data সঠিক নয়');
@@ -64,11 +73,11 @@ export default async function handler(req, res) {
       const label = typeof f.label === 'string' ? f.label.trim().slice(0, 50) : '';
       if (!label || known.has(label)) continue;
       known.add(label);
-      const type = FIELD_TYPES.includes(f.type) ? f.type : 'text';
+      const type = fieldType(f.type);
       const required = !!f.required;
       const raw = typeof body.data[label] === 'string' ? body.data[label].trim() : '';
       if (required && !raw) return fail(res, 400, `সব ফিল্ড পূরণ করুন (${label})`);
-      const maxLen = type === 'url' ? 300 : type === 'email' ? 120 : type === 'tel' ? 20 : 100;
+      const maxLen = fieldMaxLen(type);
       if (raw.length > maxLen) return fail(res, 400, `ফিল্ডটি অনেক লম্বা (${label})`);
       if (raw) {
         if (type === 'email' && !isEmail(raw)) return fail(res, 400, `সঠিক email দিন (${label})`);
@@ -76,24 +85,25 @@ export default async function handler(req, res) {
         if (type === 'url' && !/^https?:\/\/\S+$/i.test(raw)) return fail(res, 400, `সঠিক লিংক দিন (${label})`);
       }
       submittedData[label] = raw;
+      submittedFields.push({ label, type, required, value: raw });
     }
     // config-এর বাইরের field reject — arbitrary JSON save হয় না
     for (const k of Object.keys(body.data)) {
       if (!known.has(k)) return fail(res, 400, 'Submission-এ invalid field পাওয়া গেছে');
     }
-    if (JSON.stringify(submittedData).length > 4096) return fail(res, 400, 'Submission অনেক বড়');
+    /* মোট সাইজ guard — textarea (২০০০ অক্ষর/ফিল্ড) যেন বৈধ submission না বোঝায়,
+       তাই limit ২৪KB (Firestore doc limit 1MB-এর অনেক নিচে, review card-এর জন্যও যথেষ্ট) */
+    if (JSON.stringify(submittedData).length > 24 * 1024) return fail(res, 400, 'Submission অনেক বড়');
   }
 
   const day = today();
   const userProofs = db.collection('users').doc(uid).collection('proofs');
 
-  /* ---------- daily limit (spam রোধ) — একদিনে কত account বিক্রি করা যাবে ---------- */
+  /* ---------- daily limit (spam রোধ) — একদিনে কত account বিক্রি করা যাবে ----------
+     ⚠️ count টা transaction-এর ভেতরে পড়া হয় (আগে বাইরে ছিল): দুটো submit একসাথে
+     এলে দুটোই "আজকের ৩টির মধ্যে ২টি" দেখে limit cross করে বসিয়ে দিত — per-task
+     daily-limit তাই bypass-যোগ্য ছিল। */
   const dailyLimit = Math.max(1, Math.min(200, Number(task.dailyLimit) || DEFAULT_DAILY_LIMIT));
-  const todayQ = await userProofs.where('day', '==', day).limit(dailyLimit + 50).get();
-  const todayForTask = todayQ.docs.filter(d => d.data().taskSlug === taskSlug && d.data().status !== 'rejected');
-  if (todayForTask.length >= dailyLimit) {
-    return fail(res, 429, `আজকের জন্য সর্বোচ্চ ${dailyLimit}টি account জমা দেওয়া যায় — আগামীকাল আবার চেষ্টা করুন`);
-  }
 
   /* ---------- DUPLICATE ACCOUNT GUARD ----------
      একই account (একই username/email/UID) আগে কেউ জমা দিলে আবার নেওয়া যাবে না।
@@ -110,21 +120,27 @@ export default async function handler(req, res) {
   const proofData = {
     taskSlug, taskName: task.nameBn || taskSlug, day,
     images: [], reward, status: 'pending', note: '',
-    submittedData, accountKey,
+    submittedData, submittedFields, accountKey,
     createdAt: now, reviewedAt: null,
   };
   try {
     await db.runTransaction(async tx => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
+      if (!userSnap.exists) throw new ApiError(409, 'আপনার প্রোফাইল পাওয়া যায়নি');
       const u = userSnap.data();
-      if (!u.isActive) throw new Error('Account বিক্রি করতে আগে নিজের একাউন্ট অ্যাক্টিভ করুন');
+      if (!u.isActive) throw new ApiError(409, 'Account বিক্রি করতে আগে নিজের একাউন্ট অ্যাক্টিভ করুন');
+
+      const todayQ = await tx.get(userProofs.where('day', '==', day).limit(dailyLimit + 50));
+      const todayForTask = todayQ.docs.filter(x => x.data().taskSlug === taskSlug && x.data().status !== 'rejected');
+      if (todayForTask.length >= dailyLimit) {
+        throw new ApiError(429, `আজকের জন্য সর্বোচ্চ ${dailyLimit}টি account জমা দেওয়া যায় — আগামীকাল আবার চেষ্টা করুন`);
+      }
 
       if (keyRef) {
         const kSnap = await tx.get(keyRef);
         if (kSnap.exists) {
           const k = kSnap.data();
-          throw new Error(k.uid === uid
+          throw new ApiError(409, k.uid === uid
             ? 'এই account আপনি আগেই জমা দিয়েছেন — অন্য account দিন'
             : 'এই account আগেই বিক্রি হয়ে গেছে — অন্য account দিন');
         }
@@ -138,7 +154,7 @@ export default async function handler(req, res) {
       tx.set(db.collection('proofs').doc(pid), { ...proofData, userId: uid });
     });
   } catch (err) {
-    return fail(res, 409, err.message || 'Operation fail হয়েছে');
+    return opFail(res, err);
   }
 
   return ok(res, { id: pid });

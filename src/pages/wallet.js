@@ -1,6 +1,6 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import { bootAppPage, fmtBDT, esc } from '../core/ui.js';
+import { bootAppPage, fmtBDT, esc, toast } from '../core/ui.js';
 import { requestWithdrawal } from '../core/api.js';
 
 bootAppPage({
@@ -41,7 +41,11 @@ bootAppPage({
         <div class="wlock-ico"><i class="fa-solid fa-lock"></i></div>
         <h3>উইথড্র করতে একাউন্ট এক্টিভ করুন</h3>
         <p>আপনার একাউন্ট এ্যাক্টিভ করে ${esc(settings.activationBonus)} টাকা বোনাস নিন সাথে সাথে 💸</p>
-        <a href="${esc(settings.activationLink)}" target="_blank" rel="noopener" class="btn btn-orange">এক্টিভ করুন</a>
+        ${/^https?:\/\//i.test(String(settings.activationLink || '').trim())
+          ? `<a href="${esc(String(settings.activationLink).trim())}" target="_blank" rel="noopener" class="btn btn-orange">এক্টিভ করুন</a>`
+          /* BUGFIX: admin activationLink সেট না করলে href="" হতো → বাটনে চাপলে একই
+             পেজে রিলোড (কোনো কাজ না, user-ও বোঝে না কী হয়েছে)। এখন স্পষ্ট বার্তা। */
+          : `<div class="btn btn-orange" style="opacity:.65;cursor:not-allowed"><i class="fa-solid fa-triangle-exclamation"></i> অ্যাডমিন এখনো এক্টিভেশন লিংক সেট করেননি</div>`}
       </div>`}
       <div class="back-link"><a href="/history.html"><i class="fa-solid fa-clock-rotate-left"></i> Payment History দেখুন</a></div>`;
 
@@ -58,11 +62,14 @@ bootAppPage({
           accountNumber: String(fd.get('account_number') || '').trim(),
           name: user.name, email: user.email,
         });
-        alert('✅ উইথড্র রিকোয়েস্ট পাঠানো হয়েছে! এডমিন অনুমোদনের অপেক্ষায় থাকুন।');
-        location.href = '/history.html';
+        /* alert() বাদ: native dialog বাংলায় বক্স (□) দেখায়, আর সেটা JS thread থেমে
+           যাওয়ায় বাটন "পাঠানো হচ্ছে..." নিয়ে আটকে যেত — এখন toast + নিশ্চিত reset */
+        toast('উইথড্র রিকোয়েস্ট পাঠানো হয়েছে — admin approve করলে টাকা কাটা হবে', 'success');
+        setTimeout(() => { location.href = '/history.html'; }, 900);
       } catch (err) {
-        alert('❌ ' + err.message);
-        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> রিকোয়েস্ট পাঠান';
+        toast(err.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> রিকোয়েস্ট পাঠান';
       }
     });
   },

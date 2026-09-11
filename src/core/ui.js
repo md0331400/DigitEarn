@@ -45,6 +45,25 @@ export function videoSoonHtml(text) {
 
 /* ---------- project grid (shared between dashboard & landing fallback) ---------- */
 
+/* task id → static page-র slug set (gen-task-pages.mjs এগুলোর জন্যই /task/<slug>.html বানায়) */
+const TASK_PAGES = new Set(TASKS.map(t => t.slug));
+
+/* BUGFIX: Firestore থেকে আসা task doc-এ `kind` নেই আর id চলে আসে `id` field-এ
+   (`{ id: d.id, ...d.data() }`)। আগে শর্ত ছিল `t.kind === 'task' && t.slug` —
+   production-এ সেটা কখনোই সত্যি হতো না, তাই প্রতিটা প্রজেক্ট কার্ডের link '/' হয়ে
+   যেত — ড্যাশবোর্ড থেকে কোনো প্রজেক্টেই ঢোকা যেত না (homepage-এ ফিরে আসত)।
+   এখন: page → নিজের url; task → /task/<slug>.html (page থাকলে), না থাকলে task-এর
+   external url, সেটাও না থাকলে dashboard। */
+export function taskHref(t) {
+  if (t.kind === 'page') return t.url || '/';
+  const slug = String(t.slug || t.id || '').trim();
+  if (slug && TASK_PAGES.has(slug)) return `/task/${slug}.html`;
+  if (/^https?:\/\//i.test(String(t.url || ''))) return t.url;
+  // এই slug-এর জন্য কোনো static page নেই (gen-task-pages TASKS থেকে বানায়) —
+  // /task/<slug>.html দিলে 404, তাই dashboard
+  return '/dashboard.html';
+}
+
 export function projectGrid(tasks) {
   const items = (tasks && tasks.length ? tasks : [...TASKS, ...[]].map(t => ({ ...t, kind: 'task', url: `/task/${t.slug}.html` })))
     .concat(INTERNAL_PAGES.map(p => ({ ...p, kind: 'page' })));
@@ -52,16 +71,14 @@ export function projectGrid(tasks) {
   const merged = [];
   const seen = new Set();
   for (const it of [...items]) {
-    const key = it.slug || it.nameBn;
+    const key = it.slug || it.id || it.nameBn;
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(it);
   }
   merged.sort((a, b) => (a.sort || 99) - (b.sort || 99));
   return merged.map(t => {
-    const href = t.kind === 'page' ? t.url : (t.url && t.url.startsWith('http') ? `/task/${t.slug || 'x'}.html` : '/');
-    const isTask = t.kind === 'task' && t.slug;
-    const link = isTask ? `/task/${t.slug}.html` : (t.kind === 'page' ? t.url : '/');
+    const link = taskHref(t);
     // XSS-hardening: Firestore-এর color/icon value-তে HTML inject করা যাবে না
     const color = /^#[0-9a-fA-F]{3,8}$/.test(t.color || '') ? t.color : '#f59e0b';
     const icon = /^fa-(solid|regular|brands) [a-z0-9-]+$/.test(t.icon || '') ? t.icon : 'fa-solid fa-star';
@@ -204,33 +221,105 @@ export function showWelcomeModal(settings, onClose) {
 
 /* ---------- app page bootstrap ---------- */
 
+/* boot fail হলে পুরো app আটকে যায় — সেটা দেখাতে এই card + প্রতিটা আটকে-যাওয়া
+   "লোড হচ্ছে…" skeleton replace করা হয় (no dead spinner)। */
+function renderBootFailure(reason, build) {
+  const next = encodeURIComponent(location.pathname + location.search);
+  const stale = build && build.ok === false
+    ? `<p style="font-size:12.5px;color:#b45309;margin:8px 0 0;text-align:center">
+         <b>সার্ভারের API build পুরোনো মনে হচ্ছে</b>${build.blocked ? ' (এই deployment-এর URL Vercel Deployment Protection-এ ঢাকা)' : ''} —
+         <code>api/</code> + <code>lib/</code> ফাইল push করে Vercel <b>Redeploy</b> করুন; ওটা না করা পর্যন্ত
+         submit / withdraw / claim কাজ করবে না।
+       </p>`
+    : '';
+  const card = `<div class="card" style="text-align:center;padding:22px">
+    <i class="fa-solid fa-plug-circle-xmark" style="font-size:26px;color:#dc2626"></i>
+    <h3 style="margin:10px 0 6px">সার্ভারের সাথে যোগাযোগ হয়নি</h3>
+    <p class="muted" style="font-size:13px;margin:0">${esc(reason)}</p>
+    ${stale}
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+      <button class="btn btn-orange" id="bootRetry"><i class="fa-solid fa-rotate"></i> আবার চেষ্টা করুন</button>
+      <a class="btn" href="/login.html?next=${next}"><i class="fa-solid fa-right-to-bracket"></i> লগইন</a>
+    </div>
+  </div>`;
+  const host = document.getElementById('appMain') || document.getElementById('taskActions') || document.querySelector('main') || document.body;
+  host.insertAdjacentHTML('afterbegin', card);
+  document.querySelectorAll('.loading-line').forEach(el => {
+    el.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> সার্ভারের সমস্যা — উপরের বার্তা দেখুন';
+  });
+  // hideUntilAuth class লাগানো header button গুলো আটকে থাকত — এখন দেখা যাবে
+  document.querySelectorAll('.hdr-hide').forEach(el => el.classList.remove('hdr-hide'));
+  document.getElementById('bootRetry')?.addEventListener('click', () => location.reload());
+}
+
+/* নতুন client + পুরোনো functions = আধা deploy; user যেন "fix কাজ করেনি" ভুলটা
+   বারবার না করে, সেজন্য boot-এই দেখিয়ে দেওয়া হয় (profile ঠিক থাকলেও)। */
+function showBuildBanner(build) {
+  if (document.getElementById('deployWarn')) return;
+  const bar = document.createElement('div');
+  bar.id = 'deployWarn';
+  bar.style.cssText = 'background:#fef3c7;border-bottom:1px solid #f59e0b;color:#92400e;padding:9px 14px;font-size:12.5px;text-align:center';
+  bar.innerHTML = build.blocked
+    ? '<i class="fa-solid fa-shield-halved"></i> এই deployment-এর URL <b>Vercel Deployment Protection</b>-এ ঢাকা — API call ব্লক হচ্ছে। Production domain (digitearn.vercel.app) ব্যবহার করুন বা Vercel → Settings → Deployment Protection off করুন।'
+    : '<i class="fa-solid fa-triangle-exclamation"></i> <b>সার্ভারের build পুরোনো</b> (X-DigitEarn-API header নেই) — <code>api/</code> + <code>lib/</code> push করে <b>Redeploy</b> করুন।';
+  document.body.insertBefore(bar, document.body.firstChild);
+}
+
 export async function bootAppPage({ active = 'home', onReady }) {
   const next = encodeURIComponent(location.pathname + location.search);
   if (!firebaseReady) {
     document.body.innerHTML = `<div class="boot-error"><div><i class="fa-solid fa-triangle-exclamation"></i><h1>সেটআপ চলছে</h1><p>${esc(notConfiguredMsg())}</p></div></div>`;
     return;
   }
+  // BUGFIX: আগের 4s timeout ধীর নেটওয়ার্কে (Firebase session restore) log-in
+  // user-কেও "not logged in" ভেবে /login.html-এ পাঠিয়ে দিত — user বারবার লগইন
+  // করত আর submit-এ "Login required" খেত। এখন: (a) cached currentUser থাকলে
+  // সাথে সাথে চলে, (b) প্রথম auth callback-এই resolve হয় (signed-out হলে দ্রুত
+  // redirect), (c) callback-ই না এলে 10s পরে শেষবার currentUser আবার দেখে নেয়।
   const user = await new Promise(resolve => {
-    const unsub = onAuthStateChanged(auth, resolve);
-    setTimeout(() => { unsub(); resolve(null); }, 4000);
+    if (auth && auth.currentUser) { resolve(auth.currentUser); return; }
+    let done = false;
+    let unsub = null;
+    const finish = u => { if (done) return; done = true; if (unsub) unsub(); resolve(u || null); };
+    unsub = onAuthStateChanged(auth, u => finish(u));
+    setTimeout(() => finish((auth && auth.currentUser) || null), 10000);
   });
   if (!user) {
     location.replace('/login.html?next=' + next);
     return;
   }
-  const [settings, userDoc] = await Promise.all([getSettings(), getUserDoc(user.uid).catch(() => null)]);
+  /* Proactive token refresh — দীর্ঘক্ষণ খোলা ট্যাব/অ্যাপে পুরোনো (expired) ID token
+     পাঠালে server 401 দিত → "Login required"। boot-এই একবার fresh token নেওয়া হয়;
+     callApi আবার 401 এলে force-refresh করে retry-ও করে (src/core/api.js)।
+     ব্যর্থ হলে চুপ — callApi-র retry সামলে নেবে। */
+  try { user.getIdToken(true).catch(() => {}); } catch (_) {}
+  const { checkApiBuild, ensureUserProfileResult } = await import('./api.js');
+  const [settings, userDoc, build] = await Promise.all([
+    getSettings(),
+    getUserDoc(user.uid).catch(() => null),
+    checkApiBuild(),          // server-এ নতুন api/ code চলছে কি না (কখনো throw করে না)
+  ]);
   let profile = userDoc;
+  let ensureError = '';
   if (!profile) {
     // stale/old session-এ profile missing হলে auto-create (self-heal)
     try {
-      const { ensureUserProfile } = await import('./api.js');
-      profile = await ensureUserProfile(user.uid, { email: user.email, name: user.displayName });
-    } catch (_) {}
+      const r = await ensureUserProfileResult(user.uid, { email: user.email, name: user.displayName });
+      profile = r.profile;
+      ensureError = r.error || '';
+    } catch (err) {
+      ensureError = String((err && err.message) || err);
+    }
   }
   if (!profile) {
-    toast('প্রোফাইল লোড হয়নি — একবার refresh করুন, আবার না হলে admin-এ জানান', 'error');
+    /* ⚠️ আগে এখানে শুধু toast দিয়ে `return` করত → পেজের "লোড হচ্ছে…" spinner চিরকাল
+       ঘুরতে থাকত (mobile screenshot-এ ঠিক সেটাই দেখাচ্ছিল), আর কারণটাও জানা যেত না।
+       এখন: কারণ + retry + (পুরোনো deploy হলে) পরিষ্কার সতর্কবার্তা, একই সাথে সব
+       আটকে-যাওয়া skeleton replace। */
+    renderBootFailure(ensureError || 'প্রোফাইল ডকুমেন্ট পাওয়া যায়নি (users/' + user.uid + ')', build);
     return;
   }
+  if (build && build.ok === false) showBuildBanner(build);
 
   const header = document.getElementById('appHeader');
   const drawer = document.getElementById('appDrawer');

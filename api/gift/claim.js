@@ -1,18 +1,21 @@
 /* POST /api/gift/claim — trusted gift code reward (atomic, server-side code+amount). */
 import { getDb } from '../../lib/firebase-admin.js';
-import { cors, fail, ok, readBody, verifyUser } from '../../lib/http.js';
+import { cors, fail, ok, readBody, authenticate, authReject, AUTH_OK, ApiError, opFail } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
+/* Day key = UTC (client-এর todayStr()-ও এখন UTC — src/core/api.js)।
+   এলোমেলো container TZ / browser local date হলে client আর server-এর "আজকের"
+   key আলাদা হয়ে daily-limit + "আজকের জমা" লিস্ট ভুল দেখাতো। */
 function today() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'Method Not Allowed');
-  const user = await verifyUser(req);
-  if (!user) return fail(res, 401, 'Login required');
+  const a = await authenticate(req);
+  if (a.state !== AUTH_OK) return authReject(res, a);
+  const user = { uid: a.uid, email: a.email };
   const body = await readBody(req);
   const code = String(body.code || '').trim();
   if (code.length < 3 || code.length > 30) return fail(res, 400, 'কোডটি সঠিক নয়');
@@ -43,10 +46,10 @@ export default async function handler(req, res) {
   try {
     await db.runTransaction(async tx => {
       const claimSnap = await tx.get(claimRef);
-      if (claimSnap.exists) throw new Error('আজকের গিফট বোনাস ইতিমধ্যে নিয়েছেন');
+      if (claimSnap.exists) throw new ApiError(409, 'আজকের গিফট বোনাস ইতিমধ্যে নিয়েছেন');
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists) throw new Error('আপনার প্রোফাইল পাওয়া যায়নি');
-      if (!userSnap.data().isActive) throw new Error('বোনাস পেতে আগে একাউন্ট অ্যাক্টিভ করুন');
+      if (!userSnap.exists) throw new ApiError(409, 'আপনার প্রোফাইল পাওয়া যায়নি');
+      if (!userSnap.data().isActive) throw new ApiError(409, 'বোনাস পেতে আগে একাউন্ট অ্যাক্টিভ করুন');
       const d = userSnap.data();
       tx.set(claimRef, { code, reward, claimedOn: today(), createdAt: now });
       tx.update(userRef, { balance: (Number(d.balance) || 0) + reward, totalEarned: (Number(d.totalEarned) || 0) + reward });
@@ -55,7 +58,7 @@ export default async function handler(req, res) {
       });
     });
   } catch (err) {
-    return fail(res, 409, err.message || 'Operation fail হয়েছে');
+    return opFail(res, err);
   }
 
   return ok(res, { reward });
