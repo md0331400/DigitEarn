@@ -913,6 +913,75 @@ console.log('\n[P] withdrawal: one request, two docs — refund only once');
   check('both copies synced to rejected', store.docs['users/wd1/withdrawals/w9'].status === 'rejected' && store.docs['withdrawals/w9'].status === 'rejected');
 }
 
+
+/* ============================================================
+   [P] ?op=seed-tasks — "Project পাওয়া যায়নি" (404) এর আসল কারণটা ঠিক করার
+       recovery op: Firestore-এ tasks/{slug} config doc না থাকলে user কিছুই
+       submit করতে পারে না, আর collection খালি হলে admin panel-এ card-ও দেখাত
+       না — তাই panel থেকেই built-in list দিয়ে doc তৈরি (?op=seed-tasks)।
+   ============================================================ */
+console.log('\n[P] ?op=seed-tasks — missing Firestore task docs');
+{
+  const { TASKS } = await import('../src/tasks-data.js');
+  const fsX = await import('node:fs');
+  const slug = TASKS[0].slug;
+  delete store.docs['tasks/' + slug];
+
+  let r = res();
+  await routerH(req('POST', auth(ADMIN), {}, '/api/admin/panel?op=seed-tasks'), r);
+  const out = json(r);
+  check('?op=seed-tasks routed through the single router (no new function)', r.statusCode === 200 && !/Unknown admin/.test(r.body), `(${r.statusCode} ${r.body.slice(0, 70)})`);
+  check('missing doc created (created list + count)', Array.isArray(out.created) && out.created.includes(slug) && out.createdCount === out.created.length, JSON.stringify(out).slice(0, 140));
+  const doc = store.docs['tasks/' + slug];
+  check('created doc has what the handlers need (reward/enabled/inputFields/dailyLimit)',
+    !!doc && Number(doc.reward) > 0 && doc.enabled === true && Array.isArray(doc.inputFields) && Number(doc.dailyLimit) >= 1, JSON.stringify(doc || {}).slice(0, 130));
+  check('created doc url is http/https only', !doc || !doc.url || /^https?:\/\//i.test(doc.url));
+
+  r = res();
+  await routerH(req('POST', auth(ADMIN), {}, '/api/admin/panel?op=seed-tasks'), r);
+  const out2 = json(r);
+  check('idempotent: second run creates nothing, skips the rest', out2.createdCount === 0 && out2.skippedCount > 0, JSON.stringify(out2).slice(0, 110));
+
+  store.docs['tasks/gmail-sale'].reward = 99;
+  r = res();
+  await routerH(req('POST', auth(ADMIN), {}, '/api/admin/panel?op=seed-tasks'), r);
+  check('admin-set rate is never overwritten by seeding', Number(store.docs['tasks/gmail-sale'].reward) === 99 && json(r).skipped.includes('gmail-sale'), `(${store.docs['tasks/gmail-sale'].reward})`);
+
+  const s2 = TASKS[1].slug, s3 = TASKS[2].slug;
+  delete store.docs['tasks/' + s2]; delete store.docs['tasks/' + s3];
+  r = res();
+  await routerH(req('POST', auth(ADMIN), { slugs: [s2] }, '/api/admin/panel?op=seed-tasks'), r);
+  const out3 = json(r);
+  check('body.slugs limits what gets created', out3.created.length === 1 && out3.created[0] === s2 && !store.docs['tasks/' + s3], JSON.stringify(out3.created));
+  r = res();
+  await routerH(req('POST', auth(ADMIN), { slugs: ['no-such-task'] }, '/api/admin/panel?op=seed-tasks'), r);
+  check('unknown slug reported in notFound (no silent success)', (json(r).notFound || []).includes('no-such-task'), JSON.stringify(json(r)).slice(0, 110));
+
+  const req0 = (store.docs['tasks/' + slug].inputFields || []).find(x => x.type !== 'password' && x.required) || { label: 'UID' };
+  r = res();
+  await submitH(req('POST', auth(A), { taskSlug: slug, data: { [req0.label]: 'ACC-777', Password: 'pw12345' } }), r);
+  check('after seeding, proof submit for that task works (no more 404)', r.statusCode === 200, `(${r.statusCode} ${r.body.slice(0, 90)})`);
+  r = res();
+  await submitH(req('POST', auth(A), { taskSlug: 'ghost-task', data: {} }), r);
+  check('still-missing task: 404 names the doc path and the one-click fix',
+    r.statusCode === 404 && /tasks\/ghost-task/.test(r.body) && /তৈরি করুন/.test(r.body), r.body.slice(0, 120));
+
+  r = res();
+  await routerH(req('POST', {}, {}, '/api/admin/panel?op=seed-tasks'), r);
+  check('anonymous cannot seed (401)', r.statusCode === 401, `(${r.statusCode})`);
+  r = res();
+  await routerH(req('POST', auth(A), {}, '/api/admin/panel?op=seed-tasks'), r);
+  check('logged-in non-admin cannot seed (403)', r.statusCode === 403, `(${r.statusCode})`);
+
+  check('no new api/ file for the op (Hobby 12-function limit)',
+    !fsX.existsSync('api/admin/seed-tasks.js') && fsX.readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).length === 10);
+  const src = (f) => fsX.readFileSync(f, 'utf8');
+  check('admin panel ships the seed button (web + APK bundle use this source)',
+    /seedTasksBtn/.test(src('src/admin/main.js')) && /seed-tasks/.test(src('src/admin/core.js')));
+  check('task page refuses to show a doomed form when config is missing',
+    /const configured = !!taskFromDb/.test(src('src/pages/task.js')) && /if \(!configured\)/.test(src('src/pages/task.js')));
+}
+
 console.log('\n=============================');
 console.log(`RESULT: ${pass} passed, ${failN} failed`);
 console.log('=============================');

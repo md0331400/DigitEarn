@@ -12,6 +12,7 @@
      GET  /api/admin/panel?op=notice-targeted
      POST /api/admin/panel?op=secret          (settings/secret read+write — Admin SDK)
    POST /api/admin/panel?op=health          (auth/env self-check — "Login required" er karon ber korar jonno)
+   POST /api/admin/panel?op=seed-tasks      (missing tasks/{slug} docs created from src/tasks-data.js)
    নতুন op যোগ করা = lib/admin/<name>.js + এই HANDLERS map — নতুন function file না। */
 import { cors, fail } from '../../lib/http.js';
 import { default as handleVerify } from '../../lib/admin/verify.js';
@@ -22,6 +23,7 @@ import { default as handleWithdrawalReview } from '../../lib/admin/withdrawal-re
 import { default as handleNoticeTargeted } from '../../lib/admin/notice-targeted.js';
 import { default as handleSecret } from '../../lib/admin/secret.js';
 import { default as handleHealth } from '../../lib/admin/health.js';
+import { default as handleSeedTasks } from '../../lib/admin/seed-tasks.js';
 
 const HANDLERS = {
   verify: handleVerify,
@@ -32,6 +34,7 @@ const HANDLERS = {
   'notice-targeted': handleNoticeTargeted,
   secret: handleSecret,
   health: handleHealth,
+  'seed-tasks': handleSeedTasks,
 };
 
 export default async function handler(req, res) {

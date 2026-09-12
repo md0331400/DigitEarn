@@ -208,6 +208,12 @@ export async function listTasks() {
   return tasks;
 }
 
+/* Firestore-এ tasks/{slug} doc নেই → user submit "Project পাওয়া যায়নি" খায়।
+   এই call টা built-in list থেকে বাকি doc গুলো বানিয়ে দেয় (যা আগে থেকে আছে সেটা অক্ষত)। */
+export async function seedTasks(slugs = []) {
+  return await callApi('/api/admin/seed-tasks', { slugs });
+}
+
 export async function saveTask(slug, data) {
   // URL sanitize: শুধু http/https — javascript:/data:/vbscript: বন্ধ
   if (data.url && !/^https?:\/\/\S+$/i.test(data.url)) {

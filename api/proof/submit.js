@@ -47,7 +47,12 @@ export default async function handler(req, res) {
 
   // trusted task config (server-এই পড়ে — client-এর rate/amount কখনো নয়)
   const taskSnap = await db.collection('tasks').doc(taskSlug).get();
-  if (!taskSnap.exists) return fail(res, 404, 'Project পাওয়া যায়নি');
+  if (!taskSnap.exists) {
+    /* আগে শুধু "Project পাওয়া যায়নি" — admin বুঝতেই পারতেন না যে Firestore-এ সেই
+       task-এর config doc-ই নেই (empty collection = fresh deploy)। এখন doc path +
+       এক-ক্লিক সমাধান (?op=seed-tasks) বলে দেয়। */
+    return fail(res, 404, `Project পাওয়া যায়নি (tasks/${taskSlug} doc নেই) — Admin: Panel → Micro Jobs → “Built-in list থেকে তৈরি করুন” চাপান`);
+  }
   const task = taskSnap.data();
   if (task.enabled === false) return fail(res, 400, 'এই প্রজেক্টটি বর্তমানে বন্ধ আছে');
   if (task.locked) return fail(res, 400, 'এই প্রজেক্টটি এখনো লক করা আছে');

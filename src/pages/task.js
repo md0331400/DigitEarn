@@ -25,8 +25,11 @@ bootAppPage({
     const stepsEl = document.getElementById('taskSteps');
     if (!box) return;
 
-    let task = await getTaskBySlug(slug).catch(() => null);
-    if (!task) task = { ...staticTask, slug };
+    const taskFromDb = await getTaskBySlug(slug).catch(() => null);
+    /* configured = সার্ভারে আসল task config আছে। না থাকলে server submit ফেল করবে
+       (404 "Project পাওয়া যায়নি") — তাই ফর্ম দেখিয়ে user-কে সময় নষ্ট করানো হয় না। */
+    const configured = !!taskFromDb;
+    let task = taskFromDb || { ...staticTask, slug };
     // Firestore doc থাকলেও ফাঁকা field গুলো static data থেকে ভরে নাও
     task = { ...staticTask, ...task, reward: Number(task.reward) || Number(staticTask.reward) || 0 };
 
@@ -83,6 +86,18 @@ bootAppPage({
         box.innerHTML = `
           <div class="notice-orange"><i class="fa-solid fa-circle-info"></i><div>Account বিক্রি করতে আগে নিজের একাউন্ট অ্যাক্টিভ করতে হবে — ৳${Number(settings.activationFee) || 30} deposit করলেই অ্যাক্টিভ + ${esc(settings.activationBonus)} টাকা বোনাস!</div></div>
           <a href="/deposit.html" class="btn btn-orange btn-block" style="margin-top:12px"><i class="fa-solid fa-bolt"></i> Deposit করে অ্যাক্টিভ করুন</a>`;
+        return;
+      }
+
+      if (!configured) {
+        box.innerHTML = `
+          <div class="notice-orange"><i class="fa-solid fa-triangle-exclamation"></i><div>
+            <b>এই প্রজেক্টের সেটিং সার্ভারে সেট করা নেই</b><br>
+            এখন submit করলে server ফিরিয়ে দেবে (“Project পাওয়া যায়নি”)। Admin-কে জানান —
+            Admin Panel → Micro Jobs → “Built-in list থেকে তৈরি করুন” চাপলেই এক সেকেন্ডে ঠিক
+            হয়ে যাবে, তারপর আবার এই পেজে আসুন।
+          </div></div>
+          <a href="/dashboard.html" class="btn btn-orange btn-block" style="margin-top:12px"><i class="fa-solid fa-layer-group"></i> অন্য প্রজেক্ট দেখুন</a>`;
         return;
       }
 

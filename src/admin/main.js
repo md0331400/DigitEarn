@@ -8,7 +8,7 @@ import {
   listDeposits, approveDeposit, rejectDeposit,
   listWithdrawals, reviewWithdrawal,
   listUsers, getUserWithdrawals, getUserTransactions, setUserActive,
-  listTasks, saveTask,
+  listTasks, saveTask, seedTasks,
   getSettings, saveSettings, clearGiftCode,
   listNotices, addNotice, updateNotice, deleteNotice,
   listUserTargetNotices, addTargetedNotice, updateTargetedNotice, deleteTargetedNotice, listTargetedAll,
@@ -523,9 +523,19 @@ function inputFieldsEditorHtml(t) {
 }
 async function viewTasks(main) {
   const tasks = await listTasks();
+  /* ⚠️ Firestore-এ task config doc না থাকলে user submit → "Project পাওয়া যায়নি" (404)।
+     listTasks() খালি হলে এই panel-এ কার্ডই না, মানে নতুন doc বানানোর উপায়ও না —
+     তাই একটা recovery bar (?op=seed-tasks, idempotent)। */
+  const seedBar = `
+    <div class="adm-card" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+      <div style="flex:1 1 260px"><b>Built-in list থেকে task doc তৈরি করুন</b><br>
+        <span class="muted">${tasks.length ? 'যেগুলোর doc নেই শুধু সেটুকুই বানাবে — আগে থেকে যা আছে (rate, fields, lock) অক্ষত থাকবে।' : 'Firestore-এ কোনো task config নেই — একারণেই user submit করলে “Project পাওয়া যায়নি” আসছে। নিচের বাটন চাপলেই ঠিক হয়ে যাবে।'}</span></div>
+      <button class="adm-btn sm" id="seedTasksBtn"><i class="fa-solid fa-database"></i> ${tasks.length ? 'বাকিগুলো তৈরি করুন' : 'এখনই তৈরি করুন'}</button>
+    </div>`;
   main.innerHTML = `
     <div class="adm-card task-head"><h4><i class="fa-solid fa-briefcase" style="color:#d97706"></i> Micro Jobs</h4>
     <p class="muted">Reward, link, password, description, input fields, lock/status, video — সব এখান থেকেই। Save করলেই user website-তে automatically update হয়ে যাবে। নতুন task-এর জন্য নতুন page লাগবে — developer-কে জানান।</p></div>
+    ${seedBar}
     <div id="taskList">${tasks.map(t => `
       <div class="adm-card task-card" data-slug="${esc(t.slug)}">
         <div class="task-row">
@@ -580,6 +590,16 @@ async function viewTasks(main) {
     const form = card.querySelector('[data-form]');
     form.hidden = !form.hidden;
   }));
+  main.querySelector('#seedTasksBtn')?.addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const out = await seedTasks();
+      toast(`তৈরি হয়েছে ${out.createdCount || 0}টা, আগে থেকেই ছিল ${out.skippedCount || 0}টা${out.invalid && out.invalid.length ? ' · কিছু হয়নি: ' + out.invalid.join(', ') : ''}`);
+      viewTasks(main);
+    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+  });
+
   main.querySelectorAll('[data-save]').forEach(btn => btn.addEventListener('click', async () => {
     const card = btn.closest('.task-card');
     const f = n => card.querySelector(`[data-form] [data-f="${n}"]`);
