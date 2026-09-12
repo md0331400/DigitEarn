@@ -72,7 +72,10 @@ export async function callApi(path, body = {}, method = 'POST', { anonymous = fa
     try { raw = await resp.text(); } catch (_) {}
     let data = null;
     try { data = raw ? JSON.parse(raw) : {}; } catch (_) {}
-    return { resp, data: data || {}, isJson: !!data, serverApi: (resp.headers && resp.headers.get('x-digitearn-api')) || '' };
+    /* x-vercel-error: Vercel edge-এর নিজের error header — function load-ই fail করলে
+       (FUNCTION_INVOCATION_FAILED) আমাদের কোনো JSON-ই আসে না; কারণটা এখান থেকেই বোঝা যায় */
+    const vercelError = (resp.headers && resp.headers.get('x-vercel-error')) || '';
+    return { resp, data: data || {}, isJson: !!data, serverApi: (resp.headers && resp.headers.get('x-digitearn-api')) || '', vercelError };
   };
   let r = await send(false);
   /* ID token ~১ ঘণ্টা পর expire — long-idle tab/app-এর পুরোনো token নিয়ে submit করলে
@@ -83,7 +86,9 @@ export async function callApi(path, body = {}, method = 'POST', { anonymous = fa
   if (!anonymous && shouldRetryWithFreshToken(r.resp.status, r.data, auth.currentUser)) {
     r = await send(true);
   }
-  if (!r.resp.ok) throw new Error(apiErrorMessage(r.resp.status, r.data, { json: r.isJson, serverApi: r.serverApi }));
+  if (!r.resp.ok) {
+    throw new Error(apiErrorMessage(r.resp.status, r.data, { json: r.isJson, serverApi: r.serverApi, vercelError: r.vercelError }));
+  }
   return r.data;
 }
 
@@ -99,8 +104,18 @@ export function shouldRetryWithFreshToken(status, data, currentUser) {
    data.error string না object-ও হতে পারে (Vercel নিজে `{"error":{"code":"401",...}}` দেয়) —
    আগে String(obj) → "[object Object]" দেখাত, সেটাও এখানে ঠিক। */
 export function apiErrorMessage(status, data = {}, opts = {}) {
-  const { json = true, serverApi = '' } = opts;
+  const { json = true, serverApi = '', vercelError = '' } = opts;
   const d = data && typeof data === 'object' ? data : {};
+  /* Serverless function load-ই fail (Vercel: 500 FUNCTION_INVOCATION_FAILED, body শুধু
+     "A server error has occurred") — এটা user-এর ভুল না, deploy/dependency/Node-version
+     সমস্যা; স্পষ্ট না বললে user বারবার login/refresh করতে থাকত (আগে ঠিক তাই হচ্ছিল)। */
+  if (status >= 500 && /FUNCTION_INVOCATION_FAILED|DEPLOYMENT_NOT_FOUND|NO_BUILDER|MISSING_FILE/i.test(String(vercelError || ''))
+      && !serverApi) {
+    return 'সার্ভারের function চালু হচ্ছে না (' + vercelError + ') — এটা আপনার ভুল না। '
+      + 'Admin-কে জানান: Vercel → Deployments → এই deploy → Functions/Runtime log দেখুন '
+      + '(সাধারণত Node version বা dependency)। verify: `curl -i -X POST /api/user/check`-এ '
+      + '`x-digitearn-api: v3` header থাকা কথা, আর site-এর /version.json মিলিয়ে দেখুন।';
+  }
   /* Vercel Deployment Protection: function-এর আগেই 401 — preview URL/APK থেকে API চলে না */
   if (d.protection || (d.error && typeof d.error === 'object' && String(d.error.code) === '401')) {
     return 'সার্ভার Vercel Deployment Protection-এ ঢাকা — এই URL থেকে API call করা যায় না। '
@@ -161,21 +176,36 @@ export const EXPECTED_API_BUILD = 'v3';
 
 export async function checkApiBuild() {
   try {
-    const resp = await fetch('/api/user/check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    });
+    /* দুটো একসাথে: (১) function live + version header, (২) deployed static build identity
+       (/version.json — scripts/gen-task-pages.mjs বিল্ডের সময় লেখে) */
+    const [resp, site] = await Promise.all([
+      fetch('/api/user/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+      fetch('/version.json', { cache: 'no-store' })
+        .then(r => (r.ok ? r.json().catch(() => null) : null))
+        .catch(() => null),
+    ]);
     const version = (resp.headers && resp.headers.get('x-digitearn-api')) || '';
+    const vercelError = (resp.headers && resp.headers.get('x-vercel-error')) || '';
+    const crash = resp.status >= 500 && !version && /FUNCTION_INVOCATION_FAILED|DEPLOYMENT_NOT_FOUND|MISSING_FILE/i.test(vercelError + '');
     return {
       ok: version === EXPECTED_API_BUILD,
       version,
       status: resp.status,
       /* 401 + header নেই → Vercel Deployment Protection (preview URL / WebView) */
       blocked: !version && resp.status === 401,
+      crash,
+      vercelError,
+      site,                                  // { api, commit, buildId, firebaseConfig, … }
+      /* এই বিল্ডে Firebase web config বসেনি → login/submit অকার্যকর (vite warning-এও বলে) */
+      noFirebase: !!(site && site.firebaseConfig === false),
+      expected: EXPECTED_API_BUILD,
     };
   } catch (_) {
-    return { ok: false, version: '', status: 0, blocked: false };
+    return { ok: false, version: '', status: 0, blocked: false, crash: false, site: null, noFirebase: false };
   }
 }
 

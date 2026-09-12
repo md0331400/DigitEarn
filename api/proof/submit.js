@@ -8,7 +8,7 @@
    - username/email server-এ user doc থেকে (client-এর কথা trust না)
    - userId = verified ID token-এর uid (client-এর uid ignore) */
 import { getDb } from '../../lib/firebase-admin.js';
-import { cors, fail, ok, readBody, authenticate, authReject, AUTH_OK, isTaskSlug, isEmail, ApiError, opFail, fieldMaxLen, fieldType } from '../../lib/http.js';
+import { cors, fail, ok, readBody, authenticate, authReject, AUTH_OK, isTaskSlug, isEmail, ApiError, opFail, fieldMaxLen, fieldType, isSecretField } from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const DEFAULT_DAILY_LIMIT = 20;
@@ -85,7 +85,8 @@ export default async function handler(req, res) {
         if (type === 'url' && !/^https?:\/\/\S+$/i.test(raw)) return fail(res, 400, `সঠিক লিংক দিন (${label})`);
       }
       submittedData[label] = raw;
-      submittedFields.push({ label, type, required, value: raw });
+      /* secret: true → admin UI value mask করে, reject হলে value মুছে যায় (lib/http.js) */
+      submittedFields.push({ label, type, required, secret: isSecretField(label, type), value: raw });
     }
     // config-এর বাইরের field reject — arbitrary JSON save হয় না
     for (const k of Object.keys(body.data)) {

@@ -19,7 +19,7 @@ export const TASKS = [
     url: 'https://facebook.com',
     locked: false,
     sort: 1,
-    password: '@jony@10',
+    password: '', // admin panel → Micro Jobs → Account Password (repo-তে real credential রাখা যাবে না — git history public)
     submitLabel: 'SUBMIT FACEBOOK ID',
     historyLabel: 'View Activity History',
     dailyLimit: 20,
@@ -48,7 +48,7 @@ export const TASKS = [
     url: 'https://mail.google.com',
     locked: false,
     sort: 2,
-    password: '@jony@#&',
+    password: '', // ^ একই কারণে seed-এ credential নেই
     submitLabel: 'SUBMIT GMAIL',
     historyLabel: 'View Gmail History',
     dailyLimit: 20,
@@ -76,14 +76,14 @@ export const TASKS = [
     url: 'https://instagram.com',
     locked: false,
     sort: 3,
-    password: '@jony@10',
+    password: '', // admin panel → Micro Jobs → Account Password (repo-তে real credential রাখা যাবে না — git history public)
     submitLabel: 'SUBMIT INSTAGRAM ID',
     historyLabel: 'View Sales History',
     dailyLimit: 20,
     inputFields: [
       { label: 'Username', type: 'text', placeholder: '@username', required: true },
       { label: 'Password', type: 'password', placeholder: 'Password', required: true },
-      { label: '2FA Key', type: 'text', placeholder: '2FA Key', required: false },
+      { label: 'Profile Link', type: 'url', placeholder: 'https://instagram.com/username', required: false },
     ],
     steps: [
       'যে Instagram account বিক্রি করবেন তার পাসওয়ার্ড উপরের পাসওয়ার্ডে পরিবর্তন করুন',

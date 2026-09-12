@@ -185,6 +185,11 @@ async function runHealthCheck() {
   const rows = [
     row(!!h.ok, 'সামগ্রিক', h.ok ? 'server ঠিক আছে — ইউজারের “Login required” হলে সেটা deployment-এর dosh নয়' : 'server-side সেটআপে সমস্যা'),
     row(!!h.firestore && !!h.firestore.reachable, 'Firestore পড়া', h.firestore && h.firestore.settingsDoc ? 'settings/site পাওয়া গেছে' : 'পড়া যাচ্ছে না'),
+    /* deployed Admin SDK identity — v14 (ESM-only jose) Vercel-এর Node 20 runtime-এ
+       প্রতিটা function-কে load হওয়ার আগেই মেরে ফেলে (ERR_REQUIRE_ESM, 2026-09-12 outage) */
+    row(!h.sdk || h.sdk.cjsRequireSafe !== false, 'Admin SDK (firebase-admin)',
+      `v${(h.sdk && h.sdk.version) || '?'}${h.sdk && h.sdk.jose ? ' · jose@' + h.sdk.jose : ''}`
+      + (h.sdk && h.sdk.cjsRequireSafe === false ? ' — CJS require() ভাঙে, functions 500 (Node 22.x বা ^13.10.0 pin লাগবে)' : '')),
     row(!!h.privateKeyShape, 'Private key ফরম্যাট', ''),
     row(!!h.projectMatch, 'Project match', `site: ${h.tokenProject || h.serverProject || '?'} / server: ${h.serverProject || '?'} / SA: ${h.serviceAccountProject || '?'}`),
     row(!!h.authed, 'আপনার token verify', h.authed ? 'OK' : `ব্যর্থ (${esc(h.authState || '')} ${esc(h.authCode || '')})`),
@@ -207,14 +212,18 @@ function submittedFieldsHtml(data, snapshot) {
       const label = String(f.label || '').slice(0, 50) || 'Field';
       const type = String(f.type || 'text');
       const value = f.value === undefined || f.value === null || f.value === '' ? '' : String(f.value);
-      rows.push({ label, type, value, required: !!f.required });
+      rows.push({ label, type, value, required: !!f.required, secret: f.secret === true });
     }
   } else if (data && typeof data === 'object' && !Array.isArray(data)) {
     for (const [k, v] of Object.entries(data)) rows.push({ label: k, type: 'text', value: String(v ?? ''), required: false });
   }
   if (!rows.length) return '';
   const body = rows.map(r => {
-    const masked = r.type === 'password' && r.value;
+    /* sensitive = type password / server-এ marked secret / secret-যুক্ত label
+       (lib/http.js isSecretField-এর mirror) — admin screen-share/log-share-তে ফাঁকি না পায় */
+    const SECRET_LABEL = /(password|passwd|pwd|passcode|otp|onetimecode|2fa|tfa|twofactor|authenticat|recovery|backupcode|secret|apikey|accesstoken|refreshtoken|privatetoken|privatekey|token|cookie|session|bearer)/;
+    const normLabel = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const masked = !!r.value && (r.type === 'password' || r.secret || SECRET_LABEL.test(normLabel(r.label)));
     const shown = masked ? '•'.repeat(Math.min(r.value.length, 14)) : (r.value || '—');
     const reveal = masked ? `<button type="button" class="adm-btn ghost sm" data-reveal data-raw="${esc(r.value)}" style="margin-left:6px"><i class="fa-solid fa-eye"></i> দেখুন</button>` : '';
     const cls = [masked ? 'sub-secret' : '', r.type === 'textarea' ? 'sub-multi' : ''].filter(Boolean).join(' ');

@@ -1,6 +1,26 @@
 /* Minimal in-memory Firestore mock covering the API surface used by the handlers. */
 export const store = { docs: {} };
 
+/* ---------- concurrency mode (tests/bugfixes.mjs [N]) ----------
+   Default mock sequential — ভেতরের "check → তারপর write" race কখনো ধরা পড়ে না।
+   setConcurrencyMode(true) করলে:
+     - runTransaction() গুলো পরপর serialize হয় (real Firestore একই doc-এর উপর
+       একবারে একটা commit; তাই দ্বিতীয় transaction updated data পড়ে)
+     - transaction-এর বাইরের প্রতিটা read ২ tick এগিয়ে চলে → দুটো concurrent request
+       সত্যিই একে অপরকে মাঝখানে ঢোকে
+   ⇒ guard tx-এর বাইরে থাকলে duplicate সেট হয় (test লাল), ভিতরে থাকলে সবুজ। */
+export const mockState = { concurrency: false };
+export function setConcurrencyMode(on) { mockState.concurrency = !!on; }
+const yieldRead = () => (mockState.concurrency ? new Promise(r => setImmediate(() => setImmediate(r))) : Promise.resolve());
+
+let txLock = Promise.resolve();
+function withTxLock(body) {
+  if (!mockState.concurrency) return body();
+  const p = txLock.then(body, body);
+  txLock = p.then(() => undefined, () => undefined);
+  return p;
+}
+
 export const FieldValue = {
   serverTimestamp: () => ({ __srvTs: Date.now() }),
 };
@@ -31,7 +51,7 @@ export function makeDb() {
           id,
           _key: key,
           path: key,
-          get: async () => ({ exists: d[key] !== undefined, data: () => d[key] }),
+          get: async () => { await yieldRead(); return { exists: d[key] !== undefined, data: () => d[key] }; },
           collection: sub => makeColl(key + '/' + sub),
           // real Admin SDK DocumentReference also has set/update/delete — without
           // them a handler using docRef.set() would look broken in tests only.
@@ -55,17 +75,17 @@ export function makeDb() {
         const matches = () => Object.entries(d).filter(([k, v]) => inColl(k) && v && v[field] === value);
         return {
           limit(n) {
-            return { get: async () => { const m = matches().slice(0, n); const docs = toDocs(m); return { empty: !docs.length, size: docs.length, docs }; } };
+            return { get: async () => { await yieldRead(); const m = matches().slice(0, n); const docs = toDocs(m); return { empty: !docs.length, size: docs.length, docs }; } };
           },
-          get: async () => { const docs = toDocs(matches()); return { empty: !docs.length, size: docs.length, docs }; },
+          get: async () => { await yieldRead(); const docs = toDocs(matches()); return { empty: !docs.length, size: docs.length, docs }; },
         };
       },
 
       // collection-level list (users, targetNotices ইত্যাদি — admin scan-এর জন্য)
       limit(n) {
-        return { get: async () => { const docs = listDocs().slice(0, n); return { empty: !docs.length, size: docs.length, docs }; } };
+        return { get: async () => { await yieldRead(); const docs = listDocs().slice(0, n); return { empty: !docs.length, size: docs.length, docs }; } };
       },
-      get: async () => { const docs = listDocs(); return { empty: !docs.length, size: docs.length, docs }; },
+      get: async () => { await yieldRead(); const docs = listDocs(); return { empty: !docs.length, size: docs.length, docs }; },
     };
   }
 
@@ -73,7 +93,7 @@ export function makeDb() {
     // extra args intentionally ignored — exactly like firebase-admin
     collection: (...parts) => makeColl(parts[0]),
 
-    runTransaction: async (fn) => {
+    runTransaction: (fn) => withTxLock(async () => {
       const tx = {
         get: async (ref) => {
           /* real Firestore allows tx.get(query) too (guard reads inside a transaction) —
@@ -94,6 +114,6 @@ export function makeDb() {
         delete: (ref) => { delete d[ref._key]; },
       };
       return fn(tx);
-    },
+    }),
   };
 }

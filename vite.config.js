@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -24,7 +24,29 @@ const htmlFiles = collectHtml(rootDir);
 const input = {};
 for (const f of htmlFiles) input[f.replace(/\.html$/, '')] = f;
 
-export default defineConfig({
+/* DEPLOY SAFETY: আগের এক production incident — Vercel build-এ VITE_FIREBASE_* না থাকায়
+   bundle-এ `projectId: undefined` বসে গিয়েছিল, সাইট লোড হতো কিন্তু login/submit সব
+   চুপচাপ মরে যেত (কোনো errorই স্পষ্ট ছিল না)। env না থাকলে এখন build শেষে স্পষ্ট warning
+   (build ভাঙি না — docs-only deploy যেন block না হয়)। */
+function firebaseEnvWarn(env) {
+  const need = ['VITE_FIREBASE_API_KEY', 'VITE_FIREBASE_PROJECT_ID'];
+  const missing = need.filter((k) => !env[k]);
+  if (missing.length) {
+    console.warn(
+      '\n⚠️  [DigitEarn] Firebase web config বিল্ডে নেই: ' + missing.join(', ') +
+      '\n   → সাইট চলবে কিন্তু login/register/submit কাজ করবে না (firebaseReady=false)।\n' +
+      '   → Fix: Vercel → Settings → Environment Variables → এই নামগুলো **Production** এ বসান\n' +
+      '     (Sensitive রাখলে build-এর সময় পাওয়া যায় না — "Environment Variables" visibility দিন),\n' +
+      '     তারপর Redeploy। লোকালে: .env ফাইলে বসান।\n'
+    );
+  }
+  return missing;
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode || 'production', process.cwd(), '');
+  const missingEnv = firebaseEnvWarn(env);
+  return {
   build: {
     rollupOptions: {
       input,
@@ -32,4 +54,18 @@ export default defineConfig({
     cssMinify: true,
     target: 'es2019',
   },
+  plugins: [
+    {
+      name: 'digitearn:build-identity',
+      closeBundle() {
+        // dist/version.json থাকলেই deployed build কেমন, সেটা এক request-এ বোঝা যায়
+        console.log(
+          missingEnv.length
+            ? `⚠️  [DigitEarn] build finished WITHOUT Firebase config (missing: ${missingEnv.join(', ')})`
+            : '✅ [DigitEarn] Firebase web config present in this build'
+        );
+      },
+    },
+  ],
+  };
 });

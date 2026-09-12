@@ -19,3 +19,4 @@ android/local.properties
 
 # local vercel cli test artifacts
 .vercel/
+/public/version.json

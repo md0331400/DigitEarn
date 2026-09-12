@@ -1,6 +1,6 @@
 /* Generates static SEO task pages: task/<slug>.html
    Run automatically before `vite build` and `vite dev`. */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { TASKS, SITE } from '../src/tasks-data.js';
@@ -150,3 +150,42 @@ ${stepsHtml}
   console.log(`[gen] task/${t.slug}.html`);
 }
 console.log(`[gen] ${TASKS.length} task pages generated`);
+
+/* ------------------------------------------------------------------
+   Build identity → public/version.json  (Vite copies public/ into dist/)
+   WHY: "fix deploy হয়েছে কিনা" production-এ বাইরে থেকে বোঝা যেত না —
+   Vercel কখনো static bundle নতুন করে আর functions পুরোনো রাখে (বা উল্টোটা)।
+   এই ছোট ফাইলটা (কোনো secret না) + lib/http.js-এর `X-DigitEarn-API` header
+   মিলিয়ে browser/owner এক লাইনে বুঝে যান deployed build কেমন।
+   Vercel build-এ commit id `VERCEL_GIT_COMMIT_SHA` থেকে আসে।
+   ------------------------------------------------------------------ */
+const root = path.join(scriptsDir, '..');
+
+/* Vite-era env: process.env (Vercel) জিতে যায়, নাহলে .env[.local|.production] */
+function envValue(name) {
+  if (process.env[name]) return process.env[name];
+  for (const f of ['.env.production.local', '.env.production', '.env.local', '.env']) {
+    const fp = path.join(root, f);
+    if (!existsSync(fp)) continue;
+    for (const line of readFileSync(fp, 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (m && m[1] === name) return m[2].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  return '';
+}
+
+const version = {
+  api: 'v3',                                            // lib/http.js API_VERSION এর সাথে মিলতে হবে
+  commit: (process.env.VERCEL_GIT_COMMIT_SHA || envValue('GIT_COMMIT') || '').slice(0, 7),
+  branch: process.env.VERCEL_GIT_COMMIT_REF || '',
+  buildId: process.env.VERCEL_BUILD_ID || new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14),
+  builtAt: new Date().toISOString(),
+  node: process.version,
+  /* Firebase web config বিল্ডে বসেছে কিনা — না থাকলে সাইট চুপচাপ "no Firebase" মোডে
+     চলে (login/submit মরে যায়, কোনো error স্পষ্ট না) — এটাই diagnostic */
+  firebaseConfig: Boolean(envValue('VITE_FIREBASE_PROJECT_ID') && envValue('VITE_FIREBASE_API_KEY')),
+};
+mkdirSync(path.join(root, 'public'), { recursive: true });
+writeFileSync(path.join(root, 'public', 'version.json'), JSON.stringify(version, null, 2) + '\n');
+console.log(`[gen] public/version.json → api=${version.api} commit=${version.commit || '?'} firebaseConfig=${version.firebaseConfig}`);

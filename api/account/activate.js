@@ -20,8 +20,12 @@ export default async function handler(req, res) {
   const ts = Date.now();
   const rnd = Math.random().toString(36).slice(2, 8);
 
+  /* ⚠️ bonusGiven try-এর ভিতরে declare করা ছিল, return নিচে বাইরে → প্রতিটা সফল
+     activation-এ `ReferenceError: bonusGiven is not defined` → Vercel 500, অথচ
+     bonus/isActive already committed। User দেখত "fail" + আবার চাপলে "already active"।
+     Declaration টা try-এর বাইরে আনাই fix (scope bug, logic same)। */
+  let bonusGiven = false;
   try {
-    let bonusGiven = false;
     await db.runTransaction(async tx => {
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists) throw new ApiError(409, 'আপনার প্রোফাইল পাওয়া যায়নি');

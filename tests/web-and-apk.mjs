@@ -2,7 +2,7 @@
    Runs the real browser modules through Vite's SSR loader and checks the APK's
    embedded bundle against the panel source.
    Run: node tests/web-and-apk.mjs */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { createServer } from 'vite';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, collection } from 'firebase/firestore';
@@ -506,7 +506,8 @@ console.log('\n[L] dynamic fields: no hardcoded task fields, textarea supported'
   check('admin detail shows title: value for every submitted field', ['UID:', 'user123', 'Password:', 'Cookies:', 'a=1'].every(x => html.includes(x)) && (html.match(/sub-row/g) || []).length === 3, `rows=${(html.match(/sub-row/g) || []).length}`);
   const shown = (html.match(/<b class="sub-secret">([^<]*)<\/b>/) || [])[1] || '';
   check('password value masked in the visible cell (dots only, raw behind reveal)', shown === '\u2022'.repeat('sup3rsecret'.length) && html.slice(0, html.indexOf('data-reveal')).includes(shown) && !html.slice(0, html.indexOf('data-reveal')).includes('sup3rsecret'), `shown=${shown}`);
-  check('reveal button carries the raw value + textarea row marked multi-line', /data-raw="sup3rsecret"/.test(html) && /class="sub-multi"/.test(html));
+  check('reveal button carries the raw value + textarea row marked multi-line', /data-raw="sup3rsecret"/.test(html) && /class="[^"]*\bsub-multi\b/.test(html));
+  check('cookie-like label is masked too (secret policy is label-aware, not only type=password)', (html.match(/sub-secret/g) || []).length === 2, `masked rows=${(html.match(/sub-secret/g) || []).length}`);
   check('copy-all carries real values (workflow needs them)', /data-all="UID: user123\nPassword: sup3rsecret\nCookies: a=1/.test(html.replace(/\\n/g, '\n')) || /data-all="UID: user123/.test(html));
   const legacy = render({ 'জিমেইল এড্রেস': 'a@b.com', 'পাসওয়ার্ড': 'x' }, undefined);
   check('legacy submission (no snapshot) still renders from submittedData', legacy.includes('জিমেইল এড্রেস:') && legacy.includes('a@b.com'), legacy.slice(0, 80));
@@ -514,6 +515,217 @@ console.log('\n[L] dynamic fields: no hardcoded task fields, textarea supported'
   check('no fields → nothing rendered', render(null, []) === '' && render({}, undefined) === '');
   const xss = render({}, [{ label: '<img src=x onerror=1>', type: 'text', value: '<script>bad()</script>' }]);
   check('submitted values/labels escaped in the panel', !/<script>bad/.test(xss) && xss.includes('&lt;script&gt;'), xss.slice(0, 90));
+}
+
+/* ============================================================
+   [M] "production পুরোনো build চালাচ্ছে কিনা" — identification layer
+   ============================================================ */
+console.log('\n[M] deploy identity: /version.json + API header + client diagnosis');
+{
+  const api = codeOnly(read('src/core/api.js'));
+  const ui = codeOnly(read('src/core/ui.js'));
+  const fb = codeOnly(read('src/core/firebase.js'));
+  const gen = codeOnly(read('scripts/gen-task-pages.mjs'));
+  const vc = codeOnly(read('vite.config.js'));
+  const ign = read('.gitignore');
+
+  check('build writes public/version.json with api/commit/buildId/firebaseConfig', /public[\s\S]{0,80}version\.json/.test(gen) && /firebaseConfig:/.test(gen) && /VERCEL_GIT_COMMIT_SHA/.test(gen));
+  check('version.json carries no secret material (only ids + booleans)', !/PRIVATE_KEY|CLIENT_EMAIL|API_KEY['\"]?\s*[:=]/.test(gen.split('const version =')[1]?.split('};')[0] || ''));
+  check('version.json is a build artifact, not committed', ign.includes('/public/version.json'));
+  check('vite config warns loudly when Firebase web env is missing', /firebaseEnvWarn/.test(vc) && /loadEnv/.test(vc) && /Environment Variables/.test(vc));
+  check('checkApiBuild reads /version.json alongside the header', /fetch\('\/version\.json'/.test(api) && /cache: 'no-store'/.test(api));
+  check('crash detection: x-vercel-error FUNCTION_INVOCATION_FAILED → build.crash', /x-vercel-error/.test(api) && /FUNCTION_INVOCATION_FAILED/.test(api) && /crash/.test(api));
+  check('no-Firebase-config build is detected as its own case', /noFirebase:\s*!!\(site && site\.firebaseConfig === false\)/.test(api));
+  check('apiErrorMessage explains a function crash instead of a generic server error', /function চালু হচ্ছে না/.test(api) && /vercelError/.test(api));
+  check('banner has separate copy for crash / no-config / protection / stale', ['fa-fire', 'Firebase config নেই', 'Deployment Protection', 'build পুরোনো'].every(t => read('src/core/ui.js').includes(t)));
+  check('deployed build id is printed in the banner', /b\.site\.commit \|\| b\.site\.buildId/.test(read('src/core/ui.js')));
+  check('login/register pages also get the banner (no bootAppPage there)', /showBuildBannerIfBroken|v\.firebaseConfig !== false/.test(fb));
+  check('firebase.js banner never throws when /version.json is absent', /catch \(_\) \{ \/\* diagnostic never breaks the app \*\//.test(fb) || /catch \(_\) \{/.test(fb));
+
+  /* behaviour: real checkApiBuild + apiErrorMessage against stubbed fetch */
+  const { createServer } = await import('vite');
+  const vite = await createServer({ configFile: false, logLevel: 'silent', server: { middlewareMode: true }, appType: 'custom' });
+  const m = await vite.ssrLoadModule('/src/core/api.js');
+  const real = globalThis.fetch;
+  const stub = (opts) => {
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('version.json')) {
+        return opts.version === null ? { ok: false, json: async () => ({}) }
+          : { ok: true, json: async () => opts.version };
+      }
+      return {
+        status: opts.status ?? 200,
+        headers: { get: (k) => (String(k).toLowerCase() === 'x-digitearn-api' ? (opts.header ?? '') : String(k).toLowerCase() === 'x-vercel-error' ? (opts.vercelError ?? '') : null) },
+      };
+    };
+  };
+  stub({ header: m.EXPECTED_API_BUILD, version: { api: 'v3', commit: 'abc1234', firebaseConfig: true } });
+  let b = await m.checkApiBuild();
+  check('healthy deploy → ok, no banner trigger', b.ok === true && !b.crash && !b.noFirebase && !b.blocked, JSON.stringify(b));
+  stub({ status: 500, vercelError: 'FUNCTION_INVOCATION_FAILED', version: { api: 'v3', firebaseConfig: true } });
+  b = await m.checkApiBuild();
+  check('function crash detected (crash:true) even with no header', b.crash === true && b.ok === false, JSON.stringify(b));
+  stub({ status: 200, version: { api: 'v3', firebaseConfig: false } });
+  b = await m.checkApiBuild();
+  check('build without Firebase config detected (noFirebase:true)', b.noFirebase === true, JSON.stringify(b));
+  stub({ status: 401, version: null });
+  b = await m.checkApiBuild();
+  check('Deployment Protection case still distinguished', b.blocked === true && b.crash === false, JSON.stringify(b));
+  stub({ status: 200, header: 'v2', version: { api: 'v2', firebaseConfig: true } });
+  b = await m.checkApiBuild();
+  check('older deployed api version (v2) → ok:false, not blocked', b.ok === false && b.version === 'v2' && b.blocked === false, JSON.stringify(b));
+  globalThis.fetch = () => Promise.reject(new Error('offline'));
+  b = await m.checkApiBuild();
+  check('offline check never throws', b.ok === false && b.status === 0, JSON.stringify(b));
+  globalThis.fetch = real;
+  const msg = m.apiErrorMessage(500, {}, { json: false, serverApi: '', vercelError: 'FUNCTION_INVOCATION_FAILED' });
+  check('crash message tells admin where to look (Vercel log) and never a secret', /FUNCTION_INVOCATION_FAILED/.test(msg) && /Vercel/.test(msg) && !/[A-Za-z0-9+/]{40,}/.test(msg), msg.slice(0, 70));
+  await vite.close();
+}
+
+/* ============================================================
+   [N] Vercel ERR_REQUIRE_ESM regression lock (2026-09-12 production outage)
+       firebase-admin@14 pulls jose@6, which is ES-module-only (no "require" condition).
+       Vercel compiles our ESM api/*.js handlers to CommonJS and require()s node_modules,
+       so on a runtime without require(esm) (Node < 20.19 / < 22.12 — Vercel nodejs20)
+       every function died at module load with
+         Error [ERR_REQUIRE_ESM]: require() of ES Module .../jose/dist/webapi/index.js not supported
+       → all 10 endpoints 500 (proof submit, withdrawal, admin panel, even ?op=nope).
+       Fix: firebase-admin pinned to ^13.10.0 (jose@4 → CJS entry) + engines.node 22.x.
+       These checks run against the *installed* tree, so a future bump re-opens the hole
+       in CI instead of in production.
+   ============================================================ */
+console.log('\n[N] firebase-admin is require()-able from CJS (Vercel nodejs20 outage class)');
+{
+  const { spawnSync } = await import('node:child_process');
+  const { createRequire } = await import('node:module');
+  const reqCjs = createRequire(import.meta.url);
+  const root = process.cwd();
+
+  /* the probe must be a real CommonJS file — otherwise ESM loading hides the bug */
+  const probePath = 'tests/fixtures/cjs-require-probe.cjs';
+  check('CJS probe fixture exists and is .cjs (not ESM)', existsSync(probePath) && /\.cjs$/.test(probePath));
+  const probeSrc = codeOnly(read(probePath));
+  check('probe require()s exactly the 3 subpaths our API graph imports',
+    probeSrc.includes("require(spec)") && /'firebase-admin\/app'/.test(probeSrc) && /'firebase-admin\/auth'/.test(probeSrc) && /'firebase-admin\/firestore'/.test(probeSrc));
+
+  const flagSupported = spawnSync(process.execPath, ['--no-experimental-require-module', '-e', ''], { cwd: root }).status === 0;
+  const run = spawnSync(process.execPath,
+    flagSupported ? ['--no-experimental-require-module', probePath] : [probePath],
+    { cwd: root, encoding: 'utf8' });
+  const out = (run.stdout || '') + (run.stderr || '');
+  check(flagSupported
+    ? 'require() from CJS works with require(esm) DISABLED (≈ Vercel nodejs20 runtime)'
+    : 'require() from CJS works (flag unsupported here — ran without it)', run.status === 0, out.split('\n').slice(0, 3).join(' | '));
+  check('probe reports OK for app + auth + firestore (the exact prod crash was in auth)',
+    /OK firebase-admin\/app/.test(out) && /OK firebase-admin\/auth/.test(out) && /OK firebase-admin\/firestore/.test(out), out.slice(0, 200));
+  check('probe never reports ERR_REQUIRE_ESM', !/ERR_REQUIRE_ESM/.test(out));
+
+  /* jose must keep a "require" condition — that single property is what broke production */
+  const { dirname, basename, join } = await import('node:path');
+  const faEntry = reqCjs.resolve('firebase-admin/app');
+  let faDir = dirname(faEntry);
+  while (basename(faDir) !== 'firebase-admin' && dirname(faDir) !== faDir) faDir = dirname(faDir);
+  check('installed firebase-admin package dir located from the real resolution',
+    basename(faDir) === 'firebase-admin' && existsSync(join(faDir, 'package.json')), faDir);
+  const faPkg = JSON.parse(read(join(faDir, 'package.json')));
+  let josePkg = null;
+  for (const cand of [join(faDir, 'node_modules', 'jose', 'package.json'), join(dirname(faDir), 'jose', 'package.json')]) {
+    if (existsSync(cand)) { josePkg = JSON.parse(read(cand)); break; }
+  }
+  check('the jose copy firebase-admin actually resolves is present', josePkg !== null, faDir);
+  const joseRootExport = josePkg && (typeof josePkg.exports === 'string' ? { '.': josePkg.exports } : (josePkg.exports || {})['.']);
+  check('jose exposes a CJS entry ("require" condition or main) — jose@6 has neither',
+    !!(joseRootExport && joseRootExport.require) || !!(josePkg && josePkg.main),
+    `jose@${josePkg && josePkg.version} type=${josePkg && josePkg.type} exports=${JSON.stringify(joseRootExport)}`);
+  check('jose major < 6 (v6+ is ESM-only → ERR_REQUIRE_ESM on Node < 20.19)',
+    Number(String(josePkg && josePkg.version).split('.')[0]) < 6, `(${josePkg && josePkg.version})`);
+
+  /* dependency intent + lockfile agreement (the drift that shipped v14) */
+  const pkg = JSON.parse(read('package.json'));
+  const range = String((pkg.dependencies || {})['firebase-admin'] || '');
+  check('package.json does not allow firebase-admin major >= 14', !/[\^~]?1[4-9]\./.test(range) && !/>\s*1[4-9]/.test(range), `(${range})`);
+  const faInstalled = JSON.parse(read(join('node_modules', 'firebase-admin', 'package.json'))).version;
+  const installedMajor = Number(String(faInstalled).split('.')[0]);
+  const lock = JSON.parse(read('package-lock.json'));
+  const locked = lock.packages && lock.packages['node_modules/firebase-admin'];
+  check('lockfile pins the same firebase-admin the tests ran against (no Vercel-side drift)',
+    !!locked && locked.version === faInstalled, `(${locked && locked.version} vs ${faInstalled})`);
+  const minVer = (range.match(/(\d+)\.(\d+)\.(\d+)/) || []).slice(1).map(Number);
+  const instVer = String(faInstalled).split('.').map(Number);
+  check('installed version satisfies the declared minimum', minVer.length === 3
+    && (instVer[0] > minVer[0] || (instVer[0] === minVer[0] && (instVer[1] > minVer[1] || (instVer[1] === minVer[1] && instVer[2] >= minVer[2])))), `(${range} vs ${instVer.join('.')})`);
+  check('engines.node asks Vercel for a require(esm)-capable runtime', /^2[2-9](\.|$| )/.test(String((pkg.engines || {}).node || '')), `(${JSON.stringify(pkg.engines)})`);
+
+  /* the API graph must not quietly grow new third-party imports (each one is a require() hazard) */
+  const files = [];
+  const walk = d => { for (const e of readdirSync(d, { withFileTypes: true })) { const f = d + '/' + e.name; if (e.isDirectory()) walk(f); else if (e.name.endsWith('.js')) files.push(f); } };
+  walk('api'); walk('lib');
+  const externals = new Set();
+  for (const f of files) {
+    for (const m of codeOnly(read(f)).matchAll(/from\s+['"]([^.'][^'"]*)['"]/g)) externals.add(m[1]);
+  }
+  const risky = [...externals].filter(s => !s.startsWith('node:') && s !== 'firebase-admin/app' && s !== 'firebase-admin/auth' && s !== 'firebase-admin/firestore');
+  check('api/ + lib/ import nothing third-party except the 3 vetted firebase-admin subpaths',
+    risky.length === 0, `(${risky.join(', ')})`);
+  check('…and all 3 are still used somewhere (no dead SDK import to trip the tracer)',
+    ['firebase-admin/app', 'firebase-admin/auth', 'firebase-admin/firestore'].every(s => [...externals].includes(s)));
+
+  /* health must self-report the SDK it actually runs, so the next "500 everywhere" is readable */
+  const healthSrc = codeOnly(read('lib/admin/health.js'));
+  check('health exports firebaseAdminInfo() (deployed SDK identity, no secrets)', /export function firebaseAdminInfo/.test(healthSrc));
+  check('health flags a v14 deploy as unsafe (ERR_REQUIRE_ESM note)', /ERR_REQUIRE_ESM/.test(read('lib/admin/health.js')) && /cjsRequireSafe/.test(healthSrc));
+  const h = await import('../lib/admin/health.js');
+  check('firebaseAdminInfo() reads the installed tree, not the range',
+    typeof h.firebaseAdminInfo === 'function' && h.firebaseAdminInfo().major === installedMajor && h.firebaseAdminInfo().cjsRequireSafe === true,
+    JSON.stringify(typeof h.firebaseAdminInfo === 'function' ? h.firebaseAdminInfo() : null));
+  check('health response still never echoes a private key value', !/BEGIN [A-Z ]*PRIVATE KEY["']?\s*:/.test(healthSrc));
+  check('firebaseAdminInfo() reports the same version the probe loaded',
+    typeof h.firebaseAdminInfo === 'function' && h.firebaseAdminInfo().version === faInstalled,
+    JSON.stringify(typeof h.firebaseAdminInfo === 'function' ? h.firebaseAdminInfo() : null));
+
+  /* client must translate a 500 FUNCTION_INVOCATION_FAILED into "deploy is broken", not "log in again" */
+  const { createServer } = await import('vite');
+  const vite = await createServer({ configFile: false, logLevel: 'silent', server: { middlewareMode: true }, appType: 'custom' });
+  const api = await vite.ssrLoadModule('/src/core/api.js');
+  const msg = api.apiErrorMessage(500, {}, { json: false, serverApi: '', vercelError: 'FUNCTION_INVOCATION_FAILED' });
+  check('user sees a deploy problem (not a login prompt) when the function itself fails to load',
+    /function চালু হচ্ছে না/.test(msg) && !/লগইন হারিয়ে গেছে/.test(msg), msg.slice(0, 60));
+  await vite.close();
+}
+
+/* ============================================================
+   [O] delivery hygiene — owner চান code-only package, কোনো markdown doc না
+       (BUGFIXES.md / AUDIT.md / README.md এই round-এ সরানো হয়েছে; fix-গুলোর
+       পূর্ণ ব্যাখ্যা chat-এ দেওয়া আছে, তাই repo-তে doc থাকার দরকার নেই)
+   ============================================================ */
+console.log('\n[O] no markdown docs ship in the delivered tree');
+{
+  const md = [];
+  const walk = d => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || e.name === '.vercel') continue;
+      const f = d === '.' ? e.name : d + '/' + e.name;
+      if (e.isDirectory()) walk(f); else if (e.name.toLowerCase().endsWith('.md')) md.push(f);
+    }
+  };
+  walk('.');
+  check('tree contains zero .md files (docs intentionally removed)', md.length === 0, `(${md.join(', ')})`);
+  const refs = [];
+  const SHIPPED = ['api', 'lib', 'src', 'scripts', 'android'];
+  const scan = d => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || e.name === '.vercel') continue;
+      const f = d === '.' ? e.name : d + '/' + e.name;
+      if (e.isDirectory()) scan(f);
+      else if (/\.(js|mjs|json|html|yml|kt|gradle|css)$/.test(e.name)) {
+        const body = read(f);
+        if (/README\.md|AUDIT\.md|BUGFIXES\.md|HOW-TO-PUSH\.md/.test(body)) refs.push(f);
+      }
+    }
+  };
+  SHIPPED.filter(existsSync).forEach(scan);
+  check('nothing in the shipped code links to the removed docs', refs.length === 0, `(${refs.join(', ')})`);
 }
 
 console.log('\n=============================');

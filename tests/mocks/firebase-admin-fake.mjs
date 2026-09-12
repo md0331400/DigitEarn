@@ -22,7 +22,8 @@ export function setInitFailure(msg) { state.initError = msg ? new Error(msg) : n
 
 /* ⚠️ REAL firebase-admin v14 surface: the legacy namespaced API is GONE —
    `getApp().auth()` / `.firestore()` are `undefined` (verified against the installed
-   14.3.0 in tests). The fake must NOT offer `app.auth()`, otherwise code that calls it
+   pinned major (13.x today; 14.3.0 when this mock was written). The fake must NOT offer
+   `app.auth()`, otherwise code that calls it
    looks fine in tests and throws `TypeError: app.auth is not a function` in production
    (that is exactly how every endpoint started answering "Login required").
    Auth access = getAuth(app) → our lib exports getAdminAuth(). */

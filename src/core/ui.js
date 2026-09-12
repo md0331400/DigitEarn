@@ -256,13 +256,40 @@ function renderBootFailure(reason, build) {
    বারবার না করে, সেজন্য boot-এই দেখিয়ে দেওয়া হয় (profile ঠিক থাকলেও)। */
 function showBuildBanner(build) {
   if (document.getElementById('deployWarn')) return;
+  const b = build || {};
   const bar = document.createElement('div');
   bar.id = 'deployWarn';
-  bar.style.cssText = 'background:#fef3c7;border-bottom:1px solid #f59e0b;color:#92400e;padding:9px 14px;font-size:12.5px;text-align:center';
-  bar.innerHTML = build.blocked
-    ? '<i class="fa-solid fa-shield-halved"></i> এই deployment-এর URL <b>Vercel Deployment Protection</b>-এ ঢাকা — API call ব্লক হচ্ছে। Production domain (digitearn.vercel.app) ব্যবহার করুন বা Vercel → Settings → Deployment Protection off করুন।'
-    : '<i class="fa-solid fa-triangle-exclamation"></i> <b>সার্ভারের build পুরোনো</b> (X-DigitEarn-API header নেই) — <code>api/</code> + <code>lib/</code> push করে <b>Redeploy</b> করুন।';
+  const red = b.crash || b.noFirebase;
+  bar.style.cssText = red
+    ? 'background:#fee2e2;border-bottom:1px solid #dc2626;color:#7f1d1d;padding:9px 14px;font-size:12.5px;text-align:center'
+    : 'background:#fef3c7;border-bottom:1px solid #f59e0b;color:#92400e;padding:9px 14px;font-size:12.5px;text-align:center';
+  const site = b.site ? ` <span style="opacity:.7">(deployed build: ${esc(b.site.commit || b.site.buildId || '?')}${b.site.api ? ', api ' + esc(b.site.api) : ''})</span>` : '';
+  if (b.crash) {
+    bar.innerHTML = '<i class="fa-solid fa-fire"></i> <b>সার্ভারের function চালু হচ্ছে না</b> (' +
+      esc(b.vercelError || 'FUNCTION_INVOCATION_FAILED') + ') — login/submit এখন কাজ করবে না। ' +
+      'Admin: Vercel → Deployments → Functions log দেখুন (Node version/dependency)।' + site;
+  } else if (b.noFirebase) {
+    bar.innerHTML = '<i class="fa-solid fa-plug-circle-xmark"></i> <b>এই বিল্ডে Firebase config নেই</b> ' +
+      '(VITE_FIREBASE_API_KEY / VITE_FIREBASE_PROJECT_ID বিল্ডের সময় পাওয়া যায়নি) — ' +
+      'Vercel → Settings → Environment Variables → <b>Production</b>-এ বসিয়ে Redeploy করুন ' +
+      '(Sensitive ভিসিবিলিটি build-এ দেয় না)।' + site;
+  } else if (b.blocked) {
+    bar.innerHTML = '<i class="fa-solid fa-shield-halved"></i> এই deployment-এর URL <b>Vercel Deployment Protection</b>-এ ঢাকা — API call ব্লক হচ্ছে। Production domain (digitearn.vercel.app) ব্যবহার করুন বা Vercel → Settings → Deployment Protection off করুন।' + site;
+  } else {
+    bar.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> <b>সার্ভারের build পুরোনো</b> (X-DigitEarn-API header নেই/মিলছে না) — <code>api/</code> + <code>lib/</code> push করে <b>Redeploy</b> করুন।' + site;
+  }
   document.body.insertBefore(bar, document.body.firstChild);
+}
+
+/* Config ছাড়া build হলে সবচেয়ে বড় ঝামেলা: user মনে করে "লগইন ভাঙা"।
+   login/register পেজেও (bootAppPage চলে না) এক লাইনে কারণ দেখায় — side effect ছাড়া চলে না
+   বলে এখানেই, আর কিছু না পেলে চুপ থাকে। */
+export function showBuildBannerIfBroken(build) {
+  try {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (build && (build.ok === false || build.noFirebase)) showBuildBanner(build);
+    else if (build && build.noFirebase) showBuildBanner(build);
+  } catch (_) { /* diagnostic কখনো app ভাঙাবে না */ }
 }
 
 export async function bootAppPage({ active = 'home', onReady }) {
