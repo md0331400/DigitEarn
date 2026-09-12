@@ -35,6 +35,7 @@ export function makeDb() {
      user docs). Do NOT "helpfully" join extra args here — mirror the real SDK so
      that path bugs fail loudly in tests. Correct usage in handlers:
         db.collection('users').doc(uid).collection('proofs')   */
+  let autoN = 0;
   function makeColl(path) {
     const depth = path.split('/').length;
     // a collection contains only docs exactly one segment deeper
@@ -46,9 +47,13 @@ export function makeDb() {
       path,
 
       doc(id) {
-        const key = path + '/' + id;
+        /* real Admin SDK: collection.doc() (no arg) → auto-generated id. আগে fake-এ
+           সেটা 'path/undefined' হতো → দুইটা notice create করলে একই doc overwrite। */
+        const auto = id === undefined || id === null;
+        const generated = '_auto' + (++autoN) + Math.random().toString(36).slice(2, 8);
+        const key = path + '/' + (auto ? generated : id);
         return {
-          id,
+          id: auto ? generated : id,
           _key: key,
           path: key,
           get: async () => { await yieldRead(); return { exists: d[key] !== undefined, data: () => d[key] }; },

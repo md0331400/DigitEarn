@@ -138,13 +138,25 @@ export async function isAdminEmail() {
   return (await adminVerify()).isAdmin;
 }
 
+/* ---------- server-routed read/write (rules-independent) ----------
+   আগে panel browser থেকে সরাসরি Firestore পড়ত/লিখত → rules-এর isAdmin()
+   (admins/<email> doc-id হুবহু মিলতে হয়) fail করলে Users/Deposits/Withdrawals/
+   Submissions/Overview সব জায়গায় "Missing or insufficient permissions." আর
+   Micro Jobs/Settings/Notice Save-ও ভাঙত। এখন সব ?op=read / ?op=write (Admin SDK,
+   rules bypass) দিয়ে। নতুন Vercel function না — দুটোই api/admin/panel.js router-এর op। */
+async function adminRead(what, extra = {}) {
+  const d = await callApi('/api/admin/read', { what, ...extra });
+  return Array.isArray(d.items) ? d.items : [];
+}
+async function adminReadOne(what, extra = {}) {
+  const d = await callApi('/api/admin/read', { what, ...extra });
+  return d && d.item ? d.item : null;
+}
+const adminWrite = (what, extra = {}) => callApi('/api/admin/write', { what, ...extra });
+
 /* ---------- proofs ---------- */
 export async function listProofs(status = 'pending', limitN = 100) {
-  // index-free: createdAt desc + client-side status filter (composite index লাগে না)
-  const q = query(collection(db, 'proofs'), orderBy('createdAt', 'desc'), limit(limitN));
-  const snap = await getDocs(q);
-  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  return status && status !== 'all' ? all.filter(p => p.status === status) : all;
+  return adminRead('proofs', { status, limit: limitN });
 }
 
 export async function approveProof(proofId) {
@@ -157,11 +169,7 @@ export async function rejectProof(proofId, note = '') {
 
 /* ---------- deposits ---------- */
 export async function listDeposits(status = 'pending', limitN = 100) {
-  // index-free: createdAt desc + client-side status filter
-  const q = query(collection(db, 'deposits'), orderBy('createdAt', 'desc'), limit(limitN));
-  const snap = await getDocs(q);
-  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  return status && status !== 'all' ? all.filter(p => p.status === status) : all;
+  return adminRead('deposits', { status, limit: limitN });
 }
 
 export async function approveDeposit(depositId) {
@@ -174,26 +182,19 @@ export async function rejectDeposit(depositId, note = '') {
 
 /* ---------- users ---------- */
 export async function listUsers(limitN = 300) {
-  const q = query(collection(db, 'users'), limit(limitN));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  return adminRead('users', { limit: limitN });
 }
 
 export async function getUser(uid) {
-  const s = await getDoc(doc(db, 'users', uid));
-  return s.exists() ? { uid, ...s.data() } : null;
+  return await adminReadOne('user', { id: uid });
 }
 
 export async function getUserWithdrawals(uid, limitN = 20) {
-  const q = query(collection(db, 'users', uid, 'withdrawals'), orderBy('createdAt', 'desc'), limit(limitN));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return adminRead('user-withdrawals', { uid, limit: limitN });
 }
 
 export async function getUserTransactions(uid, limitN = 25) {
-  const q = query(collection(db, 'users', uid, 'transactions'), orderBy('createdAt', 'desc'), limit(limitN));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => d.data());
+  return adminRead('user-transactions', { uid, limit: limitN });
 }
 
 export async function setUserActive(uid, active) {
@@ -202,10 +203,7 @@ export async function setUserActive(uid, active) {
 
 /* ---------- tasks ---------- */
 export async function listTasks() {
-  const snap = await getDocs(collection(db, 'tasks'));
-  const tasks = snap.docs.map(d => ({ slug: d.id, ...d.data() }));
-  tasks.sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
-  return tasks;
+  return adminRead('tasks', { limit: 500 });   // server sort field অনুযায়ী সাজিয়ে দেয়
 }
 
 /* Firestore-এ tasks/{slug} doc নেই → user submit "Project পাওয়া যায়নি" খায়।
@@ -215,29 +213,13 @@ export async function seedTasks(slugs = []) {
 }
 
 export async function saveTask(slug, data) {
-  // URL sanitize: শুধু http/https — javascript:/data:/vbscript: বন্ধ
+  // client-side pre-check (instant feedback); server (?op=write) আবার validate করে
   if (data.url && !/^https?:\/\/\S+$/i.test(data.url)) {
     throw new Error('Task URL শুধু http/https হতে পারে (javascript:/data: allowed না)');
   }
-  const clean = { ...data, updatedAt: serverTimestamp() };
-  if (data.dailyLimit !== undefined) {
-    clean.dailyLimit = Math.max(1, Math.min(200, Number(data.dailyLimit) || 20));
-  }
-  if (Array.isArray(data.inputFields)) {
-    clean.inputFields = data.inputFields
-      .map(f => ({
-        label: String(f.label || '').trim().slice(0, 50),
-        type: ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea'].includes(f.type) ? f.type : 'text',
-        placeholder: String(f.placeholder || '').trim().slice(0, 60),
-        required: !!f.required,
-      }))
-      .filter(f => f.label);
-    // duplicate label remove (field key = label)
-    const seen = new Set();
-    clean.inputFields = clean.inputFields.filter(f => (seen.has(f.label) ? false : (seen.add(f.label), true)));
-  }
-  await setDoc(doc(db, 'tasks', slug), clean, { merge: true });
+  return adminWrite('task', { slug, data });
 }
+
 
 /* ---------- settings ----------
    settings/site   → public (siteName, links, rates…)
@@ -249,12 +231,13 @@ export async function saveTask(slug, data) {
 const SECRET_KEYS = ['giftCode'];
 
 export async function getSettings() {
-  const [s, secret] = await Promise.all([
-    getDoc(doc(db, 'settings', 'site')),
+  const [rawSite, secret] = await Promise.all([
+    adminReadOne('settings').catch(() => null),
     // server থেকে পড়া (rules-bypass); API না চললে {} — কখনোই permission-denied ফেল করবে না
     callApi('/api/admin/secret', { get: true }).catch(() => ({})),
   ]);
-  const base = s.exists() ? s.data() : {};
+  const base = { ...(rawSite || {}) };
+  delete base.id;                      // server item-এ doc id থাকে, settings-এ লাগে না
   const sec = {};
   const secretLoaded = secret && typeof secret.giftCode === 'string';
   for (const k of SECRET_KEYS) if (typeof secret[k] === 'string') sec[k] = secret[k];
@@ -265,10 +248,7 @@ export async function getSettings() {
 
 /* ---------- withdrawals (admin review) ---------- */
 export async function listWithdrawals(status = 'pending', limitN = 100) {
-  const q = query(collection(db, 'withdrawals'), orderBy('createdAt', 'desc'), limit(limitN));
-  const snap = await getDocs(q);
-  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  return status && status !== 'all' ? all.filter(w => w.status === status) : all;
+  return adminRead('withdrawals', { status, limit: limitN });
 }
 
 export async function reviewWithdrawal(userId, id, action, note = '') {
@@ -284,7 +264,7 @@ export async function saveSettings(data) {
   for (const k of SECRET_KEYS) {
     if (k in pub) { secret[k] = pub[k]; delete pub[k]; }
   }
-  await setDoc(doc(db, 'settings', 'site'), pub, { merge: true });
+  await adminWrite('settings', { data: pub });   // server allowlist (secret key ঢোকে না)
   const payload = { ...secret };
   // খালি giftCode = "পড়া যায়নি/ছোঁয়া হয়নি" হওয়ার সম্ভাবনা বেশি — মুছে ফেলা হবে না।
   // সত্যিই কোড বন্ধ করতে চাইলে panel-এর "Clear gift code" ব্যবহার করুন।
@@ -306,13 +286,9 @@ export async function clearGiftCode() {
    users/{uid}/targetNotices/{id} → private user-specific warning/notice
    (rules: targeted শুধু owner + admin read; write শুধু admin) */
 export async function listNotices() {
-  // BUGFIX: orderBy('sort') থাকা docs বাদ দেয় — যে notice-এ `sort` field নেই
-  // (Firebase console/manual seeding ইত্যাদি) সেটা admin panel-এ লুকিয়ে যেত।
-  // এখন index-free list + client-side sort (বাকি সব list-এর মতো)।
-  const snap = await getDocs(query(collection(db, 'notices'), limit(100)));
-  return snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
+  // server sort field অনুযায়ী সাজায়; যে notice-এ `sort` নেই সেটাও থাকে (orderBy
+  // করলে সেগুলো বাদ পড়ত)
+  return adminRead('notices', { limit: 100 });
 }
 
 export async function addNotice({ title, body, type = 'notice', expiresAt = null }) {
@@ -325,11 +301,10 @@ export async function addNotice({ title, body, type = 'notice', expiresAt = null
     sort: 10,
     createdAt: serverTimestamp(),
   };
-  if (expiresAt) clean.expiresAt = expiresAt; // JS Date → Firestore Timestamp
-  // BUGFIX: doc(db, 'notices') — ১টা segment → Firestore throw করত
-  // "Document references must have an even number of segments" → Notice কখনোই
-  // create হতো না (Send চাপলেই error)। auto-id লাগতে collection ref দিয়ে doc()।
-  await setDoc(doc(collection(db, 'notices')), clean);
+  if (expiresAt) clean.expiresAt = expiresAt;
+  // auto-id + Firestore Timestamp সব server-এ (?op=write) — আগে doc(db,'notices')
+  //odd segment throw করত, এখন server-ই doc id বানায়
+  return adminWrite('notice-add', clean);
 }
 
 export async function updateNotice(id, { title, body, enabled, sort, type, expiresAt }) {
@@ -341,17 +316,16 @@ export async function updateNotice(id, { title, body, enabled, sort, type, expir
   };
   if (type) upd.type = type === 'warning' ? 'warning' : 'notice';
   if (expiresAt) upd.expiresAt = expiresAt;
-  await updateDoc(doc(db, 'notices', id), upd);
+  return adminWrite('notice-update', { id, ...upd });
 }
 
 export async function deleteNotice(id) {
-  await deleteDoc(doc(db, 'notices', id));
+  return adminWrite('notice-delete', { id });
 }
 
 /* ---------- targeted notices (per-user, private) ---------- */
 export async function listUserTargetNotices(uid) {
-  const snap = await getDocs(query(collection(db, 'users', uid, 'targetNotices'), limit(50)));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return adminRead('user-target-notices', { uid, limit: 50 });
 }
 
 export async function addTargetedNotice(uid, { title, body, type = 'warning', expiresAt = null }) {

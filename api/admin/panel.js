@@ -24,6 +24,8 @@ import { default as handleNoticeTargeted } from '../../lib/admin/notice-targeted
 import { default as handleSecret } from '../../lib/admin/secret.js';
 import { default as handleHealth } from '../../lib/admin/health.js';
 import { default as handleSeedTasks } from '../../lib/admin/seed-tasks.js';
+import { default as handleRead } from '../../lib/admin/read.js';
+import { default as handleWrite } from '../../lib/admin/write.js';
 
 const HANDLERS = {
   verify: handleVerify,
@@ -35,6 +37,10 @@ const HANDLERS = {
   secret: handleSecret,
   health: handleHealth,
   'seed-tasks': handleSeedTasks,
+  /* panel-এর সব read/write এখান দিয়ে (Admin SDK = rules bypass) — browser direct
+     read/write করলে rules-এর isAdmin() fail-এ পুরো panel অচল হয়ে যেত */
+  read: handleRead,
+  write: handleWrite,
 };
 
 export default async function handler(req, res) {

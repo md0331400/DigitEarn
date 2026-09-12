@@ -113,7 +113,10 @@ console.log('\n[B] admin core.js document refs are valid (real firebase client S
   check('FIXED targeted notice ref builds users/u1/targetNotices/<autoId>', /^users\/u1\/targetNotices\/[\w-]{15,25}$/.test(autoTn.path), `(${autoTn.path})`);
 
   const src = codeOnly(read('src/admin/core.js'));
-  check("core.js uses doc(collection(db,'notices'))", src.includes("doc(collection(db, 'notices'))"));
+  const wrtSrc = read('lib/admin/write.js');
+  check("core.js addNotice → server ?op=write (notice-add)", src.includes("adminWrite('notice-add'"));
+  check("server write.js notices ref = collection.doc() auto-id (odd-segment bug ফেরা যাবে না)",
+    /db\.collection\('notices'\)\.doc\(\)/.test(wrtSrc) && !/doc\(db,\s*'notices'\s*\)/.test(wrtSrc));
   check("core.js uses doc(collection(db,'users',uid,'targetNotices'))", src.includes("doc(collection(db, 'users', uid, 'targetNotices'))"));
   check('no leftover single-segment doc(db,"notices")', !/doc\(db,\s*'notices'\s*\)/.test(src));
   check('no leftover odd-segment targetNotices doc()', !/doc\(db,\s*'users',\s*uid,\s*'targetNotices'\s*\)/.test(src));
@@ -438,14 +441,19 @@ console.log('\n[L] dynamic fields: no hardcoded task fields, textarea supported'
   const css = read('src/styles.css');
   const admCss = read('src/admin/styles.css');
   const fieldTypes = (http.match(/export const FIELD_TYPES = (\[[^\]]*\])/) || [])[1] || '';
+  const fieldTypesFromServer = fieldTypes;
   const pageTypes = (task.match(/const F_TYPES = (\[[^\]]*\])/) || [])[1] || '';
-  const saveTypes = (admCore.match(/type: (\[[^\]]*\])\.includes/) || [])[1] || '';
+  // saveTask এখন server-এ (?op=write → lib/admin/write.js) — server নিজেই
+  // lib/http.js FIELD_TYPES import করে, তাই client-এ আর দ্বিতীয় copy রাখা হয় না
+  const saveTypes = /type: \[/.test(codeOnly(admCore)) ? 'DUPLICATED' : fieldTypesFromServer;
   const editorTypes = (admMain.match(/const TF_TYPES = (\[[^\]]*\])/) || [])[1] || '';
   const norm = t => t.replace(/\s+/g, '');
   check('textarea is in the server type list', /\btextarea\b/.test(fieldTypes), fieldTypes);
-  check('user page, admin save() and admin editor use the SAME type list as the server',
-    norm(pageTypes) === norm(fieldTypes) && norm(saveTypes) === norm(fieldTypes) && norm(editorTypes) === norm(fieldTypes),
-    `\n     page=${norm(pageTypes)}\n     save=${norm(saveTypes)}\n     editor=${norm(editorTypes)}\n     server=${norm(fieldTypes)}`);
+  check('user page + admin editor use the SAME type list as the server',
+    norm(pageTypes) === norm(fieldTypes) && norm(editorTypes) === norm(fieldTypes),
+    `\n     page=${norm(pageTypes)}\n     editor=${norm(editorTypes)}\n     server=${norm(fieldTypes)}`);
+  check('admin core.js field-type list duplicate করে না (server single source)',
+    saveTypes === fieldTypesFromServer);
   const maxlenPage = (task.match(/const F_MAXLEN = (\{[^}]*\})/) || [])[1] || '';
   const maxlenSrv = (http.match(/export const FIELD_MAXLEN = (\{[^}]*\})/) || [])[1] || '';
   check('per-type length limits mirror the server exactly', norm(maxlenPage) === norm(maxlenSrv) && maxlenPage.length > 0, `page=${norm(maxlenPage)} server=${norm(maxlenSrv)}`);

@@ -982,6 +982,161 @@ console.log('\n[P] ?op=seed-tasks — missing Firestore task docs');
     /const configured = !!taskFromDb/.test(src('src/pages/task.js')) && /if \(!configured\)/.test(src('src/pages/task.js')));
 }
 
+/* ============================================================
+   [Q] ?op=read / ?op=write — admin panel-এর সব read/write server দিয়ে
+       (browser direct Firestore ছুঁলে rules-এর isAdmin() fail করলে পুরো
+       panel "Missing or insufficient permissions." হতো)
+   ============================================================ */
+console.log('\n[Q] ?op=read / ?op=write — rules-independent admin panel data path');
+{
+  /* --- fixtures (shared store-এ additive; [Q] সবশেষে, তাই পরের section নাই) --- */
+  const t0 = Date.now();
+  store.docs['proofs/p1'] = { userId: 'alice', status: 'pending', reward: 15, createdAt: new Date(t0 - 9000) };
+  store.docs['proofs/p2'] = { userId: 'alice', status: 'approved', createdAt: new Date(t0 + 9000) };
+  store.docs['deposits/d1'] = { userId: 'alice', amount: 500, status: 'pending', createdAt: new Date(t0) };
+  store.docs['withdrawals/w1'] = { userId: 'alice', amount: 100, status: 'pending', createdAt: new Date(t0) };
+  store.docs['users/alice/transactions/tx1'] = { amount: 15, type: 'task', note: 'x' };
+  store.docs['users/alice/withdrawals/uw1'] = { amount: 100, status: 'pending', createdAt: new Date(t0) };
+  store.docs['notices/n2'] = { title: 'B', body: 'bbb', sort: 2 };
+  store.docs['notices/n1'] = { title: 'A', body: 'aaa', sort: 1 };
+  store.docs['notices/n3'] = { title: 'C', body: 'ccc' };   // sort নেই — বাদ পড়বে না
+
+  const readVia = async (body, tok = ADMIN) => {
+    const r = res();
+    await routerH(req('POST', tok ? auth(tok) : {}, body, '/api/admin/panel?op=read'), r);
+    return r;
+  };
+  const writeVia = async (body, tok = ADMIN) => {
+    const r = res();
+    await routerH(req('POST', tok ? auth(tok) : {}, body, '/api/admin/panel?op=write'), r);
+    return r;
+  };
+
+  let r = await readVia({ what: 'zzz' });
+  check('op=read router-এ reach করে, unknown target → 400 (404 হলে deploy পুরোনো)', r.statusCode === 400, `(${r.statusCode} ${r.body})`);
+
+  r = await readVia({ what: 'proofs' }, null);
+  check('read: no token → 401', r.statusCode === 401, `(${r.statusCode})`);
+  r = await readVia({ what: 'proofs' }, A);
+  check('read: logged-in non-admin → 403', r.statusCode === 403, `(${r.statusCode})`);
+  r = await writeVia({ what: 'settings', data: { siteName: 'X' } }, A);
+  check('write: non-admin → 403 (panel expose = convenience, bypass না)', r.statusCode === 403, `(${r.statusCode})`);
+
+  r = await readVia({ what: 'proofs', status: 'pending' });
+  let d = json(r);
+  check('read proofs: শুধু pending আসে (server-side where, composite index লাগে না)',
+    r.statusCode === 200 && d.items.length >= 1 && d.items.every(x => x.status === 'pending') &&
+    d.items.some(x => x.id === 'p1') && !d.items.some(x => x.id === 'p2'), `(${d.items.length} items)`);
+  const joined = d.items.find(x => x.id === 'p1');
+  check('read proofs: userId join হয়েছে (panel-এর N+1 fetch বন্ধ)',
+    joined.user && joined.user.uid === 'alice' && joined.user.isActive === true, `(${JSON.stringify(joined && joined.user)})`);
+
+  r = await readVia({ what: 'proofs', status: 'all' });
+  d = json(r);
+  check('read proofs: status=all → নতুনটা আগে (JS sort, createdAt desc)', d.items[0].id === 'p2' && d.items[1].id === 'p1', `(${d.items.slice(0, 3).map(x => x.id)})`);
+
+  r = await readVia({ what: 'users' });
+  d = json(r);
+  check('read users: key = uid (panel listUsers shape)', d.items.some(u => u.uid === 'alice' && u.name === 'Alice'), `(${r.body})`);
+
+  r = await readVia({ what: 'user', id: 'alice' });
+  d = json(r);
+  check('read single user → { uid, ... } | না থাকলে item:null', d.item && d.item.uid === 'alice' && d.item.isActive === true, `(${r.body})`);
+  r = await readVia({ what: 'user', id: 'nope-nope' });
+  check('read single user (missing) → item null, 200', r.statusCode === 200 && json(r).item === null, `(${r.body})`);
+  r = await readVia({ what: 'user', id: 'a' });
+  check('read user: ছোট/অবৈধ id → 400', r.statusCode === 400, `(${r.statusCode})`);
+
+  r = await readVia({ what: 'user-transactions', uid: 'alice' });
+  d = json(r);
+  check('read subcollection transactions: data-only rows (core.js shape রক্ষা)',
+    d.items.some(x => x.amount === 15 && x.type === 'task' && x.note === 'x') && d.items.every(x => x.id === undefined), `(${d.items.length} items)`);
+  r = await readVia({ what: 'user-transactions', uid: 'x' });
+  check('read subcollection: invalid uid → 400', r.statusCode === 400, `(${r.statusCode})`);
+  r = await readVia({ what: 'user-withdrawals', uid: 'alice' });
+  check('read user withdrawals → users/alice/withdrawals পড়ে (top-level না)', json(r).items.length === 1 && json(r).items[0].id === 'uw1', `(${r.body})`);
+
+  r = await readVia({ what: 'tasks' });
+  d = json(r);
+  check('read tasks: key = slug + sort asc', d.items.every(x => x.slug) && d.items[0].slug === 'facebook-sale', `(${d.items.map(x => x.slug + ':' + x.sort)})`);
+  r = await readVia({ what: 'notices' });
+  d = json(r);
+  const titles = d.items.map(x => x.title);
+  check('read notices: sort asc + যে doc-এ sort নেই সেটাও আসে (orderBy sort-এর মতো বাদ পড়ে না)',
+    titles[0] === 'A' && titles.indexOf('B') > 0 && titles.indexOf('C') === titles.length - 1, `(${titles})`);
+  r = await readVia({ what: 'settings' });
+  check('read settings/site → fields + secret key নেই', json(r).item && json(r).item.activationFee === 30 && !('giftCode' in json(r).item), `(${r.body})`);
+
+  /* ---------------- write ---------------- */
+  store.docs['tasks/typing-job'] = { slug: 'typing-job', nameBn: 'টাইপিং', reward: 20, enabled: true, url: 'https://example.com', sort: 11 };
+  r = await writeVia({
+    what: 'task', slug: 'typing-job',
+    data: {
+      reward: '27.5', nameBn: 'টাইপিং জব ', dailyLimit: 9999, url: 'javascript:alert(1)',
+      inputFields: [{ label: ' UID ', type: 'text', required: true }, { label: 'UID', type: 'evil' }, { label: '' }],
+    },
+  });
+  check('write task: javascript: URL → 400 (document/URL-এ ঢোকে না)', r.statusCode === 400, `(${r.statusCode} ${r.body})`);
+  check('write task: reject হলে doc অক্ষত', store.docs['tasks/typing-job'].reward === 20, `(${JSON.stringify(store.docs['tasks/typing-job'])})`);
+
+  r = await writeVia({
+    what: 'task', slug: 'typing-job',
+    data: {
+      reward: '27.5', nameBn: 'টাইপিং জব', dailyLimit: 9999,
+      inputFields: [{ label: ' UID ', type: 'text', required: true }, { label: 'UID', type: 'evil' }, { label: '' }],
+    },
+  });
+  d = json(r);
+  const tj = store.docs['tasks/typing-job'];
+  check('write task: reward clamp+number, partial update (url/অন্য field মোছে না)', d.ok === true && tj.reward === 27.5 && tj.url === 'https://example.com', `(${JSON.stringify(tj)})`);
+  check('write task: inputFields sanitize (trim, dedupe label, unknown type → text, empty label বাদ)', tj.inputFields.length === 1 && tj.inputFields[0].label === 'UID' && tj.inputFields[0].type === 'text', `(${JSON.stringify(tj.inputFields)})`);
+  check('write task: dailyLimit cap 200 + updatedAt বসে', tj.dailyLimit === 200 && tj.updatedAt !== undefined, `(${tj.dailyLimit} ${JSON.stringify(tj.updatedAt)})`);
+  r = await writeVia({ what: 'task', slug: 'Bad Slug!!', data: { reward: 1 } });
+  check('write task: অবৈধ slug → 400', r.statusCode === 400, `(${r.statusCode})`);
+
+  r = await writeVia({ what: 'settings', data: { siteName: 'DigitEarn নতুন', activationFee: 45, giftCode: 'HACKED', password: 'x', apiKey: 'y' } });
+  d = json(r);
+  check('write settings: সাধারণ field লেখে', store.docs['settings/site'].siteName === 'DigitEarn নতুন' && store.docs['settings/site'].activationFee === 45, `(${JSON.stringify(store.docs['settings/site'])})`);
+  check('write settings: secret key block (public doc-এ ফাঁস হয় না) + skipped says so',
+    store.docs['settings/site'].giftCode === undefined && store.docs['settings/site'].password === undefined &&
+    store.docs['settings/site'].apiKey === undefined && d.skipped.length === 3, `(${JSON.stringify(d.skipped)})`);
+  check('write settings: settings/secret অক্ষত (আলাদা ?op=secret পথ)', store.docs['settings/secret'].giftCode === 'OLD2026', `(${JSON.stringify(store.docs['settings/secret'])})`);
+
+  const before = Object.keys(store.docs).filter(k => k.startsWith('notices/')).length;
+  r = await writeVia({ what: 'notice-add', title: 'Q notice', body: 'hello', type: 'warning' });
+  d = json(r);
+  const after = Object.keys(store.docs).filter(k => k.startsWith('notices/'));
+  check('write notice-add: auto-id doc তৈরি (odd-segment bug ফেরে না)', r.statusCode === 200 && /^notices\/[\w-]+$/.test('notices/' + d.id) && after.length === before + 1, `(${r.body})`);
+  r = await writeVia({ what: 'notice-add', title: '', body: '' });
+  check('write notice-add: খালি title+body → 400', r.statusCode === 400, `(${r.statusCode})`);
+  r = await writeVia({ what: 'notice-update', id: 'n1', title: 'A2', enabled: false });
+  check('write notice-update: merge update', store.docs['notices/n1'].title === 'A2' && store.docs['notices/n1'].enabled === false && store.docs['notices/n1'].sort === 1, `(${JSON.stringify(store.docs['notices/n1'])})`);
+  r = await writeVia({ what: 'notice-delete', id: 'n2' });
+  check('write notice-delete: doc মুছে যায়', store.docs['notices/n2'] === undefined, `(${JSON.stringify(Object.keys(store.docs).filter(k => k.startsWith('notices/')))})`);
+  r = await writeVia({ what: 'notice-delete', id: '../users/alice' });
+  check('write: অবৈধ notice id (path traversal) → 400', r.statusCode === 400, `(${r.statusCode})`);
+  r = await writeVia({ what: 'nope' });
+  check('write: unknown target → 400', r.statusCode === 400, `(${r.statusCode})`);
+
+  /* ---------------- client wiring (source guards) ---------------- */
+  const coreSrc = (await import('node:fs')).readFileSync('src/admin/core.js', 'utf8');
+  const fnBody = name => {
+    const i = coreSrc.indexOf('export async function ' + name);
+    if (i < 0) return '';
+    const j = coreSrc.indexOf('\nexport ', i + 5);
+    return coreSrc.slice(i, j < 0 ? coreSrc.length : j);
+  };
+  const routed = ['listProofs', 'listDeposits', 'listWithdrawals', 'listUsers', 'getUser', 'getUserWithdrawals', 'getUserTransactions', 'listTasks', 'listNotices', 'listUserTargetNotices', 'saveTask', 'saveSettings', 'addNotice', 'updateNotice', 'deleteNotice'];
+  const notRouted = routed.filter(n => !/admin(Read|ReadOne|Write)\(/.test(fnBody(n)));
+  check('core.js-এর ' + routed.length + 'টা list/save function-ই server op ব্যবহার করে', notRouted.length === 0, `(${notRouted.join(',')})`);
+  const stillDirect = routed.filter(n => /getDocs\(|setDoc\(|updateDoc\(|deleteDoc\(/.test(fnBody(n)));
+  check('ওই function গুলোতে আর direct Firestore call নেই (rules dependency বন্ধ)', stillDirect.length === 0, `(${stillDirect.join(',')})`);
+  const mainSrc = (await import('node:fs')).readFileSync('src/admin/main.js', 'utf8');
+  check('main.js joined user ব্যবহার করে (p.user || getUser)', /p\.user \|\| await getUser\(/.test(mainSrc) && /d\.user \|\| await getUser\(/.test(mainSrc) && /w\.user \|\| await getUser\(/.test(mainSrc));
+  check('read/write দুটোই এক router-এর op — নতুন Vercel function না (Hobby 12)',
+    (await import('node:fs')).readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).length === 10);
+}
+
 console.log('\n=============================');
 console.log(`RESULT: ${pass} passed, ${failN} failed`);
 console.log('=============================');

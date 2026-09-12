@@ -133,7 +133,16 @@ async function onHash() {
     else if (view === 'notices') await viewNotices(main);
     else await viewOverview(main);
   } catch (err) {
-    main.innerHTML = `<div class="form-err"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(err.message)}</div>`;
+    /* "Missing or insufficient permissions." = Firestore rules — admin-কে বোঝাতে
+       হয় কী দেখতে হবে, নইলে panel-এর সব tab একই লাল বাক্স দেখাত (কোনো guidance না) */
+    const m = String((err && err.message) || err);
+    const perm = /permission|insufficient/i.test(m);
+    main.innerHTML = `<div class="form-err"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(m)}
+      ${perm ? `<div class="muted" style="font-size:12px;margin-top:8px">
+        Panel এখন server (Admin SDK) দিয়ে পড়ে — নিচের ↻ বাটন চাপুন। না চললে দেখুন:
+        Firestore-এর <code>admins/&lt;email&gt;</code> doc-id হুবহু আপনার login email
+        হতে হবে (বড়/ছোট হাতের তফাতও fail করে), আর Vercel function-এর build
+        নতুন কিনা (?op=read থাকতে হবে)।</div>` : ''}</div>`;
   }
 }
 
@@ -249,7 +258,7 @@ async function viewProofs(main) {
   const list = await listProofs(proofFilter);
   const box = document.getElementById('proofList');
   if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো submission নেই।</p>'; return; }
-  const items = await Promise.all(list.map(async p => ({ p, user: await getUser(p.userId).catch(() => null) })));
+  const items = await Promise.all(list.map(async p => ({ p, user: p.user || await getUser(p.userId).catch(() => null) })));
   box.innerHTML = items.map(({ p, user }) => `
     <div class="adm-item">
       <div class="ai-head">
@@ -318,7 +327,7 @@ async function viewDeposits(main) {
   const list = await listDeposits(depFilter);
   const box = document.getElementById('depList');
   if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো deposit নেই।</p>'; return; }
-  const items = await Promise.all(list.map(async d => ({ d, user: await getUser(d.userId).catch(() => null) })));
+  const items = await Promise.all(list.map(async d => ({ d, user: d.user || await getUser(d.userId).catch(() => null) })));
   box.innerHTML = items.map(({ d, user }) => `
     <div class="adm-item">
       <div class="ai-head">
@@ -372,7 +381,7 @@ async function viewWithdrawals(main) {
   const list = await listWithdrawals(wdFilter);
   const box = document.getElementById('wdList');
   if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো withdrawal নেই। (পুরনো pending request Users tab-এ user-এর detail-এ দেখাবে)</p>'; return; }
-  const items = await Promise.all(list.map(async w => ({ w, user: await getUser(w.userId).catch(() => null) })));
+  const items = await Promise.all(list.map(async w => ({ w, user: w.user || await getUser(w.userId).catch(() => null) })));
   box.innerHTML = items.map(({ w, user }) => `
     <div class="adm-item">
       <div class="ai-head">
@@ -530,7 +539,7 @@ async function viewTasks(main) {
     <div class="adm-card" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
       <div style="flex:1 1 260px"><b>Built-in list থেকে task doc তৈরি করুন</b><br>
         <span class="muted">${tasks.length ? 'যেগুলোর doc নেই শুধু সেটুকুই বানাবে — আগে থেকে যা আছে (rate, fields, lock) অক্ষত থাকবে।' : 'Firestore-এ কোনো task config নেই — একারণেই user submit করলে “Project পাওয়া যায়নি” আসছে। নিচের বাটন চাপলেই ঠিক হয়ে যাবে।'}</span></div>
-      <button class="adm-btn sm" id="seedTasksBtn"><i class="fa-solid fa-database"></i> ${tasks.length ? 'বাকিগুলো তৈরি করুন' : 'এখনই তৈরি করুন'}</button>
+      <button class="adm-btn gold sm" id="seedTasksBtn"><i class="fa-solid fa-database"></i> ${tasks.length ? 'বাকিগুলো তৈরি করুন' : 'এখনই তৈরি করুন'}</button>
     </div>`;
   main.innerHTML = `
     <div class="adm-card task-head"><h4><i class="fa-solid fa-briefcase" style="color:#d97706"></i> Micro Jobs</h4>
