@@ -136,26 +136,6 @@ export const TASKS = [
     },
   },
   {
-    slug: 'myjob',
-    nameBn: 'মাইজাগো জব',
-    nameEn: 'MyJago Job',
-    icon: 'fa-solid fa-list-check',
-    color: '#6366f1',
-    reward: 12,
-    url: 'https://myjago.com',
-    locked: false,
-    sort: 10,
-    steps: [
-      'লিংকে গিয়ে MyJago প্ল্যাটফর্মে জব পোস্টে অ্যাপ্লাই করুন',
-      'স্ক্রিনশট এডমিনকে পাঠান',
-      'Submit বাটনে ক্লিক করুন',
-    ],
-    seo: {
-      title: 'MyJago Job Task — প্রতিদিন ৳১২ রিওয়ার্ড | DigitEarn',
-      description: 'DigitEarn-এ MyJago Job টাস্ক করে প্রতিদিন ৳১২ রিওয়ার্ড আর্ন করুন। MyJago প্ল্যাটফর্মে জব অ্যাপ্লাই করে সহজে রিওয়ার্ড ক্লেইম করুন।',
-    },
-  },
-  {
     slug: 'typing-job',
     nameBn: 'টাইপিং জব',
     nameEn: 'Typing Job',
@@ -202,4 +182,7 @@ export const INTERNAL_PAGES = [
   { slug: 'target', nameBn: 'টার্গেট বোনাস', nameEn: 'Target Bonus', icon: 'fa-solid fa-bullseye', color: '#ef4444', url: '/target.html', sort: 6 },
   { slug: 'team', nameBn: 'রেফার', nameEn: 'Referral', icon: 'fa-solid fa-users', color: '#8b5cf6', url: '/team.html', sort: 7 },
   { slug: 'gift', nameBn: 'গিফট কোড', nameEn: 'Gift Code', icon: 'fa-solid fa-gift', color: '#ec4899', url: '/gift.html', sort: 8 },
+  /* MicroJobs ও Leaderboard = আলাদা page (Refer/team page আলাদাই আছে — মেশানো হয়নি) */
+  { slug: 'microjobs', nameBn: 'MicroJobs', nameEn: 'MicroJobs', icon: 'fa-solid fa-briefcase', color: '#0ea5e9', url: '/microjobs.html', sort: 13 },
+  { slug: 'leaderboard', nameBn: 'Leaderboard', nameEn: 'Leaderboard', icon: 'fa-solid fa-trophy', color: '#f59e0b', url: '/leaderboard.html', sort: 14 },
 ];

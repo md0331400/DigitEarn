@@ -153,3 +153,19 @@ a { color: var(--gold-deep); }
 .sub-row b { font-weight: 600; }
 .sub-row b.sub-secret { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 1px; }
 .sub-row b.sub-multi { white-space: pre-wrap; font-weight: 500; font-size: 12.5px; color: #44403c; }
+
+/* ===== MicroJobs admin: job-per-card + per-job counts ===== */
+.mj-statline { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 7px; font-size: 11.8px; color: #57534e; }
+.mj-statline span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.mj-statline b { color: #292524; font-weight: 800; }
+.mj-statline .ok b { color: #15803d; }
+.mj-statline .warn b { color: #b45309; }
+.mj-statline .bad b { color: #b91c1c; }
+.mj-jobhead { padding: 12px 13px; margin: 14px 0 8px; background: #fffbeb; border-color: #fde68a; }
+.mj-jobhead b { font-size: 14px; }
+
+.img-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.img-pick input[data-imgurl] { flex: 1 1 210px; }
+.img-prev { display: flex; align-items: center; gap: 8px; background: #fff; border: 1.5px dashed #fdba74; border-radius: 12px; padding: 6px 8px; width: 100%; }
+.img-prev img { width: 74px; height: 74px; object-fit: cover; border-radius: 8px; background: #fafaf9; }
+.img-prev .adm-btn { margin-left: auto; }

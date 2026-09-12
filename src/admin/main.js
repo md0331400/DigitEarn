@@ -9,10 +9,13 @@ import {
   listWithdrawals, reviewWithdrawal,
   listUsers, getUserWithdrawals, getUserTransactions, setUserActive,
   listTasks, saveTask, seedTasks,
+  listJobStats, listJobProofs, createMicrojob, decideProof, syncLeaderboard,
   getSettings, saveSettings, clearGiftCode,
   listNotices, addNotice, updateNotice, deleteNotice,
   listUserTargetNotices, addTargetedNotice, updateTargetedNotice, deleteTargetedNotice, listTargetedAll,
 } from './core.js';
+
+import { pickImage } from '../core/jobform.js';   // ছবি resize (admin upload, Storage bucket লাগে না)
 
 const app = document.getElementById('app');
 let me = null;
@@ -259,7 +262,9 @@ async function viewProofs(main) {
   const box = document.getElementById('proofList');
   if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো submission নেই।</p>'; return; }
   const items = await Promise.all(list.map(async p => ({ p, user: p.user || await getUser(p.userId).catch(() => null) })));
-  box.innerHTML = items.map(({ p, user }) => `
+  const stats = await listJobStats().catch(() => []);
+  const statOf = slug => stats.find(x => x.slug === slug) || null;
+  const rowHtml = ({ p, user }) => `
     <div class="adm-item">
       <div class="ai-head">
         <div class="ai-user"><b>${esc(user?.name || p.username || '—')}</b><span class="muted">${esc(user?.email || p.userEmail || '')}</span></div>
@@ -274,9 +279,37 @@ async function viewProofs(main) {
       ${p.status === 'pending' ? `
       <div class="ai-actions">
         <button class="adm-btn green sm" data-approve="${p.id}"><i class="fa-solid fa-check"></i> Approve +${fmt(p.reward)}</button>
-        <button class="adm-btn red sm" data-reject="${p.id}"><i class="fa-solid fa-xmark"></i> Reject</button>
-      </div>` : ''}
-    </div>`).join('');
+        <button class="adm-btn red sm" data-rresub="${p.id}"><i class="fa-solid fa-rotate-left"></i> Reject & Allow Resubmit</button>
+        <button class="adm-btn ghost sm" data-rhide="${p.id}"><i class="fa-solid fa-eye-slash"></i> Reject & Hide</button>
+      </div>` : p.status === 'rejected' ? `<p class="ai-note"><i class="fa-solid fa-${p.hiddenForUser ? 'eye-slash' : 'rotate-left'}"></i> ${p.hiddenForUser ? 'Reject & Hide — jobটা শুধু এই user-এর list থেকে লুকানো' : 'Reject & Allow Resubmit — user আবার submit করতে পারবে'}</p>` : ''}
+    </div>`;
+  /* Submissions = Microjob অনুযায়ী গ্রুপ (§12): job-এর Required/Approved/Pending/
+     Rejected/Remaining + FULL badge, তারপর ওই job-এর submission গুলো। */
+  const groups = new Map();
+  for (const it of items) {
+    const k = String(it.p.taskSlug || '(unknown)');
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(it);
+  }
+  const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0])));
+  box.innerHTML = ordered.map(([slug, rows]) => {
+    const st = statOf(slug);
+    const need = st ? (Number(st.requiredUsers) || 0) : 0;
+    const head = `<div class="adm-card mj-jobhead">
+      <b><i class="fa-solid fa-briefcase" style="color:#d97706"></i> ${esc(rows[0].p.taskName || slug)}</b>
+      <span class="muted" style="margin-left:6px">${esc(slug)}</span>
+      <div class="mj-statline">
+        <span><i class="fa-solid fa-users"></i> Required <b>${need || '∞'}</b></span>
+        <span class="ok"><i class="fa-solid fa-check"></i> Approved <b>${st ? (Number(st.approvedCount) || 0) : 0}</b></span>
+        <span class="warn"><i class="fa-solid fa-hourglass-half"></i> Pending <b>${st ? (Number(st.pending) || 0) : rows.filter(x => x.p.status === 'pending').length}</b></span>
+        <span class="bad"><i class="fa-solid fa-xmark"></i> Rejected <b>${st ? (Number(st.rejected) || 0) : 0}</b></span>
+        <span><i class="fa-solid fa-user-plus"></i> Remaining <b>${st && st.remaining !== null && st.remaining !== undefined ? st.remaining : '∞'}</b></span>
+        ${st && (st.full || st.closed) ? '<span class="badge red">FULL/CLOSED</span>' : ''}
+      </div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">approve করলে-ই ওই user-এর list থেকে job লুকিয়ে যাবে; Required Users শেষ হলে job স্বয়ংক্রিয়ভাবে FULL হবে (তখন আর approve হয় না)।</p>
+    </div>`;
+    return head + rows.map(rowHtml).join('');
+  }).join('');
 
   box.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', async () => {
     btn.disabled = true;
@@ -299,14 +332,24 @@ async function viewProofs(main) {
     try { await navigator.clipboard.writeText(txt); toast('সব field data copy হয়েছে'); }
     catch (_) { prompt('Copy করুন:', txt); }
   }));
-  box.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', async () => {
+  /* দুই রকম reject (spec §10): Allow Resubmit = job user-এর list-এ থাকে + warning;
+     Hide = শুধু ওই user থেকে লুকানো (job global ভাবে মোছে না, অন্য user পাবে) */
+  const rejectWith = async (id, action, okMsg) => {
     const note = prompt('Reject reason (user দেখবে):') || '';
     try {
-      await rejectProof(btn.dataset.reject, note);
-      toast('Proof reject করা হয়েছে');
+      await decideProof(id, action, note);
+      toast(okMsg);
       viewProofs(main);
     } catch (err) { toast(err.message, 'error'); }
+  };
+  box.querySelectorAll('[data-rresub]').forEach(btn => btn.addEventListener('click', () =>
+    rejectWith(btn.dataset.rresub, 'reject_resubmit', 'Reject — user ঠিক করে আবার submit করতে পারবে')));
+  box.querySelectorAll('[data-rhide]').forEach(btn => btn.addEventListener('click', () => {
+    if (!confirm('Jobটা শুধু এই user-এর list থেকে লুকানো হবে (admin list-এ থাকবে)। ঠিক আছে?')) return;
+    rejectWith(btn.dataset.rhide, 'reject_hide', 'Reject + Hide — এই user-এর MicroJobs list থেকে বাদ');
   }));
+  box.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () =>
+    rejectWith(btn.dataset.reject, 'reject_resubmit', 'Proof reject করা হয়েছে')));
 }
 
 /* ---------- deposits ---------- */
@@ -509,7 +552,7 @@ async function viewUsers(main) {
 /* ---------- tasks ---------- */
 /* dynamic field types — lib/http.js FIELD_TYPES + src/pages/task.js F_TYPES এর mirror
    (তিনটা copy; tests/web-and-apk.mjs [L] হুবহু মিল check করে) */
-const TF_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea'];
+const TF_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea', 'image'];
 function fieldRowHtml(f = {}) {
   return `<div class="if-row" data-if-row>
     <input class="adm-input if-label" placeholder="Field Title (যেমন: UID, Password, Cookies)" value="${esc(f.label || '')}" maxlength="50">
@@ -531,10 +574,50 @@ function inputFieldsEditorHtml(t) {
     </div>`;
 }
 async function viewTasks(main) {
-  const tasks = await listTasks();
+  /* jobs list = tasks collection (প্রতিটা doc আলাদা card) + server-এর per-job aggregate */
+  const [tasks, stats] = await Promise.all([listTasks(), listJobStats().catch(() => [])]);
+  const statOf = slug => stats.find(x => x.slug === slug) || null;
   /* ⚠️ Firestore-এ task config doc না থাকলে user submit → "Project পাওয়া যায়নি" (404)।
      listTasks() খালি হলে এই panel-এ কার্ডই না, মানে নতুন doc বানানোর উপায়ও না —
      তাই একটা recovery bar (?op=seed-tasks, idempotent)। */
+  /* নতুন job তৈরি = নতুন tasks/{slug} doc — user-এর MicroJobs page-এ সেটা আলাদা
+     card/post হিসেবেই দেখাবে (৫টা job বানালে ৫টা card; কোনো hardcode নেই) */
+  const createCard = `
+    <div class="adm-card" id="mjCreateCard">
+      <h4 style="margin:0 0 4px"><i class="fa-solid fa-plus" style="color:#d97706"></i> নতুন Microjob তৈরি করুন</h4>
+      <p class="muted" style="font-size:12.5px;margin:0 0 10px">প্রতিটা job আলাদা post — ছবি, title, short description, নিয়ম, লিংক, video, Required Users, Reward আর submission field নিজে থেকেই ঠিক করুন।</p>
+      <div class="two-col">
+        <div><label>Job Title *</label><input class="adm-input" data-nc="nameBn" maxlength="60" placeholder="যেমন: ভিডিওতে like + comment"></div>
+        <div><label>Slug (খালি রাখলে বানিয়ে নেওয়া হবে)</label><input class="adm-input" data-nc="slug" maxlength="50" placeholder="like-comment-video"></div>
+      </div>
+      <div class="two-col">
+        <div><label>Reward / প্রতি user (৳)</label><input type="number" step="0.5" min="0" class="adm-input" data-nc="reward" value="1"></div>
+        <div><label>Required Users *</label><input type="number" min="1" max="1000000" class="adm-input" data-nc="requiredUsers" value="100"></div>
+      </div>
+      <label>Short Description</label><input class="adm-input" data-nc="shortDesc" maxlength="200" placeholder="কার্ডে দেখানো এক লাইন">
+      <label>Main Job Link (https://…)</label><input class="adm-input" data-nc="url" maxlength="300" placeholder="https://">
+      <label>Tutorial Video Link (optional)</label><input class="adm-input" data-nc="videoUrl" maxlength="300" placeholder="https://youtu.be/…">
+      <label>Job Image</label>
+      <div class="img-pick">
+        <input type="hidden" data-nc="image" id="mjNewImage">
+        <input type="file" accept="image/png,image/jpeg,image/webp" id="mjNewImageFile" hidden>
+        <button type="button" class="adm-btn ghost sm" id="mjNewImageBtn"><i class="fa-solid fa-image"></i> ছবি আপলোড</button>
+        <div class="img-prev" id="mjNewImagePrev" hidden><img alt="preview" id="mjNewImageImg"></div>
+      </div>
+      <label>কাজের নিয়ম (এক লাইনে একটা করে ধাপ)</label>
+      <textarea class="adm-input" data-nc="steps" rows="3" placeholder="লিংক ওপেন করুন&#10;লাইক + কমেন্ট দিন&#10;স্ক্রিনশটসহ submit করুন"></textarea>
+      <div class="two-col">
+        <div><label>Sort order</label><input type="number" class="adm-input" data-nc="sort" value="100"></div>
+        <label class="chk" style="align-self:flex-end;margin-bottom:8px"><input type="checkbox" data-nc="enabled" checked> সাথে সাথেই Active</label>
+      </div>
+      <details style="margin:10px 0 4px"><summary class="muted" style="font-size:12.5px;cursor:pointer">Submission fields (user কী কী জমা দেবে)</summary>
+        <div class="if-rows" id="mjNewFields"></div>
+        <button type="button" class="adm-btn ghost sm" id="mjNewFieldAdd" style="margin-top:8px"><i class="fa-solid fa-plus"></i> Field যোগ করুন</button>
+      </details>
+      <div class="ai-actions">
+        <button type="button" class="adm-btn gold sm" id="mjCreateBtn"><i class="fa-solid fa-paper-plane"></i> Job তৈরি করুন</button>
+      </div>
+    </div>`;
   const seedBar = `
     <div class="adm-card" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
       <div style="flex:1 1 260px"><b>Built-in list থেকে task doc তৈরি করুন</b><br>
@@ -543,14 +626,26 @@ async function viewTasks(main) {
     </div>`;
   main.innerHTML = `
     <div class="adm-card task-head"><h4><i class="fa-solid fa-briefcase" style="color:#d97706"></i> Micro Jobs</h4>
-    <p class="muted">Reward, link, password, description, input fields, lock/status, video — সব এখান থেকেই। Save করলেই user website-তে automatically update হয়ে যাবে। নতুন task-এর জন্য নতুন page লাগবে — developer-কে জানান।</p></div>
+    <p class="muted">Reward, link, password, description, input fields, lock/status, video — সব এখান থেকেই। Save করলেই user website-তে automatically update হয়ে যাবে। প্রতিটা job আলাদা post — নতুন job বানালেই user-এর MicroJobs page-এ আলাদা card দেখাবে, কোনো developer/page লাগবে না।</p></div>
+    ${createCard}
     ${seedBar}
     <div id="taskList">${tasks.map(t => `
       <div class="adm-card task-card" data-slug="${esc(t.slug)}">
         <div class="task-row">
           <div class="task-info">
             <b>${esc(t.nameBn || t.slug)} ${t.enabled === false ? '<span class="badge gray">OFF</span>' : ''} ${t.locked ? '<span class="badge gold">LOCKED</span>' : ''}</b>
-            <span class="muted">/task/${esc(t.slug)}.html • ${fmt(t.reward)}${Array.isArray(t.inputFields) && t.inputFields.length ? ` • ${t.inputFields.length} field(s)` : ''}</span>
+            <span class="muted">/microjobs.html#job-${esc(t.slug)} • ${fmt(t.reward)}${Array.isArray(t.inputFields) && t.inputFields.length ? ` • ${t.inputFields.length} field(s)` : ''}</span>
+            ${(() => { const st = statOf(t.slug); if (!st) return '';
+              const need = Number(st.requiredUsers) || 0;
+              return `<div class="mj-statline">
+                <span><i class="fa-solid fa-users"></i> Required <b>${need || '∞'}</b></span>
+                <span class="ok"><i class="fa-solid fa-check"></i> Approved <b>${Number(st.approvedCount) || 0}</b></span>
+                <span class="warn"><i class="fa-solid fa-hourglass-half"></i> Pending <b>${Number(st.pending) || 0}</b></span>
+                <span class="bad"><i class="fa-solid fa-xmark"></i> Rejected <b>${Number(st.rejected) || 0}</b></span>
+                <span><i class="fa-solid fa-user-plus"></i> বাকি <b>${st.remaining === null || st.remaining === undefined ? '∞' : st.remaining}</b></span>
+                ${st.full || st.closed ? '<span class="badge red">FULL/CLOSED</span>' : ''}
+                ${st.mode === 'single' ? '<span class="badge gray">১ user = ১ submit</span>' : '<span class="badge gray">marketplace</span>'}
+              </div>`; })()}
           </div>
           <button class="adm-btn ghost sm" data-edit="${esc(t.slug)}"><i class="fa-solid fa-pen"></i></button>
         </div>
@@ -561,6 +656,31 @@ async function viewTasks(main) {
             <div><label>Amount / Reward (৳)</label><input type="number" step="0.5" class="adm-input" data-f="reward" value="${Number(t.reward) || 0}"></div>
             <div><label>Sort order</label><input type="number" class="adm-input" data-f="sort" value="${Number(t.sort) || 10}"></div>
           </div>
+          <div class="two-col">
+            <div><label>Required Users (০ = unlimited)</label><input type="number" min="0" max="1000000" class="adm-input" data-f="requiredUsers" value="${Number(t.requiredUsers) || 0}">
+              <p class="muted" style="font-size:11.5px;margin:4px 0 0">এই সংখ্যক approved user হলে job স্বয়ংক্রিয়ভাবে FULL/CLOSED হবে (পুরোনো marketplace job-এর জন্য ০ রাখুন)</p></div>
+            <div><label>Submission mode</label>
+              <select class="adm-input" data-f="mode">
+                ${(() => { /* পুরোনো seeded task (mode নেই, requiredUsers নেই) = marketplace —
+                     নাহলে শুধু edit করে Save চাপলেই ৮টা account-sell task এক-submit মোডে
+                     চলে যেত (দিনে একাধিক বিক্রি বন্ধ) */
+                  const cur = t.mode || ((Number(t.requiredUsers) || 0) > 0 ? 'single' : 'marketplace');
+                  return `<option value="single" ${cur === 'single' ? 'selected' : ''}>MicroJob — এক user একবার</option>
+                <option value="marketplace" ${cur === 'marketplace' ? 'selected' : ''}>Marketplace — দিনে একাধিক (account sell)</option>`; })()}
+              </select></div>
+          </div>
+          <label>Job Image (card/post-এর ছবি)</label>
+          <div class="img-pick">
+            <input type="hidden" class="adm-input" data-f="image" value="${esc(t.image || '')}">
+            <input type="file" accept="image/png,image/jpeg,image/webp" data-imgfile="${esc(t.slug)}" hidden>
+            <button type="button" class="adm-btn ghost sm" data-imgbtn="${esc(t.slug)}"><i class="fa-solid fa-image"></i> ছবি আপলোড</button>
+            <input class="adm-input" data-imgurl value="${esc(/^https?:/.test(String(t.image || '')) ? t.image : '')}" placeholder="অথবা image URL (https://…)">
+            <div class="img-prev" data-imgprev="${esc(t.slug)}" ${/^data:image/.test(String(t.image || '')) || /^https?:/.test(String(t.image || '')) ? '' : 'hidden'}>
+              <img src="${esc(t.image || '')}" alt="preview"><button type="button" class="adm-btn red sm" data-imgclear="${esc(t.slug)}">Clear</button>
+            </div>
+          </div>
+          <label>Short Description (card-এর এক লাইন)</label>
+          <input class="adm-input" data-f="shortDesc" value="${esc(t.shortDesc || '')}" maxlength="200" placeholder="যেমন: ভিডিওতে like + comment করুন">
           <label>Account Password (seller যে পাসওয়ার্ড সেট করবে — খালি রাখলে hide)</label><input class="adm-input" data-f="password" value="${esc(t.password || '')}" maxlength="60">
           <label>Description / Instructions (project page-এ description)</label><textarea class="adm-input" data-f="description" rows="3" maxlength="300">${esc(t.description || '')}</textarea>
           <div class="two-col">
@@ -609,6 +729,88 @@ async function viewTasks(main) {
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
   });
 
+  /* ---- নতুন job তৈরি + ছবি আপলোড (per-card image picker-ও এখানেই) ---- */
+  const newImg = document.getElementById('mjNewImage');
+  const newPrev = document.getElementById('mjNewImagePrev');
+  const setNewImg = v => {
+    if (!newImg) return;
+    newImg.value = v || '';
+    if (newPrev) { const im = document.getElementById('mjNewImageImg'); if (im) im.src = v; newPrev.hidden = !v; }
+  };
+  document.getElementById('mjNewImageBtn')?.addEventListener('click', () => document.getElementById('mjNewImageFile')?.click());
+  document.getElementById('mjNewImageFile')?.addEventListener('change', async e => {
+    try { setNewImg(await pickImage(e.target.files && e.target.files[0], { maxSide: 640, maxBytes: 220_000 })); }
+    catch (err) { toast(String(err.message || err), 'error'); }
+  });
+  const addRow = (host, f = {}) => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = fieldRowHtml(f);
+    host.appendChild(wrap.firstElementChild);
+  };
+  document.getElementById('mjNewFieldAdd')?.addEventListener('click', () => {
+    const host = document.getElementById('mjNewFields');
+    if (host) addRow(host);
+  });
+  document.getElementById('mjCreateBtn')?.addEventListener('click', async () => {
+    const val = k => main.querySelector(`[data-nc="${k}"]`);
+    const title = String(val('nameBn')?.value || '').trim();
+    if (title.length < 2) { toast('Job Title লিখুন', 'error'); return; }
+    const steps = String(val('steps')?.value || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 20);
+    const inputFields = [...(document.getElementById('mjNewFields')?.querySelectorAll('[data-if-row]') || [])]
+      .map(r => ({
+        label: r.querySelector('.if-label').value.trim(),
+        type: r.querySelector('.if-type').value,
+        placeholder: r.querySelector('.if-ph')?.value.trim() || '',
+        required: r.querySelector('[data-ifreq]').checked,
+      })).filter(x => x.label);
+    const btn = document.getElementById('mjCreateBtn');
+    btn.disabled = true;
+    try {
+      const out = await createMicrojob({
+        nameBn: title, slug: String(val('slug')?.value || '').trim(),
+        reward: Number(val('reward')?.value) || 0,
+        requiredUsers: Math.max(1, Number(val('requiredUsers')?.value) || 1),
+        shortDesc: String(val('shortDesc')?.value || '').trim(),
+        url: String(val('url')?.value || '').trim(),
+        videoUrl: String(val('videoUrl')?.value || '').trim(),
+        image: newImg ? newImg.value : '',
+        steps, inputFields, sort: Number(val('sort')?.value) || 100,
+        mode: 'single', enabled: !!val('enabled')?.checked,
+      });
+      toast(`Job তৈরি হয়েছে: ${out.slug || ''} — user-এর MicroJobs page-এ আলাদা card দেখাবে`);
+      viewTasks(main);
+    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+  });
+  /* ছবি: card প্রতি আপলোড/URL/clear (ডেটা data-f="image" hidden input-এ বসে, save সেটাই পাঠায়) */
+  main.querySelectorAll('[data-imgbtn]').forEach(btn => btn.addEventListener('click', () => {
+    const slug = btn.dataset.imgbtn;
+    main.querySelector(`[data-imgfile="${slug}"]`)?.click();
+  }));
+  main.querySelectorAll('[data-imgfile]').forEach(inp => inp.addEventListener('change', async e => {
+    const slug = inp.dataset.imgfile;
+    const card = inp.closest('.task-card');
+    try {
+      const dataUrl = await pickImage(e.target.files && e.target.files[0], { maxSide: 640, maxBytes: 220_000 });
+      const hid = card.querySelector('input[type=hidden][data-f="image"]');
+      if (hid) hid.value = dataUrl;
+      const urlInp = card.querySelector('[data-imgurl]');
+      if (urlInp) urlInp.value = '';
+      const prev = card.querySelector(`[data-imgprev="${slug}"]`);
+      if (prev) { prev.querySelector('img').src = dataUrl; prev.hidden = false; }
+      toast('ছবি লাগানো হয়েছে — Save চাপুন');
+    } catch (err) { toast(String(err.message || err), 'error'); }
+  }));
+  main.querySelectorAll('[data-imgclear]').forEach(btn => btn.addEventListener('click', () => {
+    const card = btn.closest('.task-card');
+    const slug = btn.dataset.imgclear;
+    const hid = card.querySelector('input[type=hidden][data-f="image"]');
+    if (hid) hid.value = '';
+    const urlInp = card.querySelector('[data-imgurl]');
+    if (urlInp) urlInp.value = '';
+    const prev = card.querySelector(`[data-imgprev="${slug}"]`);
+    if (prev) prev.hidden = true;
+  }));
+
   main.querySelectorAll('[data-save]').forEach(btn => btn.addEventListener('click', async () => {
     const card = btn.closest('.task-card');
     const f = n => card.querySelector(`[data-form] [data-f="${n}"]`);
@@ -637,6 +839,10 @@ async function viewTasks(main) {
         dailyLimit: Math.max(1, Math.min(200, Number(f('dailyLimit').value) || 20)),
         inputFields,
         videoUrl: f('videoUrl').value.trim(),
+        image: (card.querySelector('[data-imgurl]')?.value || '').trim() || (f('image')?.value || ''),
+        shortDesc: f('shortDesc') ? f('shortDesc').value.trim() : '',
+        requiredUsers: f('requiredUsers') ? Math.max(0, Number(f('requiredUsers').value) || 0) : 0,
+        mode: f('mode') ? f('mode').value : 'single',
         enabled: f('enabled').checked,
         locked: f('locked').checked,
       });
@@ -704,7 +910,18 @@ async function viewSettings(main) {
         ${g.group === 'Gift' && !secretOff ? `<p class="muted" style="margin-top:8px">কোড: <b>${esc(s.giftCode || '(খালি)')}</b> <button type="button" class="adm-btn ghost sm" id="clearGiftBtn" style="margin-left:8px">Clear</button></p>` : ''}
       </div>`).join('')}
       <button type="submit" class="adm-btn gold"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
+      <button type="button" class="adm-btn ghost" id="lbSyncBtn" style="margin-left:8px"><i class="fa-solid fa-trophy"></i> Leaderboard count sync</button>
+      <p class="muted" style="font-size:12px;margin-top:6px">Leaderboard (Top 4) existing referral data থেকেই হিসাব করে; এই বাটন চাপলে referral সংখ্যা গুনে user doc-এ cache হয় (বড় list-এ দ্রুত লোড হয়)।</p>
     </form>`;
+  document.getElementById('lbSyncBtn')?.addEventListener('click', async () => {
+    const b = document.getElementById('lbSyncBtn');
+    b.disabled = true;
+    try {
+      const out = await syncLeaderboard();
+      toast(`Leaderboard sync: ${out.updated || 0}টা user (${out.failed || 0}টা বাদ)`);
+    } catch (err) { toast(err.message, 'error'); }
+    b.disabled = false;
+  });
   document.getElementById('clearGiftBtn')?.addEventListener('click', async () => {
     if (!confirm('Gift code মুছে ফেলবেন? তাহলে কেউই আর gift claim করতে পারবে না।')) return;
     try { await clearGiftCode(); toast('Gift code cleared'); viewSettings(main); }

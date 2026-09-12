@@ -1,7 +1,11 @@
 import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, toast, esc, videoEmbedHtml, fmtDate } from '../core/ui.js';
-import { getTaskBySlug, getTodaySales, submitProof } from '../core/api.js';
+import { getTaskBySlug, getTodaySales, submitProof, getJobView } from '../core/api.js';
+/* fields render + validation = shared module (microjobs page-ও একটাই ব্যবহার করে),
+   per-user state/remaining/FULL logic = shared microjobs model (server-ও একই module) */
+import { cleanFields, fieldsHtml, readFields, paintErrors, mountImageFields, stateBannerHtml } from '../core/jobform.js';
+import { isSingleMode, ST } from '../core/microjobs.js';
 import { TASKS } from '../tasks-data.js';
 
 const slug = document.body.dataset.taskSlug || '';
@@ -103,39 +107,27 @@ bootAppPage({
 
       /* MARKETPLACE: form সবসময় খোলা — একদিনে একাধিক account বিক্রি করা যায়।
          আগের submission গুলো নিচে "আজকের জমা" লিস্টে দেখা যাবে। */
-      const sales = await getTodaySales(user.uid, slug).catch(() => []);
+      /* MicroJob state = (এই user × এই job) — approved/hidden/full সব server-এর
+         সাথে মিলিয়ে একই logic দিয়ে বের করা হয় (client নিজেকে override করতে পারে না) */
+      const [sales, jobState] = await Promise.all([
+        getTodaySales(user.uid, slug).catch(() => []),
+        getJobView(user.uid, slug).catch(() => null),
+      ]);
+      const view = (jobState && jobState.view) || null;
+      const state = view ? view.state : ST.AVAILABLE;
+      const gate = (view && view.gate) || { allowed: true, label: 'Submit' };
+      const singleMode = isSingleMode(task);
 
-      /* ⚠️ Dynamic fields only — admin panel (Micro Jobs → Input Fields) যা যা configure করবে
-         ঠিক সেগুলোই এখানে আসে। কোনো task-specific field (Facebook UID / Gmail address ইত্যাদি)
+      /* ⚠️ Dynamic fields only — admin panel (Micro Jobs → Submission Fields) যা configure
+         করবে ঠিক সেগুলোই আসে। কোনো task-specific field (Facebook UID / Gmail address)
          এখানে hardcode করা যাবে না; type list + length limit server-এর lib/http.js
          (FIELD_TYPES/FIELD_MAXLEN) এর mirror — tests/web-and-apk.mjs [L] মিল check করে। */
-      const F_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea'];
-      const F_MAXLEN = { url: 300, email: 120, tel: 20, number: 60, textarea: 2000, text: 100, password: 100 };
-      const ftype = t => (F_TYPES.includes(t) ? t : 'text');
-      const maxlen = t => (t in F_MAXLEN ? F_MAXLEN[t] : 100);
-      const fields = (Array.isArray(task.inputFields) ? task.inputFields : []).filter(f => typeof f.label === 'string' && f.label.trim());
-      const fkey = f => String(f.label).trim().slice(0, 50);
-      const iconOf = { text: 'fa-pen', email: 'fa-envelope', password: 'fa-lock', tel: 'fa-mobile-screen', number: 'fa-hashtag', url: 'fa-link', textarea: 'fa-align-left' };
-      const phOf = { text: 'এখানে লিখুন', email: 'example@gmail.com', password: 'পাসওয়ার্ড লিখুন', tel: '01XXXXXXXXX', number: 'সংখ্যা লিখুন', url: 'https://…', textarea: 'এখানে লিখুন…' };
+      const fields = cleanFields(task.inputFields);
+      const fieldsMarkup = fieldsHtml(fields);
       const safeUrl = /^https?:\/\//i.test(task.url || '') ? task.url : '';
       // admin panel থেকে সেট করা per-project লেখা (না থাকলে fallback)
       const submitLabel = String(task.submitLabel || '').trim() || `SUBMIT ${(task.nameEn || task.nameBn || 'ACCOUNT').toUpperCase()}`;
       const historyLabel = String(task.historyLabel || '').trim() || 'View Sales History';
-
-      const fieldsHtml = fields.map((f, i) => {
-        const type = ftype(f.type);
-        const maxLen = maxlen(type);
-        const ph = String(f.placeholder || '').trim() || phOf[type];
-        const label = `<label class="fld-label">${esc(fkey(f))} ${f.required ? '<b style="color:#dc2626">*</b>' : ''}</label>`;
-        const control = type === 'textarea'
-          ? `<textarea class="tf-area" data-tf="${i}" rows="4" maxlength="${maxLen}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false"></textarea>`
-          : `<input type="${type}" data-tf="${i}" maxlength="${maxLen}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false">`;
-        return `${label}
-          <div class="field${type === 'textarea' ? ' field-area' : ''}">
-            <i class="fa-solid ${iconOf[type]} left"></i>
-            ${control}
-          </div>`;
-      }).join('');
 
       const soldBadge = s => {
         const cls = s.status === 'approved' ? 'paid' : s.status === 'rejected' ? 'rejected' : 'pending';
@@ -162,16 +154,25 @@ bootAppPage({
           </div>
         </div>` : '';
 
+      /* gate.allowed=false মানে এই user-এর জন্য submit বন্ধ (pending/approved/hidden/full)
+         — card/পেজটা হারায় না, শুধু বাটন বন্ধ + কারণ দেখানো হয় (spec §8) */
+      const canSubmit = gate.allowed !== false;
       box.innerHTML = `
-        ${safeUrl ? `<a href="${esc(safeUrl)}" target="_blank" rel="noopener" class="btn btn-gold btn-block"><i class="fa-solid fa-link"></i> লিংক ওপেন করুন</a>` : ''}
+        ${stateBannerHtml(task, state, gate)}
+        ${safeUrl ? `<a href="${esc(safeUrl)}" target="_blank" rel="noopener" class="btn btn-gold btn-block"><i class="fa-solid fa-link"></i> কাজের লিংক ওপেন করুন</a>` : ''}
         <div class="card proof-card" style="margin-top:14px">
           <h4 class="sec-title"><i class="${esc(task.icon || 'fa-solid fa-store')}" style="color:${/^#[0-9a-fA-F]{3,8}$/.test(task.color || '') ? task.color : 'var(--gold-deep)'}"></i> ${esc(task.nameBn)} <span class="reward-pill" style="float:right">Rate: ৳${rate.toFixed(2)}</span></h4>
           ${task.description ? `<p class="muted" style="margin:8px 0 12px;font-size:13.5px;line-height:1.55">${esc(task.description)}</p>` : ''}
 
+          ${singleMode ? `
+          <div class="notice-orange" style="margin-bottom:12px">
+            <i class="fa-solid fa-circle-info"></i>
+            <div><b>এই কাজে একবারই submit করা যায়।</b> নির্দেশনা অনুযায়ী কাজ শেষ করে প্রমাণসহ submit করুন — approve হলেই ৳${rate.toFixed(2)} যোগ হবে। Reject করলে আবার ঠিক করে submit করতে পারবেন।</div>
+          </div>` : `
           <div class="notice-orange" style="margin-bottom:12px">
             <i class="fa-solid fa-triangle-exclamation"></i>
             <div><b>নিজের ব্যক্তিগত account দেবেন না।</b> শুধু যে account আপনি <b>বিক্রি করতে চান</b> সেটাই জমা দিন। Approve হলে account আমাদের হয়ে যাবে এবং ফেরত দেওয়া হবে না।</div>
-          </div>
+          </div>`}
 
           ${task.password ? `
           <div class="pw-box">
@@ -185,13 +186,17 @@ bootAppPage({
             <div class="step-line"><b class="step-num">২</b><span>নিচের ঘরগুলোতে <b>সেই account</b>-এর তথ্য দিন</span></div>
             <div class="step-line"><b class="step-num">৩</b><span>Submit করুন — admin <b>approve</b> করলেই +৳${rate.toFixed(2)} ব্যালেন্সে যোগ হবে</span></div>
           </div>
-          ${fieldsHtml}
+          ${fieldsMarkup}
           ${settings.admin1Link ? `<a href="${esc(settings.admin1Link)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> ${esc(settings.admin1Name)}-এর সাথে চ্যাট করুন</a>` : ''}
-          <button type="button" id="proofSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> ${esc(submitLabel)}</button>
+          <button type="button" id="proofSubmitBtn" class="btn ${canSubmit ? 'btn-green' : 'btn-gray'} btn-block" style="margin-top:12px"${canSubmit ? '' : ' disabled'}>
+            <i class="fa-solid ${canSubmit ? 'fa-paper-plane' : 'fa-hourglass-half'}"></i> ${esc(canSubmit ? (state === ST.RESUBMIT ? 'Submit Again' : submitLabel) : gate.label)}
+          </button>
           <a href="/history.html" class="btn btn-gray btn-block" style="margin-top:10px"><i class="fa-solid fa-clock-rotate-left"></i> ${esc(historyLabel)}</a>
         </div>
         ${salesHtml}`;
 
+      /* image (proof) field গুলোর file picker + preview + resize */
+      if (fields.some(f => f.type === 'image')) mountImageFields(box, fields, { onError: msg => toast(msg, 'error') });
       const pwCopy = document.getElementById('pwCopyBtn');
       if (pwCopy) pwCopy.addEventListener('click', async () => {
         try {
@@ -201,48 +206,28 @@ bootAppPage({
       });
 
       const btn = document.getElementById('proofSubmitBtn');
+      if (!canSubmit) { btn.classList.add('is-locked'); return; }   // pending/approved/hidden/full — listener-ই বাঁধা হয় না
       btn.addEventListener('click', async () => {
         /* client pre-check — নিয়মগুলো api/proof/submit.js-এর হুবহু mirror (চাইলেও বেশি
            কড়া না: আগে "সব required field সঠিকভাবে পূরণ করুন" বলে কোন field ভুল বোঝা
            যেত না, user বারবার চাপত)। এখন field-এর নাম + কী ঠিক করবে সেটা বলে, আর
            input-এর নিচে লাল inline messageও দেখায়। */
-        const data = {};
-        const bad = [];
-        const clearErr = () => box.querySelectorAll('.tf-err').forEach(el => el.remove());
-        fields.forEach((f, i) => {
-          const inp = box.querySelector(`[data-tf="${i}"]`);
-          const v = inp ? inp.value.trim() : '';
-          const type = ftype(f.type);
-          const label = String(f.label || `ফিল্ড ${i + 1}`).slice(0, 50);
-          const maxLen = maxlen(type);
-          let why = '';
-          if (f.required && !v) why = `“${label}” খালি রাখা যাবে না`;
-          else if (v && v.length > maxLen) why = `“${label}” সর্বোচ্চ ${maxLen} অক্ষর`;
-          else if (v && type === 'email' && !/^\S+@\S+\.\S+$/.test(v)) why = `“${label}”-এ সঠিক ইমেইল দিন (যেমন name@gmail.com)`;
-          else if (v && type === 'number' && !/^\d{1,30}(\.\d{1,6})?$/.test(v)) why = `“${label}”-এ শুধু সংখ্যা লিখুন`;
-          else if (v && type === 'url' && !/^https?:\/\/\S+$/i.test(v)) why = `“${label}” লিংকটি http:// বা https:// দিয়ে শুরু করুন`;
-          if (why && inp) {
-            bad.push([inp, why]);
-            const p = document.createElement('p');
-            p.className = 'tf-err';
-            p.style.cssText = 'color:#dc2626;font-size:12px;margin:6px 0 0';
-            p.textContent = why;
-            inp.closest('div')?.appendChild(p);
-          }
-          data[fkey(f)] = v;
-        });
-        if (bad.length) {
-          toast(bad[0][1], 'error');
-          bad[0][0].focus();
+        const { data, errors } = readFields(box, fields);
+        if (errors.length) {
+          paintErrors(box, errors);
+          toast(errors[0].why, 'error');
+          errors[0].el?.focus?.();
           return;
         }
-        clearErr();
+        paintErrors(box, [], false);
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
         try {
           await submitProof(user.uid, { taskSlug: slug, data });
-          toast('Account জমা হয়েছে — admin approve করলেই টাকা যোগ হবে');
-          render(); // form খালি হয়ে আবার আসবে — পরের account জমা দিতে পারবেন
+          toast(singleMode
+            ? 'Submit হয়েছে — admin approval-এর অপেক্ষায় ✓'
+            : 'Account জমা হয়েছে — admin approve করলেই টাকা যোগ হবে');
+          render(); // MicroJob: state pending হয়ে বাটন বন্ধ হবে; marketplace: ফর্ম আবার খোলা
         } catch (err) {
           toast(err.message, 'error');
           btn.disabled = false;

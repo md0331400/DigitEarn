@@ -8,8 +8,15 @@
    - username/email server-এ user doc থেকে (client-এর কথা trust না)
    - userId = verified ID token-এর uid (client-এর uid ignore) */
 import { getDb } from '../../lib/firebase-admin.js';
-import { cors, fail, ok, readBody, authenticate, authReject, AUTH_OK, isTaskSlug, isEmail, ApiError, opFail, fieldMaxLen, fieldType, isSecretField } from '../../lib/http.js';
+import {
+  cors, fail, ok, readBody, authenticate, authReject, AUTH_OK, isTaskSlug, isEmail, ApiError,
+  opFail, fieldMaxLen, fieldType, isSecretField, isProofImage,
+} from '../../lib/http.js';
 import { FieldValue } from 'firebase-admin/firestore';
+/* job config + per-user state logic = src/core/microjobs.js (client আর server একই file
+   import করে) — তাই "এই user-এর জন্য jobটা pending না approved" দুই পাশে আলাদাভাবে
+   ভাবতে হয় না (drift হলে এক পাশে job ভুলভাবে lock/bypass হতো) */
+import { isFull, isSingleMode, stateOf, ST } from '../../src/core/microjobs.js';
 
 const DEFAULT_DAILY_LIMIT = 20;
 
@@ -53,9 +60,12 @@ export default async function handler(req, res) {
        এক-ক্লিক সমাধান (?op=seed-tasks) বলে দেয়। */
     return fail(res, 404, `Project পাওয়া যায়নি (tasks/${taskSlug} doc নেই) — Admin: Panel → Micro Jobs → “Built-in list থেকে তৈরি করুন” চাপান`);
   }
-  const task = taskSnap.data();
+  const task = { ...taskSnap.data(), slug: taskSlug };
   if (task.enabled === false) return fail(res, 400, 'এই প্রজেক্টটি বর্তমানে বন্ধ আছে');
   if (task.locked) return fail(res, 400, 'এই প্রজেক্টটি এখনো লক করা আছে');
+  /* MicroJob: admin-এর প্রতিটা job = আলাদা post; requiredUsers পূরণ হলে job
+     globally FULL/CLOSED — আর কোনো নতুন submit না (এই check server-এ, client trust না) */
+  if (isFull(task)) return fail(res, 400, 'এই job-এর সব slot পূরণ হয়েছে (FULL/CLOSED) — অন্য job দেখুন');
   const reward = Number(task.reward) || 0;
   if (reward <= 0) return fail(res, 400, 'প্রজেক্টের rate সেট করা নেই');
 
@@ -88,6 +98,8 @@ export default async function handler(req, res) {
         if (type === 'email' && !isEmail(raw)) return fail(res, 400, `সঠিক email দিন (${label})`);
         if (type === 'number' && !/^\d{1,30}(\.\d{1,6})?$/.test(raw)) return fail(res, 400, `সঠিক সংখ্যা দিন (${label})`);
         if (type === 'url' && !/^https?:\/\/\S+$/i.test(raw)) return fail(res, 400, `সঠিক লিংক দিন (${label})`);
+        /* proof image: শুধু data:image/(png|jpeg|webp|gif);base64 — svg/html scheme ঢুকবে না */
+        if (type === 'image' && !isProofImage(raw)) return fail(res, 400, `ছবিটি আবার তুলুন (PNG/JPG/WEBP) (${label})`);
       }
       submittedData[label] = raw;
       /* secret: true → admin UI value mask করে, reject হলে value মুছে যায় (lib/http.js) */
@@ -99,7 +111,10 @@ export default async function handler(req, res) {
     }
     /* মোট সাইজ guard — textarea (২০০০ অক্ষর/ফিল্ড) যেন বৈধ submission না বোঝায়,
        তাই limit ২৪KB (Firestore doc limit 1MB-এর অনেক নিচে, review card-এর জন্যও যথেষ্ট) */
-    if (JSON.stringify(submittedData).length > 24 * 1024) return fail(res, 400, 'Submission অনেক বড়');
+    /* image field থাকলে cap ৭০০KB (client canvas resize করা data URL) — Firestore-এর
+       1MB doc limit-এর নিচেই থাকে; নাহলে আগের ২৪KB-ই যথেষ্ট */
+    const sizeCap = (fields.some(f => fieldType(f.type) === 'image') ? 700 : 24) * 1024;
+    if (JSON.stringify(submittedData).length > sizeCap) return fail(res, 400, 'Submission অনেক বড় — ছবি ছোট করে আবার চেষ্টা করুন');
   }
 
   const day = today();
@@ -110,12 +125,16 @@ export default async function handler(req, res) {
      এলে দুটোই "আজকের ৩টির মধ্যে ২টি" দেখে limit cross করে বসিয়ে দিত — per-task
      daily-limit তাই bypass-যোগ্য ছিল। */
   const dailyLimit = Math.max(1, Math.min(200, Number(task.dailyLimit) || DEFAULT_DAILY_LIMIT));
+  const singleMode = isSingleMode(task);   // MicroJob = এক user একবার; পুরোনো account-sell flow = দিনে একাধিক
 
   /* ---------- DUPLICATE ACCOUNT GUARD ----------
      একই account (একই username/email/UID) আগে কেউ জমা দিলে আবার নেওয়া যাবে না।
      accountKeys/{key} একটা global reservation doc — transaction-এ create হয়,
      তাই race condition-এও দুটো একসাথে ঢুকতে পারে না। */
-  const accountKey = accountKeyOf(taskSlug, fields, submittedData);
+  /* accountKeys = marketplace (account sell) guard — একই account দুবার বিক্রি বন্ধ।
+     MicroJob mode-এ এটা লাগে না, বরং ক্ষতিকর: দুই user একই রকম "work report" লিখলে
+     দ্বিতীয়জন 409 খেত। per-user guard (উপরে)-ই এখানে যথেষ্ট। */
+  const accountKey = singleMode ? '' : accountKeyOf(taskSlug, fields, submittedData);
   const keyRef = accountKey ? db.collection('accountKeys').doc(accountKey) : null;
 
   const userRef = db.collection('users').doc(uid);
@@ -136,10 +155,25 @@ export default async function handler(req, res) {
       const u = userSnap.data();
       if (!u.isActive) throw new ApiError(409, 'Account বিক্রি করতে আগে নিজের একাউন্ট অ্যাক্টিভ করুন');
 
-      const todayQ = await tx.get(userProofs.where('day', '==', day).limit(dailyLimit + 50));
-      const todayForTask = todayQ.docs.filter(x => x.data().taskSlug === taskSlug && x.data().status !== 'rejected');
-      if (todayForTask.length >= dailyLimit) {
-        throw new ApiError(429, `আজকের জন্য সর্বোচ্চ ${dailyLimit}টি account জমা দেওয়া যায় — আগামীকাল আবার চেষ্টা করুন`);
+      if (singleMode) {
+        /* MICROJOB MODE — এক user = একটাই submission per job।
+           pending → আবার চাপা যাবে না; approved → jobটা ওই user-এর জন্য শেষ;
+           reject+hide → ওই user-এর list থেকে বন্ধ; reject+resubmit → আবার submit করা যাবে।
+           ⚠️ read টা transaction-এর ভেতরে: বাইরে হলে দুটো parallel submit একসাথে
+           "আমার কোনো submission নেই" দেখে দুটোই বসিয়ে দিত (duplicate credit)। */
+        const mine = await tx.get(userProofs.where('taskSlug', '==', taskSlug).limit(50));
+        const rows = mine.docs.map(d => ({ id: d.id, ...d.data() }));
+        const st = stateOf(task, rows);
+        if (st === ST.PENDING) throw new ApiError(409, 'আপনি এই job-এর কাজটি জমা দিয়েছেন — admin approval-এর অপেক্ষায় আছেন');
+        if (st === ST.APPROVED) throw new ApiError(409, 'এই jobটি আপনি আগেই complete করেছেন — আবার জমা দেওয়া যাবে না');
+        if (st === ST.HIDDEN) throw new ApiError(409, 'এই jobটি আপনার জন্য বন্ধ (rejected) — নতুন job করুন');
+        if (st === ST.FULL || isFull(task)) throw new ApiError(409, 'এই job-এর সব slot পূরণ হয়েছে (FULL/CLOSED)');
+      } else {
+        const todayQ = await tx.get(userProofs.where('day', '==', day).limit(dailyLimit + 50));
+        const todayForTask = todayQ.docs.filter(x => x.data().taskSlug === taskSlug && x.data().status !== 'rejected');
+        if (todayForTask.length >= dailyLimit) {
+          throw new ApiError(429, `আজকের জন্য সর্বোচ্চ ${dailyLimit}টি account জমা দেওয়া যায় — আগামীকাল আবার চেষ্টা করুন`);
+        }
       }
 
       if (keyRef) {

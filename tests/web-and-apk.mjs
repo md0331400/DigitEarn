@@ -50,7 +50,11 @@ console.log('\n[A] project grid → every Firestore task must link to its task p
 
   const unknown = { id: 'brand-new-task', nameBn: 'New', url: 'https://example.com/x', sort: 3 };
   check('unknown slug (no static page) → external url, not homepage', H(unknown) === 'https://example.com/x', `(${H(unknown)})`);
-  check('unknown slug without url → dashboard (not bare "/")', H({ id: 'zzz', nameBn: 'Z' }) === '/dashboard.html', `(${H({ id: 'zzz', nameBn: 'Z' })})`);
+  /* MicroJobs: admin-এর বানানো নতুন job-এর আলাদা static page লাগে না —
+     MicroJobs page-এর detail route-ই ওর নিজের post খোলে (আগে /dashboard.html
+     দিত, মানে নতুন job কার্ডে ক্লিক করলে কিছুই খুলত না) */
+  check('unknown slug without url → MicroJobs detail post (not dashboard)',
+    H({ id: 'zzz', nameBn: 'Z' }) === '/microjobs.html#job-zzz', `(${H({ id: 'zzz', nameBn: 'Z' })})`);
 
   const gridEmpty = ui.projectGrid([]);
   check('static fallback still links to task pages', gridEmpty.includes(`href="/task/${slug0}.html"`));
@@ -333,11 +337,21 @@ console.log('\n[I] firebase-admin v14 surface + client error handling');
   }
   await vite.close();
 
-  /* ---- the two UX bugs in the screenshots ---- */
+  /* ---- the two UX bugs in the screenshots ----
+     validation এখন src/core/jobform.js-এ (task page + MicroJobs page একই module
+     ব্যবহার করে) — দুই জায়গায় copy থাকলে একটা বদলালে অন্যটা ভুল message দিত */
   const taskSrc = read('src/pages/task.js');
+  const jfSrc = read('src/core/jobform.js');
   check('task page names the offending field (no generic "সব required field")',
-    /খালি রাখা যাবে না/.test(taskSrc) && !/সব required field সঠিকভাবে পূরণ করুন/.test(codeOnly(taskSrc)));
-  check('client validation mirrors the server rules (email/number/url/maxLen)', /সঠিক ইমেইল দিন/.test(taskSrc) && /শুধু সংখ্যা লিখুন/.test(taskSrc) && /http:\/\/ বা https:\/\/ দিয়ে শুরু/.test(taskSrc));
+    /খালি রাখা যাবে না/.test(jfSrc) && !/সব required field সঠিকভাবে পূরণ করুন/.test(codeOnly(taskSrc)));
+  check('client validation mirrors the server rules (email/number/url/maxLen)', /সঠিক ইমেইল দিন/.test(jfSrc) && /শুধু সংখ্যা লিখুন/.test(jfSrc) && /http:\/\/ বা https:\/\/ দিয়ে শুরু/.test(jfSrc));
+  check('task page-এ নিজের দ্বিতীয় field-render copy নেই (import-করা নাম shadow করা যাবে না)',
+    !/const fieldsHtml = /.test(codeOnly(taskSrc)) && !/const ftype = /.test(codeOnly(taskSrc)) &&
+    !/iconOf\[/.test(codeOnly(taskSrc)) && !/const phOf = /.test(codeOnly(taskSrc)));
+  check('task page + MicroJobs detail একই jobform module ব্যবহার করে (একটাই form implementation)',
+    /from '..\/core\/jobform\.js'/.test(taskSrc) && /from '..\/core\/jobform\.js'/.test(read('src/pages/microjobs.js')));
+  check('jobform toast/ui.js import করে না (admin bundle-ও এটা import করে)',
+    !/from '\.\/ui\.js'/.test(codeOnly(jfSrc)) && !/firebase/.test(codeOnly(jfSrc)));
   const walletSrc = read('src/pages/wallet.js');
   check('wallet uses toast, not native alert (Bengali boxes + stuck spinner)', !/[^a-zA-Z]alert\(/.test(codeOnly(walletSrc)) && /import \{ bootAppPage, fmtBDT, esc, toast \}/.test(walletSrc));
   check('wallet button is restored on failure', /btn.disabled = false;/.test(walletSrc));
@@ -414,7 +428,10 @@ console.log('\n[K] runtime + escaping invariants');
   check('no Vercel function config that would drop api/ files', !/"functions"/.test(read('vercel.json')));
   const { readdirSync } = await import('node:fs');
   const fnCount = readdirSync('api', { recursive: true }).filter(f => String(f).endsWith('.js')).length;
-  check('Vercel function count stays within the Hobby limit of 12', fnCount <= 12 && fnCount === 10, `(${fnCount})`);
+  /* ১১ = আগের ১০ + api/leaderboard/list.js (MicroJobs-এর Top-4 leaderboard,
+     cross-user data browser থেকে পড়া rules-এ সম্ভব না)। admin op গুলো এখনো
+     api/admin/panel.js router-এর ভেতর — সেখান থেকে কোনো নতুন function যোগ হয় না। */
+  check('Vercel function count = 11 (Hobby limit 12-এর ভেতরে)', fnCount <= 12 && fnCount === 11, `(${fnCount})`);
 
   /* every admin-controlled string that lands in innerHTML must be esc()'d
      (interpolations are matched exactly — `${esc(task.x)}` and helper output are fine,
@@ -436,13 +453,14 @@ console.log('\n[L] dynamic fields: no hardcoded task fields, textarea supported'
   const { existsSync, readdirSync } = await import('node:fs');
   const http = codeOnly(read('lib/http.js'));
   const task = codeOnly(read('src/pages/task.js'));
+  const jobform = codeOnly(read('src/core/jobform.js'));
   const admCore = codeOnly(read('src/admin/core.js'));
   const admMain = codeOnly(read('src/admin/main.js'));
   const css = read('src/styles.css');
   const admCss = read('src/admin/styles.css');
   const fieldTypes = (http.match(/export const FIELD_TYPES = (\[[^\]]*\])/) || [])[1] || '';
   const fieldTypesFromServer = fieldTypes;
-  const pageTypes = (task.match(/const F_TYPES = (\[[^\]]*\])/) || [])[1] || '';
+  const pageTypes = (jobform.match(/const F_TYPES = (\[[^\]]*\])/) || [])[1] || '';
   // saveTask এখন server-এ (?op=write → lib/admin/write.js) — server নিজেই
   // lib/http.js FIELD_TYPES import করে, তাই client-এ আর দ্বিতীয় copy রাখা হয় না
   const saveTypes = /type: \[/.test(codeOnly(admCore)) ? 'DUPLICATED' : fieldTypesFromServer;
@@ -454,16 +472,21 @@ console.log('\n[L] dynamic fields: no hardcoded task fields, textarea supported'
     `\n     page=${norm(pageTypes)}\n     editor=${norm(editorTypes)}\n     server=${norm(fieldTypes)}`);
   check('admin core.js field-type list duplicate করে না (server single source)',
     saveTypes === fieldTypesFromServer);
-  const maxlenPage = (task.match(/const F_MAXLEN = (\{[^}]*\})/) || [])[1] || '';
+  const maxlenPage = (jobform.match(/const F_MAXLEN = (\{[^}]*\})/) || [])[1] || '';
   const maxlenSrv = (http.match(/export const FIELD_MAXLEN = (\{[^}]*\})/) || [])[1] || '';
   check('per-type length limits mirror the server exactly', norm(maxlenPage) === norm(maxlenSrv) && maxlenPage.length > 0, `page=${norm(maxlenPage)} server=${norm(maxlenSrv)}`);
 
   /* ---- no hardcoded, task-specific fields anywhere ---- */
   check('task page has no hardcoded uid/gid inputs', !/getElementById\(['"](uid|gid)['"]\)/.test(task) && !/id="uid"|id="gid"/.test(task));
   check('task page has no task-specific label strings (Facebook/Gmail/Instagram)', !/['"](জিমেইল এড্রেস|আপনার FB UID|2FA Key|Instagram Username)['"]/.test(task));
-  check('fields come only from task.inputFields', /Array\.isArray\(task\.inputFields\)/.test(task) && !/task\.(uidField|gmailField)/.test(task));
-  check('field label rendered escaped from config', /esc\(fkey\(f\)\)/.test(task));
-  check('textarea renders a real <textarea> with the same data-tf accessor', /<textarea class="tf-area" data-tf="\$\{i\}"/.test(task));
+  check('fields come only from task.inputFields (config-driven, no hardcoded field)',
+    /Array\.isArray\(inputFields\)/.test(jobform) && /cleanFields\(task\.inputFields\)/.test(task) && !/task\.(uidField|gmailField)/.test(task));
+  check('user page-এ নিজস্ব F_TYPES copy নেই (drift রোধে jobform-ই একমাত্র source)',
+    !/const F_TYPES = /.test(task) && !/const F_MAXLEN = /.test(task));
+  check('field label rendered escaped from config', /esc\(f\.label\)/.test(jobform));
+  check('textarea renders a real <textarea> with the same data-tf accessor', /<textarea class="tf-area" data-tf="\$\{i\}"/.test(jobform));
+  check('proof image field = data URL + preview + resize (Storage bucket লাগে না)',
+    /type === 'image'/.test(jobform) && /toDataURL\('image\/jpeg'/.test(jobform) && /data-tf-img=/.test(jobform));
   check('icon overlap fixed for textarea + url fields (css selectors include both)', /\.field input\[type="url"\], \.field textarea\.tf-area/.test(css) && /\.field-area \.left/.test(css));
   check('admin css styles masked + multi-line values', /\.sub-secret/.test(admCss) && /\.sub-multi/.test(admCss));
 

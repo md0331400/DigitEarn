@@ -208,6 +208,28 @@ export async function listTasks() {
 
 /* Firestore-এ tasks/{slug} doc নেই → user submit "Project পাওয়া যায়নি" খায়।
    এই call টা built-in list থেকে বাকি doc গুলো বানিয়ে দেয় (যা আগে থেকে আছে সেটা অক্ষত)। */
+/* ---------- MicroJobs admin (প্রতিটা job = আলাদা post/card, নিজের count) ---------- */
+export async function listJobStats() {
+  const d = await callApi('/api/admin/read', { what: 'jobs' });
+  return Array.isArray(d.items) ? d.items : [];
+}
+/** একটা job-এর submissions (admin review) — jobSlug দিলে server ওই job-এরই দেয় */
+export async function listJobProofs(jobSlug, status = 'all', limitN = 200) {
+  return adminRead('proofs', { jobSlug, status, limit: limitN });
+}
+/** নতুন Microjob তৈরি = নতুন tasks/{slug} doc → user-এর MicroJobs page-এ আলাদা card */
+export async function createMicrojob(data) {
+  return adminWrite('task-create', { data });
+}
+/** review action: approve | reject_resubmit | reject_hide (legacy reject = resubmit) */
+export async function decideProof(proofId, action, note = '') {
+  await callApi('/api/admin/proof-review', { proofId, action, note });
+}
+/** Leaderboard-এর রেফারেল count cache (refCount) sync — existing team data থেকে */
+export async function syncLeaderboard() {
+  return adminWrite('leaderboard-backfill', {});
+}
+
 export async function seedTasks(slugs = []) {
   return await callApi('/api/admin/seed-tasks', { slugs });
 }

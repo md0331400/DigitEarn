@@ -299,6 +299,41 @@ export async function getTaskBySlug(slug) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
+/* ---------- MicroJobs (admin-এর বানানো প্রতিটা job = আলাদা card) ----------
+   list = public `tasks` docs (rules-এ allow) + নিজের submissions (users/{uid}/proofs,
+   rules: isSelf) — নতুন server endpoint লাগেনি, আর state গণনা src/core/microjobs.js-এ
+   (server-ও একই module import করে, তাই "এই user-এর জন্য pending/approved" দুই পাশে
+   আলাদা হতে পারে না)। */
+export async function getMyJobProofs(uid, limitN = 500) {
+  if (!firebaseReady || !uid) return [];
+  const snap = await getDocs(query(collection(db, 'users', uid, 'proofs'), limit(limitN)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function getMicrojobs(uid) {
+  const { viewsFor, activeJobs } = await import('./microjobs.js');
+  const [tasks, proofs] = await Promise.all([getTasks(), getMyJobProofs(uid)]);
+  const views = viewsFor(tasks, proofs);
+  return { all: views, jobs: activeJobs(views) };
+}
+
+/** একটা job-এর detail view (task page / microjobs detail দুটোতেই লাগে) */
+export async function getJobView(uid, slug) {
+  const { viewsFor } = await import('./microjobs.js');
+  const [task, proofs] = await Promise.all([
+    getTaskBySlug(slug),
+    getMyJobProofs(uid),
+  ]);
+  if (!task) return { task: null, view: null, proofs: [] };
+  const mine = (proofs || []).filter(x => x.taskSlug === slug);
+  const view = viewsFor([task], mine)[0] || null;
+  return { task, view, proofs: mine };
+}
+
+export async function getLeaderboard() {
+  return await callApi('/api/leaderboard/list', {}, 'POST');
+}
+
 export async function hasClaimedToday(uid, taskSlug) {
   const snap = await getDoc(doc(db, 'users', uid, 'taskClaims', `${taskSlug}_${todayStr()}`));
   return snap.exists();

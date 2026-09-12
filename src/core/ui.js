@@ -59,8 +59,10 @@ export function taskHref(t) {
   const slug = String(t.slug || t.id || '').trim();
   if (slug && TASK_PAGES.has(slug)) return `/task/${slug}.html`;
   if (/^https?:\/\//i.test(String(t.url || ''))) return t.url;
-  // এই slug-এর জন্য কোনো static page নেই (gen-task-pages TASKS থেকে বানায়) —
-  // /task/<slug>.html দিলে 404, তাই dashboard
+  /* এই slug-এর কোনো static SEO page নেই (gen-task-pages শুধু TASKS থেকে বানায়) —
+     /task/<slug>.html দিলে 404 হতো, তাই admin-এর বানানো নতুন MicroJob
+     MicroJobs page-এর detail hash route-এ খোলে: প্রতিটা job = আলাদা post। */
+  if (slug) return `/microjobs.html#job-${slug}`;
   return '/dashboard.html';
 }
 

@@ -106,7 +106,11 @@ export function makeDb() {
           if (ref && ref._key === undefined && typeof ref.get === 'function') return ref.get();
           return { exists: d[ref._key] !== undefined, data: () => d[ref._key] };
         },
-        set: (ref, data) => { d[ref._key] = data; },
+        // real Firestore tx.set(ref, data, { merge: true }) — merge support না থাকলে
+        // handler-এর merge-write টা test-এ doc overwrite (field হারানো) দেখাত না
+        set: (ref, data, opts) => {
+          d[ref._key] = (opts && opts.merge) ? { ...(d[ref._key] || {}), ...data } : { ...data };
+        },
         update: (ref, data) => {
           // real Firestore: update() on a missing doc throws NOT_FOUND
           if (d[ref._key] === undefined) {

@@ -353,7 +353,13 @@ console.log('\n[F] auth failures are classified, not flattened into "Login requi
   const vsrc = fs.readFileSync('lib/admin/verify.js', 'utf8');
   check('verify.js exception is deliberate (always 200, reports authState)', /admin\.state !== AUTH_OK/.test(vsrc) && !/authReject\(res, admin\)/.test(vsrc) && /isAdmin: false, authenticated: false, authState/.test(vsrc));
   check('verifyUser() kept as compat wrapper (old call sites still work)', /export async function verifyUser/.test(fs.readFileSync('lib/http.js', 'utf8')));
-  check('Vercel function budget still 10 (health lives inside the router)', fs.readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).length === 10, `(${fs.readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).join(',')})`);
+  /* Vercel Hobby = সর্বোচ্চ ১২টা serverless function। এখন ১১টা: আগের ১০ +
+     api/leaderboard/list.js (Leaderboard top-4 — cross-user data, rules দিয়ে পড়া যায় না)।
+     সব ADMIN op কিন্তু এখনো ওই এক router-এর ভেতর (?op=...), নতুন function খোলে না। */
+  const { readdirSync: fsRd } = await import('node:fs');
+  const apiFiles = fsRd('api', { recursive: true }).filter(f => String(f).endsWith('.js'));
+  check('Vercel function budget: ১১টা (≤১২ Hobby limit), health/read/write সব router-এর ভেতর',
+    apiFiles.length === 11 && apiFiles.length <= 12, `(${apiFiles.length}: ${apiFiles.join(',')})`);
 }
 
 /* ============================================================
@@ -974,7 +980,7 @@ console.log('\n[P] ?op=seed-tasks — missing Firestore task docs');
   check('logged-in non-admin cannot seed (403)', r.statusCode === 403, `(${r.statusCode})`);
 
   check('no new api/ file for the op (Hobby 12-function limit)',
-    !fsX.existsSync('api/admin/seed-tasks.js') && fsX.readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).length === 10);
+    fsX.readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).length === 11);
   const src = (f) => fsX.readFileSync(f, 'utf8');
   check('admin panel ships the seed button (web + APK bundle use this source)',
     /seedTasksBtn/.test(src('src/admin/main.js')) && /seed-tasks/.test(src('src/admin/core.js')));
@@ -1134,7 +1140,222 @@ console.log('\n[Q] ?op=read / ?op=write — rules-independent admin panel data p
   const mainSrc = (await import('node:fs')).readFileSync('src/admin/main.js', 'utf8');
   check('main.js joined user ব্যবহার করে (p.user || getUser)', /p\.user \|\| await getUser\(/.test(mainSrc) && /d\.user \|\| await getUser\(/.test(mainSrc) && /w\.user \|\| await getUser\(/.test(mainSrc));
   check('read/write দুটোই এক router-এর op — নতুন Vercel function না (Hobby 12)',
-    (await import('node:fs')).readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).length === 10);
+    (await import('node:fs')).readdirSync('api', { recursive: true }).filter(f => f.endsWith('.js')).length === 11);
+}
+
+/* ============================================================
+   [R] MicroJobs — প্রতিটা admin-created job আলাদা post/card, per-user state,
+       approve → শুধু ওই user থেকে hide, reject দুই mode, Required Users শেষ
+       হলে job FULL/CLOSED (global), + Leaderboard Top 4
+   ============================================================ */
+console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, leaderboard');
+{
+  const fsR = await import('node:fs');
+  const { viewsFor, activeJobs, ST: MST } = await import('../src/core/microjobs.js');
+  const proofReviewH = (await import('../lib/admin/proof-review.js')).default;
+  const readH = (await import('../lib/admin/read.js')).default;
+  const writeH = (await import('../lib/admin/write.js')).default;
+  const leadH = (await import('../api/leaderboard/list.js')).default;
+
+  const call = async (h, body, tok = ADMIN, url = '/api/x') => {
+    const r = res();
+    await h(req('POST', tok ? auth(tok) : {}, body, url), r);
+    return { r, d: json(r) };
+  };
+
+  /* ---- fixtures: ৫টা job admin panel-এর মতো করে তৈরি (?op=write task-create) ---- */
+  const mk = async (n, title, reward, required) => await call(writeH, {
+    what: 'task-create', slug: `mj${n}`,
+    data: { nameBn: title, reward, requiredUsers: required, mode: 'single', shortDesc: `short ${n}`, url: 'https://example.com/j' + n, inputFields: [{ label: 'Work Report', type: 'textarea', required: true }] },
+  }, ADMIN, '/api/admin/panel?op=write');
+  for (let n = 1; n <= 5; n++) {
+    const { r } = await mk(n, `Job ${n}`, n, n === 5 ? 2 : 100);
+    check(`R1 job ${n} তৈরি → আলাদা tasks/mj${n} doc (${r.statusCode})`, r.statusCode === 200, `(${r.body})`);
+  }
+  check('R1b duplicate slug create → 409 (একটা job একবারই)', (await mk(1, 'Job 1 again', 5, 10)).r.statusCode === 409);
+
+  /* users: alice (header-এ active) + ৪টা নতুন user — প্রতিটার জন্য আলাদা ID token
+     (mock-এর TOKENS map-এ বসানো হয়), তাই "ভিন্ন user = ভিন্ন state" সত্যিই টেস্ট হয় */
+  const fakeR = await import('./mocks/firebase-admin-fake.mjs');
+  Object.assign(fakeR.TOKENS, {
+    TOKEN_MJ2: { uid: 'mjU2', email: 'mjU2@t.com' },
+    TOKEN_MJ3: { uid: 'mjU3', email: 'mjU3@t.com' },
+    TOKEN_MJ4: { uid: 'mjU4', email: 'mjU4@t.com' },
+  });
+  for (const uid of ['mjU2', 'mjU3', 'mjU4', 'mjU5']) {
+    store.docs['users/' + uid] = { name: uid, email: uid + '@t.com', mobile: '01712345689', balance: 0, totalEarned: 0, isActive: true, refCode: 'R' + uid };
+  }
+  const T2 = 'TOKEN_MJ2', T3 = 'TOKEN_MJ3', T4 = 'TOKEN_MJ4';
+  const taskDocs = () => Object.keys(store.docs).filter(k => /^tasks\/mj\d$/.test(k)).map(k => ({ slug: k.split('/')[1], ...store.docs[k] }));
+  const proofsOf = uid => Object.keys(store.docs)
+    .filter(k => k.startsWith(`users/${uid}/proofs/`)).map(k => ({ id: k.split('/').pop(), ...store.docs[k] }));
+  const viewsFor2 = uid => viewsFor(taskDocs(), proofsOf(uid));
+  const activeFor = uid => activeJobs(viewsFor2(uid));
+
+  /* §1/§3 — ৫টা job → ৫টা আলাদা card (কোনো merge/limit নেই) */
+  check('R2 নতুন user-এর জন্য ৫টা আলাদা job card (hardcode নয়, doc সংখ্যা অনুযায়ী)',
+    activeFor('mjU2').length === 5 && new Set(activeFor('mjU2').map(v => v.slug)).size === 5, `(${activeFor('mjU2').map(v => v.slug)})`);
+  const j1 = activeFor('mjU2').find(v => v.slug === 'mj1');
+  check('R2b প্রতিটা card-এ নিজের reward + remaining (Required 100 − Approved 0 = 100 জন বাকি)',
+    j1.reward === 1 && j1.remaining === 100 && j1.left.includes('১০০'), `(${JSON.stringify({ r: j1.reward, rem: j1.remaining, left: j1.left })})`);
+
+  /* §4 — শুধু APPROVED কমপ্লিশন remaining কমায়; pending কমায় না */
+  let s2 = await call(submitH, { taskSlug: 'mj2', data: { 'Work Report': 'did like+comment' } }, 'TOKEN_ALICE', '/api/proof/submit');
+  check('R3 mjU2… (alice) Job2 submit → 200', s2.r.statusCode === 200, `(${s2.r.statusCode} ${s2.r.body})`);
+  const statsAfterPending = (await call(readH, { what: 'jobs' }, ADMIN, '/api/admin/panel?op=read')).d.items.find(x => x.slug === 'mj2');
+  check('R3b শুধু APPROVED remaining কমায় — pending ৩টা হলেও remaining ১০-ই থাকে',
+    Number(statsAfterPending.approvedCount) === 0 && Number(statsAfterPending.pending) === 1 && Number(statsAfterPending.remaining) === 100, `(${JSON.stringify(statsAfterPending)})`);
+
+  /* §7/§8 — per-user state: Job2 pending, বাকি ৪টা available; duplicate submit বন্ধ */
+  const aliceViews = viewsFor2('alice');
+  check('R4 state (alice × job): Job2 = pending, বাকি সব available — এক job-এর status সব user-এর জন্য এক নয়',
+    aliceViews.find(v => v.slug === 'mj2').state === MST.PENDING &&
+    aliceViews.filter(v => v.slug !== 'mj2').every(v => v.state === MST.AVAILABLE), `(${aliceViews.map(v => v.slug + ':' + v.state)})`);
+  const pend = aliceViews.find(v => v.slug === 'mj2');
+  check('R4b pending job card হারায় না, শুধু submit বন্ধ ("আপনি এটি জমা দিয়েছেন")',
+    pend.visible === true && pend.gate.allowed === false && /জমা দিয়েছেন/.test(pend.gate.label), `(${JSON.stringify(pend.gate)})`);
+  s2 = await call(submitH, { taskSlug: 'mj2', data: { 'Work Report': 'again' } }, 'TOKEN_ALICE', '/api/proof/submit');
+  check('R4c pending থাকতে আবার submit → 409 (duplicate submission বন্ধ)', s2.r.statusCode === 409 && /অপেক্ষায়/.test(s2.d.error), `(${s2.r.statusCode} ${s2.r.body})`);
+
+  /* §13 — approve: reward exactly once, approvedCount +1, ওই user থেকে hide (§9), অন্য user এখনও দেখে */
+  const aliceProof = proofsOf('alice').find(p => p.taskSlug === 'mj2');
+  const balBefore = Number(store.docs['users/alice'].balance) || 0;
+  let ap = await call(proofReviewH, { proofId: aliceProof.id, action: 'approve' }, ADMIN, '/api/admin/proof-review');
+  check('R5 approve → 200', ap.r.statusCode === 200, `(${ap.r.statusCode} ${ap.r.body})`);
+  check('R5b reward exactly once (balance +৳2 = job doc-এর rate, client-এর না)',
+    Number(store.docs['users/alice'].balance) === balBefore + 2, `(${balBefore} → ${store.docs['users/alice'].balance})`);
+  const st2 = (await call(readH, { what: 'jobs' }, ADMIN, '/api/admin/panel?op=read')).d.items.find(x => x.slug === 'mj2');
+  check('R5c approvedCount 1 + remaining 99 (server-governed count)',
+    Number(st2.approvedCount) === 1 && Number(st2.remaining) === 99 && Number(st2.approvedFromProofs) === 1, `(${JSON.stringify(st2)})`);
+  const av = viewsFor2('alice').find(v => v.slug === 'mj2');
+  check('R6 approve-এর পর Job2 alice-এর list থেকে HIDDEN (doc মোকা হয়নি)',
+    av.state === MST.APPROVED && av.visible === false && !!store.docs['tasks/mj2'], `(${av.state}/${av.visible})`);
+  check('R6b অন্য user (mjU2) এখনও Job2 দেখে — hide শুধু ওই user-এর জন্য',
+    activeFor('mjU2').some(v => v.slug === 'mj2') && activeFor('mjU3').some(v => v.slug === 'mj2'));
+  ap = await call(proofReviewH, { proofId: aliceProof.id, action: 'approve' }, ADMIN, '/api/admin/proof-review');
+  check('R6c একই submission দ্বিতীয়বার approve → 409 (double credit রোধ)', ap.r.statusCode === 409, `(${ap.r.statusCode} ${ap.r.body})`);
+  check('R6d balance আবার বাড়ে না', Number(store.docs['users/alice'].balance) === balBefore + 2, `(${store.docs['users/alice'].balance})`);
+
+  /* §10/§11 — Reject & Allow Resubmit: warning + আবার submit চালু */
+  let su = await call(submitH, { taskSlug: 'mj4', data: { 'Work Report': 'typed doc' } }, T2, '/api/proof/submit');
+  check('R7 mjU2 Job4 submit → 200', su.r.statusCode === 200, `(${su.r.statusCode} ${su.r.body})`);
+  const p4 = proofsOf('mjU2').find(p => p.taskSlug === 'mj4');
+  let rj = await call(proofReviewH, { proofId: p4.id, action: 'reject_resubmit', note: 'link missing' }, ADMIN, '/api/admin/proof-review');
+  check('R7b Reject & Allow Resubmit → 200', rj.r.statusCode === 200, `(${rj.r.statusCode} ${rj.r.body})`);
+  const u2views = viewsFor2('mjU2');
+  const j4v = u2views.find(v => v.slug === 'mj4');
+  check('R7c job card থাকে + rejected warning + Submit Again চালু',
+    j4v.state === MST.RESUBMIT && j4v.visible === true && j4v.gate.allowed === true && /Submit Again/.test(j4v.gate.label), `(${JSON.stringify(j4v.gate)})`);
+  su = await call(submitH, { taskSlug: 'mj4', data: { 'Work Report': 'typed doc, corrected' } }, T2, '/api/proof/submit');
+  check('R7d সংশোধন করে আবার submit → 200 (permanently disable হয় না)', su.r.statusCode === 200, `(${su.r.statusCode} ${su.r.body})`);
+  check('R7e নতুন submit pending state-এ ফিরিয়ে আনে',
+    viewsFor2('mjU2').find(v => v.slug === 'mj4').state === MST.PENDING);
+
+  /* §10 Option A — Reject & Hide: শুধু ওই user থেকে লুকানো, job global থাকে */
+  su = await call(submitH, { taskSlug: 'mj5', data: { 'Work Report': 'same report text' } }, 'TOKEN_ALICE', '/api/proof/submit');
+  check('R8 অন্য user-এর একই রকম report text → 409 হয় না (single-mode-এ accountKey skip)', su.r.statusCode === 200, `(${su.r.statusCode} ${su.r.body})`);
+  const p5 = proofsOf('alice').find(p => p.taskSlug === 'mj5');
+  rj = await call(proofReviewH, { proofId: p5.id, action: 'reject_hide', note: 'not valid' }, ADMIN, '/api/admin/proof-review');
+  check('R8b Reject & Hide → 200', rj.r.statusCode === 200, `(${rj.r.statusCode} ${rj.r.body})`);
+  const aHide = viewsFor2('alice').find(v => v.slug === 'mj5');
+  check('R8c Job5 alice-এর list থেকে বাদ (state=rejected_hidden)', aHide.state === MST.HIDDEN && aHide.visible === false, `(${aHide.state}/${aHide.visible})`);
+  check('R8d Job5 doc অক্ষত + mjU3 এখনও দেখে (§15 A: user-specific hide)',
+    !!store.docs['tasks/mj5'] && activeFor('mjU3').some(v => v.slug === 'mj5'));
+
+  /* §14 — required = 2: ১ম approve → remaining 1, ২য় → 0 + FULL/CLOSED (global) */
+  const j5 = () => store.docs['tasks/mj5'];
+  const st5before = (await call(readH, { what: 'jobs' }, ADMIN, '/api/admin/panel?op=read')).d.items.find(x => x.slug === 'mj5');
+  check('R9 required=2, approved=0 → remaining 2', Number(st5before.requiredUsers) === 2 && Number(st5before.remaining) === 2, `(${JSON.stringify(st5before)})`);
+  su = await call(submitH, { taskSlug: 'mj5', data: { 'Work Report': 'u2 did it' } }, T2, '/api/proof/submit');
+  const p5b = proofsOf('mjU2').find(p => p.taskSlug === 'mj5' && p.status === 'pending');
+  await call(proofReviewH, { proofId: p5b.id, action: 'approve' }, ADMIN, '/api/admin/proof-review');
+  check('R9b ১ম approve → approvedCount 1, remaining 1, এখনো খোলা',
+    Number(j5().approvedCount) === 1 && Number(j5().closed) === 0 || j5().closed === false, `(${JSON.stringify({ a: j5().approvedCount, c: j5().closed })})`);
+  check('R9c mjU3 এখনও submit করতে পারে (slot আছে)',
+    (await call(submitH, { taskSlug: 'mj5', data: { 'Work Report': 'u3 did it' } }, T3, '/api/proof/submit')).r.statusCode === 200);
+  const p5c = proofsOf('mjU3').find(p => p.taskSlug === 'mj5');
+  await call(proofReviewH, { proofId: p5c.id, action: 'approve' }, ADMIN, '/api/admin/proof-review');
+  check('R10 ২য় approve → approved=2/2, closed=true (FULL/CLOSED)',
+    Number(j5().approvedCount) === 2 && j5().closed === true, `(${JSON.stringify({ a: j5().approvedCount, c: j5().closed })})`);
+  check('R10b slot শেষ → mjU4-এর submit 400 (নতুন user submit করতে পারবে না)',
+    (await call(submitH, { taskSlug: 'mj5', data: { 'Work Report': 'too late' } }, T4, '/api/proof/submit')).r.statusCode === 400);
+  check('R10c FULL job active list-এ আসে না (§14), admin list-এ কিন্তু দেখা যায়',
+    !activeFor('mjU4').some(v => v.slug === 'mj5') &&
+    (await call(readH, { what: 'jobs', jobSlug: 'mj5' }, ADMIN, '/api/admin/panel?op=read')).d.items.length === 1);
+  check('R10d admin FULL/CLOSED + count সহ job দেখে (approved 2, total submissions)',
+    (await call(readH, { what: 'jobs', jobSlug: 'mj5' }, ADMIN, '/api/admin/panel?op=read')).d.items[0].approvedCount === 2 &&
+    (await call(readH, { what: 'jobs', jobSlug: 'mj5' }, ADMIN, '/api/admin/panel?op=read')).d.items[0].full === true);
+  check('R10e complete করা user-দের রেকর্ড (proofs) অক্ষত',
+    proofsOf('mjU2').some(p => p.taskSlug === 'mj5' && p.status === 'approved') && proofsOf('mjU3').some(p => p.taskSlug === 'mj5' && p.status === 'approved'));
+  check('R10f requiredUsers বাড়ালে job আবার খোলে (admin correction)',
+    (await call(writeH, { what: 'task', slug: 'mj5', data: { requiredUsers: 4 } }, ADMIN, '/api/admin/panel?op=write')).r.statusCode === 200 &&
+    j5().closed === false);
+
+  /* §22 — security: user job doc/count ছুঁতে পারে না; count শুধু server লেখে */
+  await call(writeH, { what: 'task', slug: 'mj1', data: { reward: 999, approvedCount: 500, requiredUsers: 1 } }, 'TOKEN_ADMIN', '/api/admin/panel?op=write');
+  check('R11 admin form থেকে approvedCount লেখা যায় না (server-only field)',
+    Number(store.docs['tasks/mj1'].approvedCount) === 0 && !('approvedCount' in store.docs['tasks/mj1']) === false, `(${store.docs['tasks/mj1'].approvedCount})`);
+  check('R11b reward শুধু admin বদলাতে পারে; user submit-এ পাঠানো reward ignore হয়',
+    Number(store.docs['tasks/mj1'].reward) === 999);
+  const spoof = await call(submitH, { taskSlug: 'mj1', data: { 'Work Report': 'x' }, reward: 99999, userId: 'mjU4', status: 'approved' }, T3, '/api/proof/submit');
+  const sp = proofsOf('mjU3').find(p => p.taskSlug === 'mj1');
+  /* userId/proofId সব server-তৈরি — top-level review doc-এ userId বসে (mirror-এ না) */
+  const spTop = store.docs['proofs/' + spoof.d.id];
+  check('R11c client-এর reward/userId/status ignore — reward = task doc, uid = token',
+    spoof.r.statusCode === 200 && Number(sp.reward) === Number(store.docs['tasks/mj1'].reward) &&
+    Number(sp.reward) !== 99999 && sp.status === 'pending' &&
+    spTop && spTop.userId === 'mjU3' && spTop.status === 'pending',
+    `(sent reward 99999/userId mjU4/status approved → got reward ${sp.reward}, uid ${spTop && spTop.userId}, status ${spTop && spTop.status})`);
+  check('R11d normal user read/write op → 403',
+    (await call(readH, { what: 'jobs' }, 'TOKEN_ALICE', '/api/admin/panel?op=read')).r.statusCode === 403 &&
+    (await call(writeH, { what: 'task', slug: 'mj1', data: { reward: 0 } }, 'TOKEN_ALICE', '/api/admin/panel?op=write')).r.statusCode === 403);
+  check('R11e leaderboard: লগইন ছাড়া 401', (await call(leadH, {}, null, '/api/leaderboard/list')).r.statusCode === 401);
+
+  /* §18/§19/§20 — Leaderboard: exactly Top 4, existing referral count, masked phone */
+  store.docs['users/lbA'] = { name: 'LB A', mobile: '01711223344', balance: 0, totalEarned: 5000, isActive: true, refCode: 'LBA' };
+  store.docs['users/lbB'] = { name: 'LB B', mobile: '01819876543', balance: 0, totalEarned: 3000, isActive: true, refCode: 'LBB' };
+  store.docs['users/lbC'] = { name: 'LB C', mobile: '01912345678', balance: 0, totalEarned: 1000, isActive: true, refCode: 'LBC' };
+  store.docs['users/lbD'] = { name: 'LB D', mobile: '01611111111', balance: 0, totalEarned: 900, isActive: true, refCode: 'LBD' };
+  store.docs['users/lbE'] = { name: 'LB E', mobile: '01522222222', balance: 0, totalEarned: 800, isActive: true, refCode: 'LBE' };
+  const referralsFor = (parent, n) => {
+    for (let i = 0; i < n; i++) {
+      const kid = `${parent}child${i}`;
+      store.docs['users/' + kid] = { name: kid, refBy: parent, isActive: true, balance: 0, totalEarned: 0 };
+      store.docs[`users/${parent}/team/${kid}`] = { name: kid, createdAt: new Date() };
+    }
+  };
+  referralsFor('lbA', 15); referralsFor('lbB', 12); referralsFor('lbC', 9); referralsFor('lbD', 7); referralsFor('lbE', 20);
+  /* এটার monthly income = এই মাসের transaction (একটা ৳1500 + একটা পুরোনো মাসের) */
+  store.docs['users/lbA/transactions/tx_now'] = { amount: 1500, type: 'referral_bonus', createdAt: new Date() };
+  store.docs['users/lbA/transactions/tx_old'] = { amount: 9999, type: 'referral_bonus', createdAt: new Date(Date.now() - 90 * 864e5) };
+  const lb = await call(leadH, {}, 'TOKEN_ALICE', '/api/leaderboard/list');
+  const lbItems = lb.d.items || [];
+  check('R12 Leaderboard exactly Top 4 (৩টা না, পুরো list না)', lbItems.length === 4, `(${lbItems.length})`);
+  check('R12b ranking = বৈধ referral সংখ্যা (lbE 20 → #1, lbA 15 → #2)',
+    lbItems[0].name === 'LB E' && lbItems[0].referrals === 20 && lbItems[1].name === 'LB A' && lbItems[1].referrals === 15, `(${lbItems.map(x => x.name + ':' + x.referrals)})`);
+  check('R12c rank #1..#4 ক্রমে + কার্ডে নাম/referrals', lbItems.map(x => x.rank).join() === '1,2,3,4');
+  check('R12d Monthly Income = চলতি মাসের trusted transaction (পুরোনো মাস বাদ)',
+    lbItems[1].monthlyIncome === 1500, `(${lbItems[1].monthlyIncome})`);
+  check('R12e ফোন mask (01711****44) — পুরো নম্বর response-এ নেই',
+    /^\d{5}\*{4}\d{2}$/.test(lbItems[1].mobile) && !lb.r.body.includes('01711223344'), `(${lbItems[1].mobile})`);
+  check('R12f প্রতিটা কার্ডে profile image field আছে (URL থাকলে, না থাকলে client initial দেখায়)',
+    lbItems.every(x => 'avatar' in x && 'name' in x));
+
+  /* client-side module গুলো source contract ধরে রাখে */
+  const mjPage = fsR.readFileSync('src/pages/microjobs.js', 'utf8');
+  check('R13 MicroJobs page = list + #job-<slug> detail (admin-এর নতুন job-এ আলাদা post)',
+    mjPage.includes('#job-${esc(v.slug)}') && /getMicrojobs\(/.test(mjPage) && /jobViewsSorted\(/.test(mjPage));
+  check('R13b card count কখনো hardcode/slice নয় (jobs.map — যত doc, তত card)',
+    /jobs\.map\(jobCard\)/.test(mjPage) && !/jobs\.slice\(0,\s*\d+\)/.test(mjPage) && !/\.slice\(0,\s*[1-9]\)/.test(codeOnlyOf(mjPage)));
+  check('R13c list-এ pending card থাকে, approved/hidden/FULL বাদ (model থেকে আসে, page থেকে না)',
+    /visibleForUser|jobViewsSorted/.test(fsR.readFileSync('src/core/microjobs.js', 'utf8')));
+  const wrSrc = fsR.readFileSync('lib/admin/write.js', 'utf8');
+  check('R14 job image = data:image upload বা http(s) URL (অন্য কিছু accept না)',
+    wrSrc.includes('IMG_DATA_RE') && wrSrc.includes('data:image') && wrSrc.includes('https://') &&
+    fsR.readFileSync('src/core/jobform.js', 'utf8').includes("toDataURL('image/jpeg'"));  check('R15 Leaderboard page আলাদা + Refer/team page অক্ষত (§17/§18)',
+    fsR.existsSync('leaderboard.html') && /getLeaderboard\(/.test(fsR.readFileSync('src/pages/leaderboard.js', 'utf8')) &&
+    !/leaderboard|getLeaderboard/.test(fsR.readFileSync('src/pages/team.js', 'utf8')));
+  function codeOnlyOf(x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); }
 }
 
 console.log('\n=============================');
