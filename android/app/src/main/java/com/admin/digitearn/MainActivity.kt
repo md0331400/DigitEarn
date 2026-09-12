@@ -32,12 +32,27 @@ class MainActivity : Activity() {
 
     private val adminStartUrl = "file:///android_asset/admin/index.html"
 
-    private val missingConfigHtml = """
+    /* কেন panel boot হয়নি — সেটা screen-এ লিখে দিই (আগে শুধু "config পাওয়া যায়নি"
+       দেখাত, ব্যবহারকারী বোঝাই যেতে না যেতে ভুল ফাইলটাই বসিয়ে দিতেন — যেমন
+       google-services.json (Android config) বসেছিল, web app config নয়)। */
+    private var configError: String = ""
+
+    private val missingConfigHtml: String
+        get() = """
         <html><body style="font-family:sans-serif;background:#fffbeb;padding:24px;color:#1f2937">
         <h2 style="color:#d97706">Digit Earn Admin</h2>
         <p><b>Firebase config পাওয়া যায়নি।</b></p>
+        ${if (configError.isEmpty()) "" else "<p style=\"color:#b45309\"><b>সমস্যা:</b> " + configError + "</p>"}
         <p>APK build করার আগে <b>app/src/main/assets/firebase.json</b> ফাইলে
-        আপনার Firebase project-এর web app config বসান:</p>
+        আপনার Firebase project-এর <b>web app</b> config বসান (৬টা field, ফ্ল্যাট JSON):</p>
+        <pre style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:12px">{
+  "apiKey": "AIza...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-app",
+  "storageBucket": "your-app.firebasestorage.app",
+  "messagingSenderId": "1234567890",
+  "appId": "1:1234567890:web:abcdef"
+}</pre>
         <p><b>Firebase Console → Project settings → Your apps → (Web app) →
         SDK setup and configuration</b> — সেখানকার <code>firebaseConfig</code>-এর
         ৬টা value (apiKey, authDomain, projectId, storageBucket,
@@ -64,11 +79,23 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.webview)
 
-        // assets-এর firebase.json পড় + validate
+        // assets-এর firebase.json পড় + validate (Web app config-ই লাগে — Android/
+        // google-services JSON-এর shape সম্পূর্ণ আলাদা, তাই সেটা paste করলে apiKey পাওয়া
+        // যায় না আর panel চুপচাপ boot fail করত)
         val raw = try { assets.open("firebase.json").bufferedReader().readText() } catch (e: Exception) { "" }
-        val valid = try { JSONObject(raw).has("apiKey") } catch (e: Exception) { false }
-        if (valid && !raw.contains("PASTE-YOUR")) {
+        val cfg = try { JSONObject(raw) } catch (e: Exception) { null }
+        val need = arrayOf("apiKey", "authDomain", "projectId", "appId")
+        val missing = need.filter { cfg == null || cfg.optString(it).isNullOrEmpty() }
+        if (cfg != null && missing.isEmpty() && !raw.contains("PASTE-YOUR")) {
             fbConfigJson = raw.trim()
+        } else {
+            configError = when {
+                raw.isBlank() -> "assets/firebase.json ফাইলটা APK-তে নেই"
+                cfg == null -> "firebase.json পড়া গেছে কিন্তু JSON parse হয়নি"
+                cfg.has("project_info") || cfg.has("client") ->
+                    "এটা google-services.json (Android config) — panel-কে Web app-এর firebaseConfig লাগে"
+                else -> "firebase.json-এ এই field গুলো নেই: " + missing.joinToString(", ")
+            }
         }
 
         web.settings.apply {
@@ -127,7 +154,7 @@ class MainActivity : Activity() {
         findViewById<ImageButton>(R.id.refreshBtn).setOnClickListener { web.reload() }
 
         if (fbConfigJson.isEmpty()) {
-            Toast.makeText(this, "firebase.json set করুন — বিস্তারিত নিচে", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "firebase.json ঠিক নয় — বিস্তারিত নিচে", Toast.LENGTH_LONG).show()
             web.loadDataWithBaseURL("file:///android_asset/admin/", missingConfigHtml, "text/html", "utf-8", null)
         } else if (savedInstanceState == null) {
             // BUGFIX: আগে loadUrl সর্বদাই চলত, তারপর onRestoreInstanceState-এ

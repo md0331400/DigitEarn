@@ -1,5 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
-import { readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -23,6 +23,13 @@ function collectHtml(dir, base = '') {
 const htmlFiles = collectHtml(rootDir);
 const input = {};
 for (const f of htmlFiles) input[f.replace(/\.html$/, '')] = f;
+
+/* Admin panel public site-এর build-এও ঢোকে → https://<host>/admin/
+   আগে শুধু APK-র ভেতরেই (assets/admin/) panel ছিল; APK-র firebase.json ভুল/না-থাকলে
+   admin-এর হাতে কোনো admin operation-ই থাকত না (যেমন tasks seed), আর debug-ও করা
+   যেত না। panel নিজেই Firebase auth + admin claim + Firestore rules দিয়ে gate করা,
+   src/admin/index.html-এ noindex meta আছে — মানে secret নয়, শুধু অনুমান করা কঠিন URL। */
+input['admin'] = 'src/admin/index.html';
 
 /* DEPLOY SAFETY: আগের এক production incident — Vercel build-এ VITE_FIREBASE_* না থাকায়
    bundle-এ `projectId: undefined` বসে গিয়েছিল, সাইট লোড হতো কিন্তু login/submit সব
@@ -58,6 +65,16 @@ export default defineConfig(({ mode }) => {
     {
       name: 'digitearn:build-identity',
       closeBundle() {
+        /* Vite nested input রেখে দেয় dist/src/admin/index.html — ওটা dist/admin/index.html
+           (asset path গুলোও root-এর জন্য ঠিক করে)। নাহলে /admin/ 404 করত। */
+        const distDir = path.join(rootDir, 'dist');
+        const nested = path.join(distDir, 'src', 'admin', 'index.html');
+        if (existsSync(nested)) {
+          const html = readFileSync(nested, 'utf8').replace(/\.\/\.\.\/assets\//g, '/assets/');
+          mkdirSync(path.join(distDir, 'admin'), { recursive: true });
+          writeFileSync(path.join(distDir, 'admin', 'index.html'), html);
+          rmSync(path.join(distDir, 'src'), { recursive: true, force: true });
+        }
         // dist/version.json থাকলেই deployed build কেমন, সেটা এক request-এ বোঝা যায়
         console.log(
           missingEnv.length

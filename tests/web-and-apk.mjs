@@ -728,6 +728,68 @@ console.log('\n[O] no markdown docs ship in the delivered tree');
   check('nothing in the shipped code links to the removed docs', refs.length === 0, `(${refs.join(', ')})`);
 }
 
+/* ============================================================
+   [P] Admin panel deployment: /admin/ on the website + APK firebase.json shape
+   ============================================================ */
+console.log('\n[P] admin panel — web build + APK config shape');
+{
+  const viteCfg = read('vite.config.js');
+  check('P0 site build ভেতরে admin panel entry আছে (input[\'admin\'])',
+    /input\['admin'\]\s*=\s*'src\/admin\/index\.html'/.test(viteCfg));
+  check('P1 nested Vite output dist/src/admin → dist/admin relocate করা আছে',
+    /path\.join\(distDir, 'src', 'admin', 'index\.html'\)/.test(viteCfg) &&
+    /writeFileSync\(path\.join\(distDir, 'admin', 'index\.html'\)/.test(viteCfg) &&
+    /rmSync\(path\.join\(distDir, 'src'\)/.test(viteCfg));
+
+  const adminHtml = read('src/admin/index.html');
+  check('P2 panel noindex — /admin/ URL গুগলে ছড়াবে না',
+    /name="robots"\s+content="noindex, nofollow"/.test(adminHtml));
+  const core = read('src/admin/core.js');
+  const main = read('src/admin/main.js');
+  check('P3 panel নিজেও server-এ adminVerify() করে (expose = convenience, bypass না)',
+    /export async function adminVerify/.test(core) && /isAdmin: !!data\.isAdmin/.test(core) &&
+    /await adminVerify\(\)/.test(main));
+  check('P3b non-admin login করলে panel signOut করে (view খোলে না)',
+    /if \(!v\.isAdmin\)/.test(main) && /await signOut\(auth\)/.test(main));
+
+  if (existsSync('dist/admin/index.html')) {
+    const distHtml = read('dist/admin/index.html');
+    const refs = [...distHtml.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(m => m[1]);
+    check('P4 dist/admin/index.html এর সব /assets/* ফাইল আসলেই আছে',
+      refs.length >= 2 && refs.every(r => existsSync('dist' + r)), `(${refs.join(', ')})`);
+    check('P5 dist/admin relative "../../" asset নেই (root থেকে 404 করত)',
+      !/\.\.\/\.\.\//.test(distHtml));
+  } else {
+    check('P4-5 skipped — dist/admin/index.html নেই (npm run build চালান হয়নি)', true);
+  }
+
+  /* APK-র admin app assets/firebase.json না থাকলে/ভুল ফাইল হলে native shell-ই
+     panel load করে না — ব্যবহারকারীর ফোনে ঠিক এটাই হয়েছিল (google-services.json
+     paste করা ছিল, web app config নয়) */
+  const fbPath = 'android/app/src/main/assets/firebase.json';
+  const raw = read(fbPath);
+  let cfg = null;
+  try { cfg = JSON.parse(raw); } catch (_) {}
+  check('P6 APK assets/firebase.json parse হয়', !!cfg, `(${raw.slice(0, 40)})`);
+  const need = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+  const miss = need.filter(k => !cfg || typeof cfg[k] !== 'string' || !cfg[k].trim());
+  check('P7 ৬টা web firebaseConfig field-ই non-empty', miss.length === 0, `(${miss.join(', ')})`);
+  check('P8 google-services.json (Android shape) নয় — project_info/client নেই',
+    !!cfg && !('project_info' in cfg) && !('client' in cfg));
+  check('P9 apiKey AIza…, appId ":web:" (Android app id হলে browser SDK key reject করে)',
+    !!cfg && /^AIza/.test(cfg.apiKey) && /:web:/.test(cfg.appId), `(${cfg && cfg.appId})`);
+  check('P10 projectId "PASTE-YOUR" placeholder নয় (MainActivity সেটা ফেরত দেয়)',
+    !!cfg && !raw.includes('PASTE-YOUR'));
+
+  const kt = read('android/app/src/main/java/com/admin/digitearn/MainActivity.kt');
+  check('P11 MainActivity ৪টা field validate করে (শুধু apiKey না)',
+    /arrayOf\("apiKey", "authDomain", "projectId", "appId"\)/.test(kt));
+  check('P12 google-services.json দিলে screen সেটাই বলে (আগে গোলমেলে "config নেই")',
+    /project_info/.test(kt) && /google-services\.json/.test(kt) && /configError/.test(kt));
+  check('P13 screen-এ flat JSON example আছে (কী বসাতে হবে guess করতে হয় না)',
+    /"storageBucket"/.test(kt) && /"appId"/.test(kt));
+}
+
 console.log('\n=============================');
 console.log(`RESULT: ${pass} passed, ${failN} failed`);
 console.log('=============================');

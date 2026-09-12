@@ -1,29 +1,9 @@
 {
-  "project_info": {
-    "project_number": "38273766965",
-    "project_id": "digitearn",
-    "storage_bucket": "digitearn.firebasestorage.app"
-  },
-  "client": [
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:38273766965:android:64eb282cc775ac01de037c",
-        "android_client_info": {
-          "package_name": "com.admin.digitearn"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDSt9PaaSF91Kxhl83FeiOpHVprW2M98as"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    }
-  ],
-  "configuration_version": "1"
+  "apiKey": "AIzaSyBQ7UhVfpAOwiL9PWFyVhE1slbQI7RroIw",
+  "authDomain": "digitearn.firebaseapp.com",
+  "projectId": "digitearn",
+  "storageBucket": "digitearn.firebasestorage.app",
+  "messagingSenderId": "38273766965",
+  "appId": "1:38273766965:web:84251dec90b66992de037c",
+  "_note": "Firebase Console -> Project settings -> Your apps -> (Web app) -> SDK setup and configuration. এই ৬টা value এখানেই বসবে; android/গুগল-সার্ভিস ফাইলটা google-services.json-এ আলাদা থাকে।"
 }
