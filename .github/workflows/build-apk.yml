@@ -1,1 +1,83 @@
+name: Build Admin APK
 
+# BUGFIX: আগে শুধু branch `arena/01a080f3-digitearn`-এ trigger করত — ওই branch-টা
+# 2026-09-09 থেকে স্থির (main-এর চেয়ে ৩৩ commit পিছে)। মানে main-এ push করলেই
+# APK কখনো build হতো না, আর build হলেও সেটা পুরনো কোডের। এখন main + dispatch + PR।
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - 'src/admin/**'
+      - 'lib/admin/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - '.github/workflows/build-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - 'src/admin/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node
+        # firebase-admin@14 requires node >=22 (package.json engines-এও একই) —
+        # 16-এ `npm ci` EBADENGINE দিত, আর panel build-এর toolchain site-এর function
+        # runtime-এর সাথে মিলত না (একই SDK দুই জায়গায় দুই behavior)।
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # BUGFIX: APK-র ভেতরে embedded panel (android/app/src/main/assets/admin/)
+      # committed থাকে — সেটা src/admin/ এর চেয়ে পিছে থাকলে APK-তে পুরনো panel
+      # চলে যায় (নতুন field/feature দেখা যায় না)। তাই gradle-এর আগে সবসময়
+      # source থেকে panel rebuild করা হয়।
+      - name: Rebuild embedded admin panel from src/admin
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:admin-app
+          if [ -z "$(git status --porcelain android/app/src/main/assets/admin)" ]; then
+            echo "✅ committed assets/admin already matches src/admin"
+          else
+            echo "::warning::repo-র assets/admin পুরনো — এই run-এ নতুনটা build করে APK দেওয়া হয়েছে। commit-ও করে দিন (npm run build:admin-app)"
+            git diff --stat android/app/src/main/assets/admin
+          fi
+
+      - name: Install Gradle 8.7
+        run: |
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o /tmp/gradle.zip
+          sudo unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.7/bin" >> "$GITHUB_PATH"
+
+      - name: Build debug APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DigitEarnAdmin-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+# NOTE: এই কপিটা repo-তে রাখা হয়েছে শুধু কপি-পেস্ট সুবিধার জন্য (PAT-এ
+# Workflows permission না থাকায় .github/workflows/ এ push করা যায় না)।
+# .github/workflows/build-apk.yml হিসেবে বসিয়ে দিলেই APK CI চলবে; এরপর এটা মুছে দিন।
