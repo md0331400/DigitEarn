@@ -1,0 +1,9 @@
+{
+  "api": "v3",
+  "commit": "",
+  "branch": "",
+  "buildId": "20260913182005",
+  "builtAt": "2026-09-13T18:20:05.784Z",
+  "node": "v20.20.2",
+  "firebaseConfig": false
+}

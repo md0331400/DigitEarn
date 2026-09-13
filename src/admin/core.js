@@ -3,10 +3,12 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
 } from 'firebase/auth';
-import {
-  getFirestore, doc, getDoc, getDocs, collection, query, where, orderBy, limit,
-  updateDoc, setDoc, deleteDoc, serverTimestamp,
-} from 'firebase/firestore';
+import { getFirestore, serverTimestamp } from 'firebase/firestore';
+/* ⚠️ panel এখন আর Firestore ধরে না: doc/getDoc/getDocs/setDoc/updateDoc/deleteDoc সব
+   import বাদ — admin-এর প্রতিটা read/write ?op=read / ?op=write (server, Admin SDK)
+   দিয়ে হয়। কারণ: (১) rules-এর isAdmin() get() browser/WebView থেকে fail করে
+   "Missing or insufficient permissions.", (২) WebView + file:// origin থেকে কনফিগ/
+   token ফাঁস ঝুঁকি, (৩) balance/role সব server-এ verify হয়। */
 
 /* Config order:
    1. Android APK: window.DigitEarnBridge.getFirebaseConfig() — native bridge,
@@ -422,18 +424,18 @@ export async function addTargetedNotice(uid, { title, body, type = 'warning', ex
     createdBy: 'admin',
   };
   if (expiresAt) clean.expiresAt = expiresAt;
-  // BUGFIX: doc(db,'users',uid,'targetNotices') = ৩টা segment (odd) → Firestore
-  // throw: "Document references must have an even number of segments" → private
-  // warning/notice পাঠানোই যেত না। subcollection ref দিয়ে auto-id doc লাগে।
-  await setDoc(doc(collection(db, 'users', uid, 'targetNotices')), clean);
+  /* ⚠️ browser/WebView থেকে সরাসরি Firestore লিখলে rules-এর isAdmin() get() fail করে
+     "Missing or insufficient permissions." — private notice-ও পাঠানো যেত না।
+     এখন সব লেখা server (Admin SDK) দিয়ে: ?op=write → target-notice-*  */
+  await adminWrite('target-notice-add', { uid, notice: clean });
 }
 
 export async function updateTargetedNotice(uid, id, { enabled }) {
-  await updateDoc(doc(db, 'users', uid, 'targetNotices', id), { enabled: !!enabled });
+  await adminWrite('target-notice-update', { uid, id, enabled: !!enabled });
 }
 
 export async function deleteTargetedNotice(uid, id) {
-  await deleteDoc(doc(db, 'users', uid, 'targetNotices', id));
+  await adminWrite('target-notice-delete', { uid, id });
 }
 
 /* global targeted list — browser rules-এ অন্য user-এর subcollection list করা যায় না,

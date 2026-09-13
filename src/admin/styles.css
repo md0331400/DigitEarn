@@ -232,3 +232,74 @@ tr.wt-off td:first-child { opacity: 1; }
 .adm-modal textarea { width: 100%; box-sizing: border-box; resize: vertical; }
 .adm-modal textarea.bad { border-color: #dc2626; }
 .adm-modal .am-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+/* ============================================================
+   v2 polish — একই ফিচার, কম ভিজ্যুয়াল নয়েজ:
+   বড় tap target, এক ধরনের কার্ড, হালকা শ্যাডো, বাংলা লেবেল ঠিক দূরত্বে
+   ============================================================ */
+:root { --bg: #f7f3ea; --card: #fff; --border: #ece4d3; --line: #f4eee0; --radius: 18px; }
+body { font-size: 14.5px; background:
+  radial-gradient(760px 320px at 50% -160px, #fff6e2 0%, rgba(255,246,226,0) 100%) no-repeat,
+  var(--bg); -webkit-text-size-adjust: 100%; }
+label { display:block; font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 5px; letter-spacing: .1px; }
+
+/* header */
+.adm-top { padding: 10px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.86); backdrop-filter: blur(10px); }
+.adm-logo { font-size: 15.5px; letter-spacing: -.2px; }
+.adm-logo i { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color:#fff; font-size: 13px; display:inline-flex; align-items:center; justify-content:center; }
+.adm-logo span { font-size: 11px; padding: 3px 8px; }
+.adm-menu-btn, .adm-bell { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border); background:#fff; color: var(--ink); font-size: 15px; display:inline-flex; align-items:center; justify-content:center; position: relative; cursor:pointer; }
+.adm-bell-n { position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; border-radius:999px; background:var(--red); color:#fff; font-size:10.5px; font-weight:800; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #fff; }
+
+/* main + cards */
+.adm-main { max-width: 720px; padding: 14px 13px 72px; }
+.adm-card, .adm-item, .wt-card, .user-row { border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 1px 2px rgba(90,70,20,.04), 0 8px 22px -18px rgba(90,70,20,.25); }
+.adm-card { padding: 15px 15px 16px; margin-bottom: 11px; }
+.adm-card > .adm-card { box-shadow: none; background: var(--bg); }
+.adm-card h4 { font-size: 15px; font-weight: 800; letter-spacing: -.2px; margin-bottom: 12px; }
+.adm-card h4 i { width: 26px; height: 26px; border-radius: 8px; background: var(--gold-soft); color: var(--gold-deep) !important; font-size: 12px; display:inline-flex; align-items:center; justify-content:center; }
+.muted { font-size: 12.5px; line-height: 1.55; }
+
+/* drawer */
+.adm-drawer-nav { width: min(78vw, 292px); background:#fff; border-right:1px solid var(--line); padding: 14px 12px 20px; box-shadow: 18px 0 40px -30px rgba(60,45,10,.6); }
+.adm-drawer-who { background: var(--bg); border-radius: 14px; padding: 12px; margin: 0 2px 12px; }
+.adm-drawer-who i { width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(135deg,var(--gold),var(--gold-deep)); color:#fff; display:inline-flex; align-items:center; justify-content:center; margin-right: 9px; }
+.adm-drawer-nav a { display:flex; align-items:center; gap: 11px; padding: 12px 12px; border-radius: 13px; font-size: 14.5px; font-weight: 700; color:#4a4336; text-decoration:none; }
+.adm-drawer-nav a i { width: 26px; text-align:center; color: var(--muted); font-size: 14px; }
+.adm-drawer-nav a.on { background: linear-gradient(135deg, #fff5e0, #fdeac4); color: var(--gold-deep); }
+.adm-drawer-nav a.on i { color: var(--gold-deep); }
+.adm-drawer-nav a:active { transform: scale(.985); }
+
+/* inputs & buttons — মোবাইলে আঙুল দিয়ে টিপার মতো বড় */
+.adm-input { border: 1px solid var(--border); background: #fffdf9; border-radius: 13px; min-height: 46px; padding: 12px 13px; font-size: 15px; }
+textarea.adm-input { min-height: 84px; line-height: 1.6; }
+.adm-input:focus { background:#fff; border-color: var(--gold); }
+.adm-input::placeholder { color: #b3ab99; }
+.adm-btn { min-height: 44px; padding: 11px 17px; border-radius: 13px; font-size: 14.5px; box-shadow: 0 1px 1px rgba(90,70,20,.06); }
+.adm-btn.gold { box-shadow: 0 6px 16px -8px rgba(217,119,6,.65); }
+.adm-btn.ghost { background:#fff; border: 1px solid var(--border); color: #4a4336; }
+.adm-btn.sm { min-height: 38px; padding: 8px 13px; font-size: 13px; border-radius: 11px; }
+.adm-btn:active { transform: translateY(1px); }
+.ai-actions .adm-btn { flex: 1; }
+.chip { min-height: 38px; padding: 8px 15px; background:#fff; }
+.chip.on { background: var(--gold-soft); border-color: var(--gold); color: var(--gold-deep); }
+:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: 2px; }
+
+/* review rows */
+.badge { font-size: 11px; padding: 4px 10px; letter-spacing: 0; }
+.ai-head { margin-bottom: 8px; }
+.ai-user b { font-size: 15px; }
+.ai-meta { font-size: 12.5px; gap: 8px; }
+.ai-meta .badge + .badge { margin-left: 2px; }
+.mini-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.detail-grid div, .detail-grid > div { background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+.two-col, .set-grid { gap: 11px; }
+.form-err { border-left: 3px solid var(--red); background: #fff5f5; }
+.adm-alerts { margin: 0 auto; max-width: 720px; }
+.adm-alerts[hidden] { display:none; }
+.muted.center-note { background:#fffdf8; border: 1px dashed var(--border); border-radius: var(--radius); padding: 22px 14px; }
+table { width: 100%; border-collapse: collapse; }
+th { font-size: 11px; color: var(--muted); font-weight: 700; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 10px 8px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+tr:last-child td { border-bottom: none; }
+@media (min-width: 620px) { .adm-main { padding-top: 20px; } .stat-grid { gap: 12px; } }

@@ -178,16 +178,16 @@ function renderLogin(errMsg = '', mode = 'login') {
 
 /* ---------- shell ---------- */
 const NAV = [
-  { id: 'overview', label: 'Overview', icon: 'fa-gauge-high' },
-  { id: 'proofs', label: 'Submissions', icon: 'fa-clipboard-list' },
-  { id: 'deposits', label: 'Deposits', icon: 'fa-money-bill-wave' },
-  { id: 'withdrawals', label: 'Withdrawals', icon: 'fa-money-bill-transfer' },
-  { id: 'users', label: 'Users', icon: 'fa-users' },
-  { id: 'microjobs', label: 'MicroJobs', icon: 'fa-briefcase' },
+  { id: 'overview', label: 'ড্যাশবোর্ড', icon: 'fa-gauge-high' },
+  { id: 'proofs', label: 'জমা রিভিউ', icon: 'fa-clipboard-list' },
+  { id: 'deposits', label: 'টাকা জমা', icon: 'fa-money-bill-wave' },
+  { id: 'withdrawals', label: 'উইথড্র', icon: 'fa-money-bill-transfer' },
+  { id: 'users', label: 'ইউজার', icon: 'fa-users' },
+  { id: 'microjobs', label: 'মাইক্রো জব', icon: 'fa-briefcase' },
   { id: 'wallet', label: 'অ্যাডমিন ম্যানেজমেন্ট', icon: 'fa-sitemap' },
-  { id: 'tasks', label: 'টাস্ক (অ্যাকাউন্ট সেল)', icon: 'fa-store' },
-  { id: 'settings', label: 'Settings', icon: 'fa-gear' },
-  { id: 'notices', label: 'Notices', icon: 'fa-bullhorn' },
+  { id: 'tasks', label: 'একাউন্ট সেল', icon: 'fa-store' },
+  { id: 'settings', label: 'সেটিংস', icon: 'fa-gear' },
+  { id: 'notices', label: 'নোটিশ', icon: 'fa-bullhorn' },
 ];
 
 function renderShell() {
@@ -340,13 +340,13 @@ async function viewOverview(main) {
     </div>
     ${s.recentProofs.length ? `
     <div class="adm-card">
-      <h4><i class="fa-solid fa-clipboard-list" style="color:#d97706"></i> সর্বশেষ Pending Submissions</h4>
+      <h4><i class="fa-solid fa-clipboard-list" style="color:#d97706"></i> সর্বশেষ জমা — অনুমোদনের অপেক্ষায়</h4>
       ${s.recentProofs.map(p => `<div class="mini-row"><b>${esc(p.taskName || p.taskSlug)}</b> <span class="muted">${timeBn(p.createdAt)}</span><span class="badge gold">+${fmt(p.reward)}</span></div>`).join('')}
       <a href="#/proofs" class="link-more">সব দেখুন →</a>
     </div>` : ''}
     ${s.recentDeposits.length ? `
     <div class="adm-card">
-      <h4><i class="fa-solid fa-money-bill-wave" style="color:#d97706"></i> সর্বশেষ Pending Deposits</h4>
+      <h4><i class="fa-solid fa-money-bill-wave" style="color:#d97706"></i> সর্বশেষ টাকা জমা — অনুমোদনের অপেক্ষায়</h4>
       ${s.recentDeposits.map(d => `<div class="mini-row"><b>${esc(d.method)}</b> <span class="muted">${timeBn(d.createdAt)}</span><span class="badge gold">${fmt(d.amount)}</span></div>`).join('')}
       <a href="#/deposits" class="link-more">সব দেখুন →</a>
     </div>` : ''}
@@ -700,7 +700,7 @@ async function viewUsers(main) {
         <div class="ai-actions">
           ${u.isActive ? `<button class="adm-btn red sm" data-deact="${u.uid}"><i class="fa-solid fa-ban"></i> নিষ্ক্রিয় করুন</button>` : `<button class="adm-btn green sm" data-act="${u.uid}"><i class="fa-solid fa-check"></i> চালু করুন</button>`}
         </div>
-        <h4 style="margin-top:14px"><i class="fa-solid fa-money-bill-transfer" style="color:#d97706"></i> Withdrawals</h4>
+        <h4 style="margin-top:14px"><i class="fa-solid fa-money-bill-transfer" style="color:#d97706"></i> উইথড্র</h4>
         ${wds.length ? wds.map(w => `<div class="mini-row">
           <b>${esc(w.method)} • ${fmt(w.amount)}</b>
           <span class="muted">${esc(w.accountNumber)} • ${timeBn(w.createdAt)}</span>
@@ -1063,7 +1063,7 @@ async function viewTasks(main, kind) {
     </div>`;
   const seedBar = `
     <div class="adm-card" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
-      <div style="flex:1 1 260px"><b>Built-in list থেকে task doc তৈরি করুন</b><br>
+      <div style="flex:1 1 260px"><b>বিল্ট-ইন লিস্ট থেকে টাস্ক তৈরি করুন</b><br>
         <span class="muted">${tasks.length ? 'যেগুলোর doc নেই শুধু সেটুকুই বানাবে — আগে থেকে যা আছে (rate, fields, lock) অক্ষত থাকবে।' : 'Firestore-এ কোনো task config নেই — একারণেই user submit করলে “Project পাওয়া যায়নি” আসছে। নিচের বাটন চাপলেই ঠিক হয়ে যাবে।'}</span></div>
       <button class="adm-btn gold sm" id="seedTasksBtn"><i class="fa-solid fa-database"></i> ${tasks.length ? 'বাকিগুলো তৈরি করুন' : 'এখনই তৈরি করুন'}</button>
     </div>`;
@@ -1072,8 +1072,8 @@ async function viewTasks(main, kind) {
       ? '<i class="fa-solid fa-briefcase" style="color:#d97706"></i> MicroJobs — আলাদা সিস্টেম'
       : '<i class="fa-solid fa-store" style="color:#d97706"></i> টাস্ক (অ্যাকাউন্ট সেল)'}</h4>
     <p class="muted">${isMJ
-      ? 'এখান থেকে বানানো প্রতিটা জব user-এর “মাইক্রো জব” পেজে আলাদা পোস্ট/কার্ড হিসেবে দেখাবে — ৫টা বানালে ৫টা কার্ড, কিছুই hardcode নয়। Reward, ছবি, নিয়ম, লিংক, ভিডিও, কতজন দরকার, জমার ফিল্ড — সব এখান থেকেই। Required Users শেষ হলে জব স্বয়ংক্রিয়ভাবে FULL/CLOSED।'
-      : 'পুরোনো সিস্টেম (ফেসবুক/জিমাইল/ইন্সট্রাগ্রাম সেল) — এগুলো মাইক্রো জব পেজে আসে না। Reward, link, password, description, input fields, lock/status, video এখান থেকেই; Save করলেই user website update হয়ে যাবে।'}</p></div>
+      ? 'প্রতিটা জব user-এর “মাইক্রো জব” পেজে আলাদা কার্ড হিসেবে দেখাবে — ৫টা বানালে ৫টা কার্ড, কিছুই আগে থেকে বসানো নেই। রোয়ার্ড, ছবি, নিয়ম, লিংক, ভিডিও, কতজন দরকার, জমার ফিল্ড — সব এখান থেকেই। নির্ধারিত সংখ্যক ইউজার অনুমোদন পেলে জব নিজে থেকেই বন্ধ হয়, যে ইউজার কাজটা করে ফেলেছে তার কাছে আর দেখায় না (এই ট্যাবে সবসময় দেখাবে)।'
+      : 'পুরোনো সিস্টেম (ফেসবুক/জিমাইল/ইন্সট্রাগ্রাম একাউন্ট সেল) — এগুলো মাইক্রো জব পেজে দেখায় না। সেভ করলেই সাইটে দেখাবে। এখানে একাউন্ট জমার কোনো দৈনিক লিমিট নেই — যে যত খুশি বার জমা দিতে পারে (একই একাউন্ট বারবার দিলে শুধু সেটাই বাতিল হয়)।'}
     ${isMJ ? createCard : ''}
     ${isMJ ? '' : seedBar}
     <div id="taskList">${tasks.map(t => `
@@ -1102,9 +1102,9 @@ async function viewTasks(main, kind) {
         </div>
         <div class="task-form" data-form="${esc(t.slug)}" hidden>
           <label>নাম (বাংলা)</label><input class="adm-input" data-f="nameBn" value="${esc(t.nameBn || '')}">
-          <label>Task URL (user-এর জন্য Open Link) — শুধু http/https</label><input class="adm-input" data-f="url" value="${esc(t.url || '')}" placeholder="https://...">
+          <label>কাজের লিংক (ইউজার এখানে যাবে) — শুধু http/https</label><input class="adm-input" data-f="url" value="${esc(t.url || '')}" placeholder="https://...">
           <div class="two-col">
-            <div><label>Amount / Reward (৳)</label><input type="number" step="0.5" class="adm-input" data-f="reward" value="${Number(t.reward) || 0}"></div>
+            <div><label>প্রতি জমায় রোয়ার্ড (৳)</label><input type="number" step="0.5" class="adm-input" data-f="reward" value="${Number(t.reward) || 0}"></div>
             <div><label>ক্রম</label><input type="number" class="adm-input" data-f="sort" value="${Number(t.sort) || 10}"></div>
           </div>
           <div class="two-col">
@@ -1132,13 +1132,13 @@ async function viewTasks(main, kind) {
           </div>
           <label>সংক্ষিপ্ত বিবরণ (কার্ডের এক লাইন)</label>
           <input class="adm-input" data-f="shortDesc" value="${esc(t.shortDesc || '')}" maxlength="200" placeholder="যেমন: ভিডিওতে like + comment করুন">
-          <label>Account Password (seller যে পাসওয়ার্ড সেট করবে — খালি রাখলে hide)</label><input class="adm-input" data-f="password" value="${esc(t.password || '')}" maxlength="60">
-          <label>Description / Instructions (project page-এ description)</label><textarea class="adm-input" data-f="description" rows="3" maxlength="300">${esc(t.description || '')}</textarea>
+          <label>সেলার পাসওয়ার্ড (জমা দেওয়া একাউন্টে বসানো হবে — খালি রাখলে দেখানো হয় না)</label><input class="adm-input" data-f="password" value="${esc(t.password || '')}" maxlength="60">
+          <label>নিয়মাবলি (প্রজেক্ট পেজে দেখায়)</label><textarea class="adm-input" data-f="description" rows="3" maxlength="300">${esc(t.description || '')}</textarea>
           <div class="two-col">
             <div><label>Submit বাটনের লেখা</label><input class="adm-input" data-f="submitLabel" value="${esc(t.submitLabel || '')}" placeholder="SUBMIT GMAIL" maxlength="40"></div>
             <div><label>History বাটনের লেখা</label><input class="adm-input" data-f="historyLabel" value="${esc(t.historyLabel || '')}" placeholder="View Gmail History" maxlength="40"></div>
           </div>
-          <label>দৈনিক সর্বোচ্চ কয়টি account জমা দেওয়া যাবে (per seller)</label><input type="number" min="1" max="200" class="adm-input" data-f="dailyLimit" value="${Number(t.dailyLimit) || 20}">
+          <label>দৈনিক লিমিট (০ = আনলিমিটেড — অ্যাকাউন্ট সেলে সাধারণত লাগে না)</label><input type="number" min="0" max="200" class="adm-input" data-f="dailyLimit" value="${Number(t.dailyLimit) || 0}">
           ${inputFieldsEditorHtml(t, isMJ)}
           <label>Video URL (YouTube link বা mp4) — task page-এ guide video</label><input class="adm-input" data-f="videoUrl" value="${esc(t.videoUrl || '')}">
           <div class="two-col">
@@ -1356,7 +1356,7 @@ async function viewTasks(main, kind) {
         description: f('description').value.trim(),
         submitLabel: f('submitLabel').value.trim(),
         historyLabel: f('historyLabel').value.trim(),
-        dailyLimit: Math.max(1, Math.min(200, Number(f('dailyLimit').value) || 20)),
+        dailyLimit: Math.max(0, Math.min(200, Number(f('dailyLimit').value) || 0)),
         inputFields,
         videoUrl: f('videoUrl').value.trim(),
         image: (card.querySelector('[data-imgurl]')?.value || '').trim() || (f('image')?.value || ''),
@@ -1374,38 +1374,38 @@ async function viewTasks(main, kind) {
 
 /* ---------- settings ---------- */
 const SET_FIELDS = [
-  { group: 'General', fields: [
-    ['siteName', 'Site Name', 'text'],
-    ['telegramLink', 'Telegram Link', 'url'],
-    ['facebookLink', 'Facebook Link', 'url'],
-    ['youtubeLink', 'YouTube Link', 'url'],
-    ['videoUrl', 'Tutorial Video URL', 'url'],
+  { group: 'সাধারণ', fields: [
+    ['siteName', 'সাইটের নাম', 'text'],
+    ['telegramLink', 'টেলিগ্রাম লিংক', 'url'],
+    ['facebookLink', 'ফেসবুক লিংক', 'url'],
+    ['youtubeLink', 'ইউটিউব লিংক', 'url'],
+    ['videoUrl', 'শেখার ভিডিওর লিংক', 'url'],
   ]},
-  { group: 'Money (৳)', fields: [
-    ['activationFee', 'Activation Deposit Fee', 'number'],
-    ['activationBonus', 'Activation Bonus', 'number'],
-    ['registerBonus', 'Registration Bonus', 'number'],
-    ['referralBonus', 'Referral Bonus', 'number'],
-    ['minWithdraw', 'Minimum Withdraw', 'number'],
-    ['giftReward', 'Daily Gift Reward', 'number'],
+  { group: 'টাকা (৳)', fields: [
+    ['activationFee', 'একাউন্ট খোলার ফি (জমা)', 'number'],
+    ['activationBonus', 'একাউন্ট খোলার বোনাস', 'number'],
+    ['registerBonus', 'নতুন রেজিস্ট্রেশন বোনাস', 'number'],
+    ['referralBonus', 'রেফারেল বোনাস', 'number'],
+    ['minWithdraw', 'সর্বনিম্ন উইথড্র', 'number'],
+    ['giftReward', 'দৈনিক উপহার বোনাস', 'number'],
   ]},
-  { group: 'Payment Numbers (Deposit-এর জন্য)', fields: [
-    ['bkashNumber', 'bKash Number', 'text'],
-    ['nagadNumber', 'Nagad Number', 'text'],
-    ['rocketNumber', 'Rocket Number', 'text'],
+  { group: 'পেমেন্ট নম্বর (জমার জন্য)', fields: [
+    ['bkashNumber', 'bKash নম্বর', 'text'],
+    ['nagadNumber', 'Nagad নম্বর', 'text'],
+    ['rocketNumber', 'Rocket নম্বর', 'text'],
   ]},
-  { group: 'Gift', fields: [
-    ['giftCode', 'Gift Code', 'text'],
+  { group: 'উপহার', fields: [
+    ['giftCode', 'আজকের উপহার কোড', 'text'],
   ]},
-  { group: 'Admin Contact (Support page-এ দেখাবে)', fields: [
-    ['admin1Name', 'Admin 1 — Name', 'text'],
-    ['admin1Phone', 'Admin 1 — Phone', 'text'],
-    ['admin1Email', 'Admin 1 — Email', 'email'],
-    ['admin1Link', 'Admin 1 — Link', 'url'],
-    ['admin2Name', 'Admin 2 — Name', 'text'],
-    ['admin2Phone', 'Admin 2 — Phone', 'text'],
-    ['admin2Email', 'Admin 2 — Email', 'email'],
-    ['admin2Link', 'Admin 2 — Link', 'url'],
+  { group: 'সাপোর্ট যোগাযোগ (হেল্প পেজে দেখায়)', fields: [
+    ['admin1Name', 'সাপোর্ট ১ — নাম', 'text'],
+    ['admin1Phone', 'সাপোর্ট ১ — মোবাইল', 'text'],
+    ['admin1Email', 'সাপোর্ট ১ — ইমেইল', 'email'],
+    ['admin1Link', 'সাপোর্ট ১ — লিংক', 'url'],
+    ['admin2Name', 'সাপোর্ট ২ — নাম', 'text'],
+    ['admin2Phone', 'সাপোর্ট ২ — মোবাইল', 'text'],
+    ['admin2Email', 'সাপোর্ট ২ — ইমেইল', 'email'],
+    ['admin2Link', 'সাপোর্ট ২ — লিংক', 'url'],
   ]},
 ];
 
@@ -1476,33 +1476,33 @@ async function viewNotices(main) {
   const users = await listUsers(300).catch(() => []);
   main.innerHTML = `
     <div class="adm-card">
-      <h4><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> নতুন Notice / Warning</h4>
+      <h4><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> নতুন নোটিশ / সতর্কতা</h4>
       <div class="two-col">
         <div><label>ধরন</label>
           <select class="adm-input" id="ntType"><option value="notice">নোটিশ</option><option value="warning">সতর্কতা</option></select>
         </div>
         <div><label>টার্গেট</label>
-          <select class="adm-input" id="ntTarget"><option value="all">সব user (All)</option><option value="user">নির্দিষ্ট user</option></select>
+          <select class="adm-input" id="ntTarget"><option value="all">সব ইউজার</option><option value="user">শুধু একজন ইউজার</option></select>
         </div>
       </div>
       <div id="ntUserWrap" hidden style="margin-top:8px">
-        <label>User খুঁজুন (নাম/মোবাইল) + select করুন</label>
+        <label>ইউজার খুঁজুন (নাম বা মোবাইল)</label>
         <input class="adm-input" id="ntUserSearch" placeholder="নাম বা মোবাইল লিখুন...">
         <div id="ntUserResults" class="user-list" style="max-height:150px;overflow:auto"></div>
       </div>
-      <input class="adm-input" id="ntTitle" placeholder="Title (ঐচ্ছিক)" maxlength="60" style="margin-top:8px">
-      <textarea class="adm-input" id="ntBody" rows="3" placeholder="Notice/Warning লিখুন..." maxlength="300" style="margin-top:8px"></textarea>
+      <input class="adm-input" id="ntTitle" placeholder="শিরোনাম (ঐচ্ছিক)" maxlength="60" style="margin-top:8px">
+      <textarea class="adm-input" id="ntBody" rows="3" placeholder="নোটিশ বা সতর্কবার্তা লিখুন..." maxlength="300" style="margin-top:8px"></textarea>
       <div class="two-col" style="margin-top:8px">
-        <div><label>Expiry (ঐচ্ছিক — তারিখের পর অদৃশ্য)</label><input type="date" class="adm-input" id="ntExpiry"></div>
-        <div style="align-self:flex-end"><button class="adm-btn gold sm" id="ntAdd"><i class="fa-solid fa-plus"></i> Send</button></div>
+        <div><label>মেয়াদ (তারিখের পর দেখাবে না)</label><input type="date" class="adm-input" id="ntExpiry"></div>
+        <div style="align-self:flex-end"><button class="adm-btn gold sm" id="ntAdd"><i class="fa-solid fa-plus"></i> পাঠান</button></div>
       </div>
     </div>
 
-    <h4 style="margin:14px 0 8px"><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> All-User Notices</h4>
+    <h4 style="margin:14px 0 8px"><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> সবার নোটিশ</h4>
     ${notices.map(n => `
       <div class="adm-card">
         <div class="task-row">
-          <div class="task-info"><b>${n.type === 'warning' ? '⚠️ ' : ''}${esc(n.title || '—')}</b><span class="muted">${n.enabled ? 'ON' : 'OFF'} • sort ${n.sort || 0}${n.expiresAt ? ' • expire ' + timeBn(n.expiresAt) : ''}</span></div>
+          <div class="task-info"><b>${n.type === 'warning' ? '⚠️ ' : ''}${esc(n.title || '—')}</b><span class="muted">${n.enabled ? 'চালু' : 'বন্ধ'} • ক্রম ${n.sort || 0}${n.expiresAt ? ' • মেয়াদ ' + timeBn(n.expiresAt) : ''}</span></div>
           <div class="ai-actions" style="flex-wrap:wrap">
             <button class="adm-btn ghost sm" data-tgl="${n.id}"><i class="fa-solid ${n.enabled ? 'fa-eye-slash' : 'fa-eye'}"></i></button>
             <button class="adm-btn red sm" data-del="${n.id}"><i class="fa-solid fa-trash"></i></button>

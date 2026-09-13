@@ -22,7 +22,7 @@ export const TASKS = [
     password: '', // admin panel → Micro Jobs → Account Password (repo-তে real credential রাখা যাবে না — git history public)
     submitLabel: 'SUBMIT FACEBOOK ID',
     historyLabel: 'View Activity History',
-    dailyLimit: 20,
+    dailyLimit: 0,   /* আনলিমিটেড */
     inputFields: [
       { label: 'UID', type: 'text', placeholder: 'UID', required: true },
       { label: 'Password', type: 'password', placeholder: 'Password', required: true },
@@ -51,7 +51,7 @@ export const TASKS = [
     password: '', // ^ একই কারণে seed-এ credential নেই
     submitLabel: 'SUBMIT GMAIL',
     historyLabel: 'View Gmail History',
-    dailyLimit: 20,
+    dailyLimit: 0,
     inputFields: [
       { label: 'জিমেইল এড্রেস', type: 'email', placeholder: 'example@gmail.com', required: true },
       { label: 'পাসওয়ার্ড', type: 'password', placeholder: 'পাসওয়ার্ড লিখুন', required: true },
@@ -79,7 +79,7 @@ export const TASKS = [
     password: '', // admin panel → Micro Jobs → Account Password (repo-তে real credential রাখা যাবে না — git history public)
     submitLabel: 'SUBMIT INSTAGRAM ID',
     historyLabel: 'View Sales History',
-    dailyLimit: 20,
+    dailyLimit: 0,
     inputFields: [
       { label: 'Username', type: 'text', placeholder: '@username', required: true },
       { label: 'Password', type: 'password', placeholder: 'Password', required: true },

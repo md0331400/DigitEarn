@@ -4,7 +4,7 @@
    - Submitted fields task config-এর inputFields অনুযায়ী server-side validate হয়
    - DUPLICATE GUARD: একই account (username/email/UID) আগে জমা পড়লে reject —
      নিজের হোক বা অন্য user-এর, একই account দুবার বিক্রি করা যাবে না
-   - Daily limit: task.dailyLimit (default 20) — spam রোধ
+   - দৈনিক লিমিট: নেই (account-sell = আনলিমিটেড) — task.dailyLimit > 0 দিলেই কেবল ক্যাপ
    - username/email server-এ user doc থেকে (client-এর কথা trust না)
    - userId = verified ID token-এর uid (client-এর uid ignore) */
 import { getDb } from '../../lib/firebase-admin.js';
@@ -18,7 +18,7 @@ import { FieldValue } from 'firebase-admin/firestore';
    ভাবতে হয় না (drift হলে এক পাশে job ভুলভাবে lock/bypass হতো) */
 import { isFull, isSingleMode, isMicrojobDoc, stateOf, ST } from '../../src/core/microjobs.js';
 
-const DEFAULT_DAILY_LIMIT = 20;
+const DEFAULT_DAILY_LIMIT = 0;   /* 0 = আনলিমিটেড (account-sell rule) */
 
 /* Day key = UTC (client-এর todayStr()-ও এখন UTC — src/core/api.js)।
    এলোমেলো container TZ / browser local date হলে client আর server-এর "আজকের"
@@ -124,11 +124,15 @@ export default async function handler(req, res) {
   const day = today();
   const userProofs = db.collection('users').doc(uid).collection('proofs');
 
-  /* ---------- daily limit (spam রোধ) — একদিনে কত account বিক্রি করা যাবে ----------
-     ⚠️ count টা transaction-এর ভেতরে পড়া হয় (আগে বাইরে ছিল): দুটো submit একসাথে
-     এলে দুটোই "আজকের ৩টির মধ্যে ২টি" দেখে limit cross করে বসিয়ে দিত — per-task
-     daily-limit তাই bypass-যোগ্য ছিল। */
-  const dailyLimit = Math.max(1, Math.min(200, Number(task.dailyLimit) || DEFAULT_DAILY_LIMIT));
+  /* ---------- দৈনিক লিমিট (ইচ্ছা ক্যাফ) ----------
+     Owner rule: Facebook / Instagram / Gmail মানে account-sell — এখানে দৈনিক কোনো
+     লিমিট নেই, যত খুশি account জমা দেওয়া যায় (0/না-থাকা = আনলিমিটেড)।
+     Admin চাইলে task.dailyLimit = N দিয়ে ক্যাপ বাঁধতে পারেন; MicroJob-এর নিজের নিয়ম
+     (এক user একবার + requiredUsers পূর্ণ হলে বন্ধ) সেটা থেকে আলাদা।
+     ⚠️ count টা transaction-এর ভেতরে পড়া হয় (আগে বাইরে ছিল → দুটো সমান্তরাল submit
+     মিলে limit cross করে বসিয়ে দিত)। */
+  const dlRaw = Number(task.dailyLimit);
+  const dailyLimit = Number.isFinite(dlRaw) && dlRaw > 0 ? Math.min(200, Math.floor(dlRaw)) : DEFAULT_DAILY_LIMIT;
   const singleMode = isSingleMode(task);   // MicroJob = এক user একবার; পুরোনো account-sell flow = দিনে একাধিক
 
   /* ---------- DUPLICATE ACCOUNT GUARD ----------
@@ -183,7 +187,7 @@ export default async function handler(req, res) {
         if (st === ST.APPROVED) throw new ApiError(409, 'এই কাজটি আপনি আগেই সম্পন্ন করেছেন — আবার জমা দেওয়া যাবে না');
         if (st === ST.HIDDEN) throw new ApiError(409, 'এই কাজটি আপনার জন্য বন্ধ — অন্য কাজ দেখুন');
         if (st === ST.FULL || isFull(task)) throw new ApiError(409, 'এই কাজের সব জায়গা পূরণ হয়েছে');
-      } else {
+      } else if (dailyLimit > 0) {
         const todayQ = await tx.get(userProofs.where('day', '==', day).limit(dailyLimit + 50));
         const todayForTask = todayQ.docs.filter(x => x.data().taskSlug === taskSlug && x.data().status !== 'rejected');
         if (todayForTask.length >= dailyLimit) {

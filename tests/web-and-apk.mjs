@@ -134,7 +134,11 @@ console.log('\n[B] admin core.js document refs are valid (real firebase client S
   check("core.js addNotice → server ?op=write (notice-add)", src.includes("adminWrite('notice-add'"));
   check("server write.js notices ref = collection.doc() auto-id (odd-segment bug ফেরা যাবে না)",
     /db\.collection\('notices'\)\.doc\(\)/.test(wrtSrc) && !/doc\(db,\s*'notices'\s*\)/.test(wrtSrc));
-  check("core.js uses doc(collection(db,'users',uid,'targetNotices'))", src.includes("doc(collection(db, 'users', uid, 'targetNotices'))"));
+  check('core.js targeted notice → server ?op=write (panel কখনো direct Firestore লেখে না)',
+    src.includes("adminWrite('target-notice-add'") && src.includes("adminWrite('target-notice-update'") &&
+    src.includes("adminWrite('target-notice-delete'"));
+  check('core.js-এ direct firestore read/write helper নেই (Missing-or-insufficient-permissions ক্লাস বন্ধ)',
+    !/\bsetDoc\s*\(|\bupdateDoc\s*\(|\bdeleteDoc\s*\(|\bgetDocs\s*\(|\bgetDoc\s*\(/.test(src));
   check('no leftover single-segment doc(db,"notices")', !/doc\(db,\s*'notices'\s*\)/.test(src));
   check('no leftover odd-segment targetNotices doc()', !/doc\(db,\s*'users',\s*uid,\s*'targetNotices'\s*\)/.test(src));
   check('listNotices no longer orderBy("sort") (hides docs without sort)', !/orderBy\('sort'\)/.test(src));
@@ -259,12 +263,20 @@ console.log('\n[E] firestore.rules invariants');
     }
     return '';
   };
-  check('rules: settings/secret block located', block('settings/secret').includes('allow'), '(extractor failed)');
-  check('settings/secret unreadable from browser (why the admin op is needed)', /allow get, list: if false/.test(block('settings/secret')));
-  check('accountKeys closed to clients', /allow get, list: if false/.test(block('accountKeys')));
-  check('users create blocked for clients (server makes profiles)', /allow create: if false/.test(rules));
-  check('client cannot write top-level queues', (rules.match(/allow create, update, delete: if false;/g) || []).length >= 3);
-  check('targetNotices writable only by admin', /allow create, update, delete: if isAdmin\(\);/.test(block('targetNotices')));
+  check('rules: settings/secret unreadable from browser (why the admin op is needed)',
+    /match \/settings\/\{other\} \{\s*allow read, write: if false;/.test(rules));
+  check('rules: accountKeys closed to clients', /match \/accountKeys\/\{key\} \{ allow read, write: if false; \}/.test(rules));
+  check('rules: users create blocked for clients (server makes profiles)', /allow list, create, delete: if false;/.test(rules));
+  check('rules: client cannot read OR write top-level review queues',
+    ['proofs/{proofId}', 'deposits/{depositId}', 'withdrawals/{wdId}', 'admins/{email}', 'adminJoins/{email}']
+      .every(p => rules.includes('match /' + p + ' { allow read, write: if false; }')), 'queue open');
+  check('rules: user subcollections read-only for self (targetNotices সহ)',
+    /match \/\{doc=\*\*\} \{\s*allow read: if isSelf\(\);\s*allow write: if false;/.test(rules));
+  check('rules: admin surfaces are API-only, so no rules-engine isAdmin() dependency',
+    !/function isAdmin\(/.test(rules));
+  check('rules: public content read allowed (site still works without the API)',
+    /match \/tasks\/\{taskId\} \{\s*allow get, list: if true;/.test(rules) &&
+    /match \/notices\/\{noticeId\} \{\s*allow get, list: if true;/.test(rules));
 
   // gift code must be read from secret (never from public settings)
   const gift = read('api/gift/claim.js');

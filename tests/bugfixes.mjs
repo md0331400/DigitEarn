@@ -945,8 +945,8 @@ console.log('\n[P] ?op=seed-tasks — missing Firestore task docs');
   check('?op=seed-tasks routed through the single router (no new function)', r.statusCode === 200 && !/Unknown admin/.test(r.body), `(${r.statusCode} ${r.body.slice(0, 70)})`);
   check('missing doc created (created list + count)', Array.isArray(out.created) && out.created.includes(slug) && out.createdCount === out.created.length, JSON.stringify(out).slice(0, 140));
   const doc = store.docs['tasks/' + slug];
-  check('created doc has what the handlers need (reward/enabled/inputFields/dailyLimit)',
-    !!doc && Number(doc.reward) > 0 && doc.enabled === true && Array.isArray(doc.inputFields) && Number(doc.dailyLimit) >= 1, JSON.stringify(doc || {}).slice(0, 130));
+  check('created doc has what the handlers need (reward/enabled/inputFields; dailyLimit 0 = আনলিমিটেড)',
+    !!doc && Number(doc.reward) > 0 && doc.enabled === true && Array.isArray(doc.inputFields) && Number(doc.dailyLimit) === 0, JSON.stringify(doc || {}).slice(0, 130));
   check('created doc url is http/https only', !doc || !doc.url || /^https?:\/\//i.test(doc.url));
 
   r = res();
@@ -1889,6 +1889,154 @@ console.log('\n[T] admin management, join flow, withdraw reason');
   check('R0a কোনো অ-বাংলা Indic glyph নেই সোর্সে (mojibake regression guard)',
     hits.length === 0, hits.slice(0, 2).join(' | '));
 }
+
+
+/* ============================================================
+   [U] অ্যাকাউন্ট সেল = আনলিমিটেড submit, private notice server-write,
+       admin id কেস-টলারেন্স, rules = শুধু user-side
+   ============================================================ */
+console.log('\n[U] unlimited account-sell + notice via API + admin lookup');
+{
+  const fsU = (await import('node:fs')).default;
+  const fake = await import('./mocks/firebase-admin-fake.mjs');
+  const countU = (prefix) => Object.keys(store.docs).filter(k => k.startsWith(prefix)).length;
+
+  /* ---- U1: account-sell টাস্কে দৈনিক লিমিট নেই (owner rule) ---- */
+  store.docs['tasks/u-free'] = {
+    nameBn: 'আনলিমিটেড সেল', reward: 4, enabled: true,
+    inputFields: [{ label: 'Email', type: 'email', required: true }],
+  };
+  store.docs['users/u1'] = { balance: 0, totalEarned: 0, isActive: true, name: 'U1', email: 'u1@test.com', mobile: '01711111111' };
+  fake.TOKENS.TOKEN_U1 = { uid: 'u1', email: 'u1@test.com' };
+  const codes = [];
+  for (let i = 0; i < 12; i++) {
+    const r = res();
+    await submitH(req('POST', auth('TOKEN_U1'), { taskSlug: 'u-free', data: { Email: 'u' + i + '@test.com' } }, '/api/proof/submit'), r);
+    codes.push(r.statusCode);
+  }
+  check('U1 dailyLimit নেই এমন account-sell টাস্কে ১২টা submit-ই গৃহীত (কোনো 429 নেই)',
+    codes.every(c => c === 200) && countU('users/u1/proofs/') === 12, codes.join(',') + ' proofs=' + countU('users/u1/proofs/'));
+  const sellT = (await import('../src/tasks-data.js')).TASKS.filter(t => /-sale$/.test(t.slug));
+  check('U1 বিল্ট-ইন একাউন্ট সেল টাস্কগুলোতে dailyLimit ০ = আনলিমিটেড',
+    sellT.length >= 3 && sellT.every(t => Number(t.dailyLimit) === 0),
+    sellT.map(t => t.slug + ':' + t.dailyLimit).join(' '));
+
+  /* ---- U2: admin চাইলে ক্যাপ দেওয়া যায় (0 = আনলিমিটেড) ---- */
+  store.docs['tasks/u-cap'] = {
+    nameBn: 'ক্যাপওয়ালা সেল', reward: 4, enabled: true, dailyLimit: 2,
+    inputFields: [{ label: 'Email', type: 'email', required: true }],
+  };
+  const capped = [];
+  for (let i = 0; i < 3; i++) {
+    const r = res();
+    await submitH(req('POST', auth('TOKEN_U1'), { taskSlug: 'u-cap', data: { Email: 'cap' + i + '@test.com' } }, '/api/proof/submit'), r);
+    capped.push(r.statusCode);
+  }
+  check('U2 dailyLimit 2 দিলে ৩তমটা 429 (ক্যাপ ইচ্ছে করলেই)', capped.join(',') === '200,200,429', capped.join(','));
+
+  /* ---- U3: admins/{email} doc id-এর কেস আলাদা → তবুও admin access ---- */
+  store.docs['admins/Admin@U3.com'] = { email: 'Admin@U3.com', role: 'owner', active: true };
+  store.docs['users/u3'] = { balance: 0, name: 'U3', email: 'admin@u3.com', isActive: true };
+  store.docs['users/u3b'] = { balance: 0, name: 'U3B', email: 'field@u3.com', isActive: true };
+  store.docs['users/u3c'] = { balance: 0, name: 'U3C', email: 'not-an-admin@u3.com', isActive: true };
+  fake.TOKENS.TOKEN_U3 = { uid: 'u3', email: 'admin@u3.com' };
+  let r3 = res();
+  await routerH(req('POST', auth('TOKEN_U3'), {}, '/api/admin/panel?op=verify'), r3);
+  check('U3 token email lowercase, doc id mixed-case → panel আবার isAdmin: true',
+    r3.statusCode === 200 && json(r3).isAdmin === true, r3.body.slice(0, 90));
+  store.docs['admins/whatever-id-7'] = { email: 'field@u3.com', role: 'owner', active: true };
+  fake.TOKENS.TOKEN_U3B = { uid: 'u3b', email: 'field@u3.com' };
+  r3 = res();
+  await routerH(req('POST', auth('TOKEN_U3B'), {}, '/api/admin/panel?op=verify'), r3);
+  check('U3b doc id ভিন্ন হলেও email field query fallback কাজ করে',
+    r3.statusCode === 200 && json(r3).isAdmin === true, r3.body.slice(0, 90));
+  fake.TOKENS.TOKEN_U3C = { uid: 'u3c', email: 'not-an-admin@u3.com' };
+  r3 = res();
+  await routerH(req('POST', auth('TOKEN_U3C'), {}, '/api/admin/panel?op=verify'), r3);
+  check('U3c অ্যাডমিন নয় → isAdmin false/403 (rules বন্ধ, API-ই gate)',
+    (r3.statusCode === 200 && json(r3).isAdmin === false) || r3.statusCode === 403, r3.statusCode + ' ' + r3.body.slice(0, 70));
+
+  /* ---- U4: private/target notice এখন server (?op=write) দিয়ে লেখে ---- */
+  const noticeAdd = async (body) => { const r = res(); await routerH(req('POST', auth(ADMIN), body, '/api/admin/panel?op=write'), r); return { r, j: json(r) }; };
+  store.docs['users/u4'] = { balance: 0, name: 'U4', email: 'u4@test.com', mobile: '01744444444' };
+  const a1 = await noticeAdd({ what: 'target-notice-add', uid: 'u4', notice: { title: 'সতর্কবার্তা', body: 'একই account বারবার দিয়েছেন — পরে ব্যবস্থা নেওয়া হবে', type: 'warning' } });
+  const nid = a1.j.id;
+  check('U4 notice doc users/u4/targetNotices/{id}-এ বসে (panel direct Firestore করে না)',
+    a1.r.statusCode === 200 && !!nid && !!store.docs['users/u4/targetNotices/' + nid], a1.r.body.slice(0, 110));
+  const nDoc = store.docs['users/u4/targetNotices/' + nid] || {};
+  check('U4 notice doc fields: targetType/user, enabled, warning, createdBy lowercase',
+    nDoc.targetType === 'user' && nDoc.targetUserId === 'u4' && nDoc.enabled === true &&
+    nDoc.type === 'warning' && String(nDoc.createdBy || '').indexOf('@') > 0, JSON.stringify(nDoc).slice(0, 150));
+  const a2 = await noticeAdd({ what: 'target-notice-add', uid: 'u4', notice: { title: '', body: '' } });
+  check('U4 খালি শিরোনাম/নোটিশ → 400 (doc লেখা হয় না)', a2.r.statusCode === 400, a2.r.statusCode + ' ' + a2.r.body.slice(0, 60));
+  const a3 = await noticeAdd({ what: 'target-notice-add', uid: '../../x', notice: { title: 'a', body: 'b' } });
+  check('U4 Invalid uid path traversal → 400', a3.r.statusCode === 400, a3.r.statusCode + '');
+  const a4 = await noticeAdd({ what: 'target-notice-update', uid: 'u4', id: nid, enabled: false });
+  check('U4 update → enabled false (চিহ্নিত user ছাড়া আর দেখায় না)',
+    a4.r.statusCode === 200 && store.docs['users/u4/targetNotices/' + nid].enabled === false, a4.r.body.slice(0, 80));
+  const a5 = await noticeAdd({ what: 'target-notice-delete', uid: 'u4', id: nid });
+  check('U4 delete → doc মুছে যায়', a5.r.statusCode === 200 && !store.docs['users/u4/targetNotices/' + nid], JSON.stringify(a5.j).slice(0, 80));
+  const a6 = await noticeAdd({ what: 'target-notice-delete', uid: 'u4', id: '../nope' });
+  check('U4 invalid notice id → 400', a6.r.statusCode === 400, a6.r.statusCode + '');
+
+  /* ---- U5: panel-এর কোডে আর direct Firestore নেই ---- */
+  const core = fsU.readFileSync('src/admin/core.js', 'utf8');
+  check('U5 src/admin/core.js → setDoc/updateDoc/deleteDoc/getDocs call নেই (সব ?op=)',
+    !/\bsetDoc\s*\(/.test(core) && !/\bupdateDoc\s*\(/.test(core) && !/\bdeleteDoc\s*\(/.test(core) && !/\bgetDocs\s*\(/.test(core),
+    'still direct');
+  check('U5 firestore import শুধু getFirestore/serverTimestamp',
+    /from 'firebase\/firestore';/.test(core) && !/getDocs|setDoc\b|updateDoc\b/.test(core.split('from \'firebase/firestore\'')[0]),
+    'import list');
+
+  /* ---- U6: rules — admin surface client-এর জন্য বন্ধ, user rules অটুট ---- */
+  const rules = fsU.readFileSync('firestore.rules', 'utf8');
+  check('U6 rules: proofs/deposits/withdrawals/admins/adminJoins browser থেকে সম্পূর্ণ বন্ধ',
+    ['proofs/{proofId}', 'deposits/{depositId}', 'withdrawals/{wdId}', 'admins/{email}', 'adminJoins/{email}']
+      .every(p => new RegExp('match /' + p.replace(/[{}]/g, m => '\\' + m) + ' \\{ allow read, write: if false; \\}').test(rules)),
+    'queue not closed');
+  check('U6 rules: settings/secret (ও settings/site ছাড়া বাকি সব) পড়া বন্ধ',
+    /match \/settings\/\{other\} \{\s*allow read, write: if false;/.test(rules));
+  check('U6 rules: tasks/notices public read, write server-only',
+    /match \/tasks\/\{taskId\} \{\s*allow get, list: if true;\s*allow write: if false;/.test(rules) &&
+    /match \/notices\/\{noticeId\} \{\s*allow get, list: if true;\s*allow write: if false;/.test(rules));
+  check('U6 rules: user update শুধু name, subcollection লেখা বন্ধ',
+    /hasOnly\(\['name'\]\)/.test(rules) && /allow update: if safeProfileWrite\(\);/.test(rules) &&
+    /match \/\{doc=\*\*\} \{\s*allow read: if isSelf\(\);\s*allow write: if false;/.test(rules));
+  check('U6 rules: referral team read signed-in (leaderboard/team page ভাঙে না)',
+    /match \/team\/\{childUid\} \{\s*allow get, list: if signedIn\(\);/.test(rules));
+  check('U6 rules: rules-engine-এ isAdmin() আর নেই — panel API-only, তাই permission-denied সম্ভব না',
+    !/function isAdmin\(/.test(rules));
+  check('U6 rules: user page ভাঙা copy নাই (tasks list limit 200 client পড়া থাকে)',
+    fsU.readFileSync('src/core/api.js', 'utf8').includes("collection(db, 'tasks')"));
+
+  /* ---- U7: MicroJob slot rule — requiredUsers পূর্ণ হলে জব বন্ধ, করে ফেলা user-এর কাছে hide ---- */
+  const MJ = await import('../src/core/microjobs.js');
+  const full50 = { slug: 'mj50', nameBn: '৫০ জন দরকার', reward: 2, kind: 'microjob', requiredUsers: 50, approvedCount: 50, enabled: true, mode: 'single' };
+  const open10 = { slug: 'mj10', nameBn: '১০ জন দরকার', reward: 1, kind: 'microjob', requiredUsers: 10, approvedCount: 3, enabled: true, mode: 'single' };
+  check('U7 50/50 approved → FULL (নতুন submit নেয় না)', MJ.isFull(full50) && !MJ.isOpenToNewSubmissions(full50),
+    'remaining=' + MJ.remainingOf(full50));
+  check('U7 বাকি সংখ্যা ঠিক (10 − 3 = 7)', MJ.remainingOf(open10) === 7);
+  const doneProof = [{ taskSlug: 'mj50', status: 'approved' }];
+  const stDone = MJ.stateOf(full50, doneProof);
+  check('U7 যে user কাজটা শেষ করেছে → state APPROVED + list থেকে hide',
+    stDone === MJ.ST.APPROVED && MJ.visibleForUser(full50, stDone) === false, String(stDone));
+  const shownFor = (proofs) => MJ.viewsFor([full50, open10], proofs)
+    .filter(v => v.visible || v.state === MJ.ST.PENDING).map(v => v.slug);
+  const doneList = shownFor(doneProof);
+  check('U7 যে user জবটা শেষ করেছে তার মাইক্রো জব পেজে সেটা নেই — বাকি জব আছে',
+    doneList.indexOf('mj50') < 0 && doneList.indexOf('mj10') >= 0, doneList.join(','));
+  const freshList = shownFor([]);
+  const freshFull = MJ.viewsFor([full50, open10], []).find(v => v.slug === 'mj50');
+  check('U7 slot পূর্ণ হলে জব user পেজ থেকে উঠে যায় (close), খোলা জবটা থাকে',
+    freshList.indexOf('mj50') < 0 && freshList.indexOf('mj10') >= 0, freshList.join(','));
+  check('U7 পূর্ণ জবের state FULL + জমা দেওয়ার গেট বন্ধ',
+    !!freshFull && freshFull.state === MJ.ST.FULL && MJ.submitGate(full50, MJ.ST.FULL).allowed === false,
+    freshFull && freshFull.state);
+  const panelList = MJ.viewsFor([full50, open10], [], { forAdmin: true });
+  check('U7 admin panel-এ পূর্ণ/বন্ধ জবটাও দেখায় (যাতে রিওয়ার্ড/স্ট্যাটাস ম্যানেজ করা যায়)',
+    panelList.some(v => v.slug === 'mj50'), panelList.map(v => v.slug).join(','));
+}
+
 
 console.log('\n=============================');
 console.log(`RESULT: ${pass} passed, ${failN} failed`);
