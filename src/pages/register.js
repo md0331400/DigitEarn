@@ -18,10 +18,10 @@ const refInput = document.getElementById('refCode');
 if (refInput && refFromUrl) refInput.value = refFromUrl;
 
 // tutorial video — admin panel থেকে settings.videoUrl বদলালেই এটা বদলে যাবে;
-// link না থাকলে "Video Coming Soon" দেখাবে
+// link না থাকলে "ভিডিও শীঘ্রই আসছে" দেখাবে
 const videoBox = document.getElementById('registerVideo');
 if (videoBox) {
-  videoBox.innerHTML = videoSoonHtml('Video Coming Soon');
+  videoBox.innerHTML = videoSoonHtml('ভিডিও শীঘ্রই আসছে');
   getSettings()
     .then(settings => {
       const html = videoEmbedHtml(settings.videoUrl);
@@ -117,11 +117,11 @@ async function vRef(quiet = false) {
     if (my !== seq.ref) return state.ref.ok; // পুরনো চেক-এর result — ignore
     if (r.refValid) {
       // সঠিক code → referrer-এর নাম green-এ
-      setField(inp, $m('msgRef'), 'ok', r.refName ? `✓ ${r.refName} — সঠিক referral code` : '✓ সঠিক referral code');
+      setField(inp, $m('msgRef'), 'ok', r.refName ? `✓ ${r.refName} — সঠিক রেফারেল কোড` : '✓ সঠিক রেফারেল কোড');
       state.ref.ok = true; state.ref.checked = true;
       return true;
     }
-    setField(inp, $m('msgRef'), 'err', 'Not registered referral code');
+    setField(inp, $m('msgRef'), 'err', 'এই referral code দিয়ে কেউ নিবন্ধন করেনি');
     state.ref.ok = false; state.ref.checked = true;
     return false;
   } catch (_) {

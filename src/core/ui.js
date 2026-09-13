@@ -41,7 +41,7 @@ export function videoEmbedHtml(url) {
 }
 
 export function videoSoonHtml(text) {
-  return `<div class="video-soon"><i class="fa-solid fa-clapperboard"></i><span>${esc(text || 'Video Coming Soon')}</span></div>`;
+  return `<div class="video-soon"><i class="fa-solid fa-clapperboard"></i><span>${esc(text || 'ভিডিও শীঘ্রই আসছে')}</span></div>`;
 }
 
 /* ---------- project grid (shared between dashboard & landing fallback) ---------- */
