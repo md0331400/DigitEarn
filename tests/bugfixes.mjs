@@ -349,7 +349,10 @@ console.log('\n[F] auth failures are classified, not flattened into "Login requi
   /* handler module গুলোই শুধু check — wallet.js pure helper (কোনো default handler নেই),
      সেটা auth নিজে handle করে না (callers করে) */
   const adminOps = fs.readdirSync('lib/admin')
-    .filter(f => f.endsWith('.js') && !['health.js', 'verify.js', 'wallet.js'].includes(f));
+    /* health/verify = নিজেরা state বলে; wallet.js/team.js = pure helper (handler না);
+       join.js = ইচ্ছা public — Join admin আবেদন (auth লাগলে আবেদনই করা যায় না)
+       ⚠️ join.js-এ requireAdmin নেই বলে T12c আলাদা করে guard করে */
+    .filter(f => f.endsWith('.js') && !['health.js', 'verify.js', 'wallet.js', 'team.js', 'join.js'].includes(f));
   const adminStale = adminOps.filter(f => !/authReject\(res, admin\)/.test(fs.readFileSync('lib/admin/' + f, 'utf8')));
   check('every admin op classifies auth failure too', adminStale.length === 0, `(${adminStale.join(',')})`);
   /* verify.js ইচ্ছা ব্যতিক্রম: সবসময় 200 (enumeration রোধ) — তাই authReject না, state দেখে flag */
@@ -1650,6 +1653,209 @@ console.log('\n[S2] userCopy copy filter');
     /esc\(userCopy\(/.test((await import('node:fs')).default.readFileSync('src/pages/microjobs.js', 'utf8')) &&
     /esc\(userCopy\(t\.nameBn\)\)/.test((await import('node:fs')).default.readFileSync('src/core/ui.js', 'utf8')) &&
     /esc\(userCopy\(f\.label\)\)/.test((await import('node:fs')).default.readFileSync('src/core/jobform.js', 'utf8')));
+}
+
+/* ==== [T] Admin Management — Join admin → approve/reject, suspend, balance + withdraw reject reason ==== */
+console.log('\n[T] admin management, join flow, withdraw reason');
+{
+  const fsT = (await import('node:fs')).default;
+  const mock = await import('./mocks/firebase-admin-fake.mjs');
+  const { TOKENS, AUTH_USERS, RESET_LINKS, seedAuthUser, resetAuthUsers } = mock;
+  resetAuthUsers();
+  TOKENS.TOKEN_JA = { uid: 'ja1', email: 'ja@digitearn.com' };     // Owner
+  TOKENS.TOKEN_JF = { uid: 'jf1', email: 'jf@digitearn.com' };     // Full Access
+  TOKENS.TOKEN_JP = { uid: 'jp1', email: 'jp@digitearn.com' };     // Job Poster
+  TOKENS.TOKEN_WD = { uid: 'wdu', email: 'wdu@t.com' };            // normal user (withdrawal)
+  store.docs['admins/ja@digitearn.com'] = { isAdmin: true, role: 'owner', balance: 0 };
+  store.docs['admins/jf@digitearn.com'] = { isAdmin: true, role: 'full', balance: 0 };
+  store.docs['admins/jp@digitearn.com'] = { isAdmin: true, role: 'poster', balance: 10 };
+  store.docs['users/wdu'] = { balance: 500, totalEarned: 0, isActive: true, name: 'Wdu', email: 'wdu@t.com', mobile: '01711111111' };
+
+  const joinH = (await import('../lib/admin/join.js')).default;
+  const writeH = (await import('../lib/admin/write.js')).default;
+  const readH = (await import('../lib/admin/read.js')).default;
+  const verifyH = (await import('../lib/admin/verify.js')).default;
+  const wdReqH = (await import('../api/withdrawal/request.js')).default;
+  const wdRevH = (await import('../lib/admin/withdrawal-review.js')).default;
+
+  const call = async (h, body, tok, url = '/api/admin/panel?op=write', method = 'POST') => {
+    const r = res();
+    await h(req(method, tok ? auth(tok) : {}, body, url), r);
+    return { s: r.statusCode, d: json(r) };
+  };
+  const W = (b, tok = 'TOKEN_JA') => call(writeH, b, tok, '/api/admin/panel?op=write');
+  const RD = (b, tok = 'TOKEN_JA') => call(readH, b, tok, '/api/admin/panel?op=read');
+  const JOIN = b => call(joinH, b, null, '/api/admin/panel?op=admin-join');
+  const V = tok => call(verifyH, {}, tok, '/api/admin/panel?op=verify');
+  const adminEmail = e => store.docs['admins/' + e] || {};
+
+  /* ---- public apply (no auth) ---- */
+  let r = await JOIN({ email: 'newbie@t.com', fullName: 'New Bie', role: 'poster', note: 'job post করতে চাই' });
+  check('T1 Join admin আবেদন auth ছাড়াই চলে → pending (কোনো access দেয় না)',
+    r.s === 200 && r.d.status === 'pending' && store.docs['adminJoins/newbie@t.com'].status === 'pending' && !adminEmail('newbie@t.com').isAdmin,
+    `(${r.s} ${JSON.stringify(r.d).slice(0, 90)})`);
+  r = await JOIN({ email: 'bad-email', fullName: 'X' });
+  check('T1b ভুল email → 400', r.s === 400, `(${r.s})`);
+  r = await JOIN({ email: 'x@y.com', fullName: 'X', role: 'owner' });
+  check('T1c Owner role চেয়ে আবেদন করা যায় না → 400', r.s === 400, `(${r.s} ${JSON.stringify(r.d).slice(0, 70)})`);
+  r = await JOIN({ email: 'newbie@t.com', fullName: 'Again' });
+  check('T1d একই email নিয়ে তাতাড়াতাড়ি দ্বিতীয় আবেদন → 429 (cooldown)', r.s === 429, `(${r.s})`);
+  r = await JOIN({ email: 'ja@digitearn.com', fullName: 'Dup' });
+  check('T1e যে আগেই admin তার আবেদন → 409', r.s === 409, `(${r.s})`);
+
+  /* ---- permission matrix ---- */
+  r = await RD({ what: 'admin-joins' }, 'TOKEN_JP');
+  check('T2 Job Poster আবেদন list পড়তে পারে না → 403', r.s === 403, `(${r.s})`);
+  r = await W({ what: 'admin-create', email: 'zz@t.com', role: 'poster' }, 'TOKEN_JP');
+  check('T2b Job Poster নতুন admin তৈরি করতে পারে না → 403', r.s === 403, `(${r.s})`);
+  r = await W({ what: 'admin-suspend', email: 'jf@digitearn.com', suspended: true }, 'TOKEN_JP');
+  check('T2c Job Poster কাউকে suspend করতে পারে না → 403', r.s === 403, `(${r.s})`);
+  r = await W({ what: 'admin-balance', email: 'jp@digitearn.com', delta: 5 }, 'TOKEN_JP');
+  check('T2d Job Poster নিজে/কারও balance বদলাতে পারে না → 403', r.s === 403, `(${r.s})`);
+  r = await RD({ what: 'admin-joins' }, 'TOKEN_JF');
+  check('T2e Full Access আবেদন list দেখতে পারে (manager)', r.s === 200 && r.d.items.some(x => x.email === 'newbie@t.com'), `(${r.s})`);
+
+  /* ---- approve: auth user + admins doc + link ---- */
+  r = await W({ what: 'join-approve', email: 'newbie@t.com', role: 'poster' }, 'TOKEN_JF');
+  check('T3 Full Access আবেদন approve করলে admin doc + role poster + balance 0 তৈরি হয়',
+    r.s === 200 && adminEmail('newbie@t.com').role === 'poster' && adminEmail('newbie@t.com').isAdmin === true
+    && Number(adminEmail('newbie@t.com').balance) === 0,
+    `(${r.s} ${JSON.stringify(r.d).slice(0, 110)})`);
+  check('T3b Firebase Auth user-ও server বানায়, password না চাওয়ায় setup link আসে',
+    !!AUTH_USERS['newbie@t.com'] && AUTH_USERS['newbie@t.com'].hasPassword === false && RESET_LINKS.includes('newbie@t.com') && typeof r.d.setupLink === 'string',
+    `(${JSON.stringify(r.d).slice(0, 130)})`);
+  check('T3c আবেদন doc status approved + কে করেছে লেখে',
+    store.docs['adminJoins/newbie@t.com'].status === 'approved' && store.docs['adminJoins/newbie@t.com'].reviewedBy === 'jf@digitearn.com',
+    `(${JSON.stringify(store.docs['adminJoins/newbie@t.com']).slice(0, 130)})`);
+  r = await W({ what: 'join-approve', email: 'newbie@t.com', role: 'poster' }, 'TOKEN_JF');
+  check('T3d একই আবেদন দুবার approve → 409 (double approve না)', r.s === 409, `(${r.s})`);
+
+  /* existing auth user (ধরো আগে normal user ছিল) → link করে দেয়, create fail করে না */
+  await JOIN({ email: 'wasuser@t.com', fullName: 'Was User', role: 'poster' });
+  seedAuthUser('wasuser@t.com', 'fb_old_1');
+  r = await W({ what: 'join-approve', email: 'wasuser@t.com', role: 'full' }, 'TOKEN_JA');
+  check('T3e email-এ Firebase account আগে থেকে থাকলে 409 নয় — uid লিংক হয়',
+    r.s === 200 && r.d.uid === 'fb_old_1' && adminEmail('wasuser@t.com').role === 'full', `(${r.s} ${JSON.stringify(r.d).slice(0, 110)})`);
+
+  /* ---- reject needs reason ---- */
+  await JOIN({ email: 'nope@t.com', fullName: 'No Pe', role: 'poster' });
+  r = await W({ what: 'join-reject', email: 'nope@t.com', reason: '' }, 'TOKEN_JA');
+  check('T4 কারণ না লিখে আবেদন বাতিল → 400', r.s === 400, `(${r.s} ${JSON.stringify(r.d).slice(0, 90)})`);
+  r = await W({ what: 'join-reject', email: 'nope@t.com', reason: 'পরিচয় যাচাই করা যায়নি' }, 'TOKEN_JF');
+  check('T4b কারণ দিলে বাতিল হয় + কারণ doc-এ থাকে', r.s === 200 && store.docs['adminJoins/nope@t.com'].status === 'rejected' && /যাচাই/.test(store.docs['adminJoins/nope@t.com'].reviewNote), `(${r.s})`);
+
+  /* ---- direct create ---- */
+  r = await W({ what: 'admin-create', email: 'poster2@t.com', fullName: 'P Two', role: 'poster', grant: 250, password: 'abcd1234' }, 'TOKEN_JA');
+  check('T5 owner সরাসরি Job Poster তৈরি + শুরুর ব্যালেন্স ৳250',
+    r.s === 200 && adminEmail('poster2@t.com').balance === 250 && AUTH_USERS['poster2@t.com'].hasPassword === true,
+    `(${r.s} ${JSON.stringify(r.d).slice(0, 100)})`);
+  r = await W({ what: 'admin-create', email: 'third@t.com', role: 'owner' }, 'TOKEN_JF');
+  check('T5b Full Access কাউকে Owner বানাতে পারে না → 403', r.s === 403, `(${r.s})`);
+  r = await W({ what: 'admin-create', email: 'poster2@t.com', role: 'poster' }, 'TOKEN_JA');
+  check('T5c আগে থেকে থাকা admin email দিয়ে আবার create → 409', r.s === 409, `(${r.s})`);
+  r = await W({ what: 'admin-role', email: 'jp@digitearn.com', role: 'full' }, 'TOKEN_JF');
+  check('T5d role বদল শুধু Owner-র (Full Access → 403)', r.s === 403, `(${r.s} ${JSON.stringify(r.d).slice(0, 80)})`);
+
+  /* ---- suspend / access lock-out ---- */
+  r = await W({ what: 'admin-suspend', email: 'jp@digitearn.com', suspended: true, reason: 'নিয়ম ভেঙেছে' }, 'TOKEN_JF');
+  check('T6 Full Access, Job Poster-কে suspend করতে পারে',
+    r.s === 200 && adminEmail('jp@digitearn.com').suspended === true && /নিয়ম/.test(adminEmail('jp@digitearn.com').suspendReason),
+    `(${r.s} ${JSON.stringify(r.d).slice(0, 100)})`);
+  r = await V('TOKEN_JP');
+  check('T6b suspend-এর পর verify → isAdmin false (panel লগআউট করে দেয়)', r.s === 200 && r.d.isAdmin === false, `(${JSON.stringify(r.d).slice(0, 90)})`);
+  r = await RD({ what: 'wallet' }, 'TOKEN_JP');
+  check('T6c suspend করা admin আর কোনো read/write op চালাতে পারে না → 403', r.s === 403, `(${r.s})`);
+  r = await W({ what: 'admin-balance', email: 'jp@digitearn.com', delta: 100 }, 'TOKEN_JF');
+  check('T6d suspend-এর পরেও manager balance দিতে পারে (ফেরত/কারেকশনের জন্য) → 200', r.s === 200 && adminEmail('jp@digitearn.com').balance === 110, `(${r.s} bal=${adminEmail('jp@digitearn.com').balance})`);
+  r = await W({ what: 'admin-suspend', email: 'jf@digitearn.com', suspended: true }, 'TOKEN_JF');
+  check('T6e নিজেকে suspend → 400', r.s === 400, `(${r.s} ${JSON.stringify(r.d).slice(0, 80)})`);
+  r = await W({ what: 'admin-suspend', email: 'ja@digitearn.com', suspended: true }, 'TOKEN_JF');
+  check('T6f Full Access, Owner-কে suspend করতে পারে না → 403', r.s === 403, `(${r.s})`);
+  r = await W({ what: 'admin-suspend', email: 'jp@digitearn.com', suspended: false }, 'TOKEN_JA');
+  check('T6g unsuspend করলে আবার access ফেরত', r.s === 200 && (await V('TOKEN_JP')).d.isAdmin === true, `(${r.s})`);
+
+  /* ---- manager/admin list + details ---- */
+  r = await RD({ what: 'admins' }, 'TOKEN_JF');
+  const jp = (r.d.items || []).find(x => x.email === 'jp@digitearn.com');
+  check('T7 Full Access পুরো admin list দেখে (role/balance/suspended সহ)',
+    r.s === 200 && r.d.isManager === true && (r.d.items || []).length >= 3 && jp && jp.role === 'poster' && jp.suspended === false,
+    `(${r.s} n=${(r.d.items || []).length})`);
+  r = await RD({ what: 'admins' }, 'TOKEN_JP');
+  check('T7b Job Poster শুধু নিজেকেই দেখে (admin list ফাঁকা নয় — ১টা row)',
+    r.s === 200 && (r.d.items || []).length === 1 && r.d.items[0].email === 'jp@digitearn.com', `(${JSON.stringify((r.d.items || []).map(x => x.email))})`);
+
+  /* ---- withdrawal: approve/reject + reason ---- */
+  r = await call(wdReqH, { amount: 100, method: 'bKash', accountNumber: '01711111111' }, 'TOKEN_WD', '/api/withdrawal/request');
+  const wdId = Object.keys(store.docs).filter(k => k.startsWith('withdrawals/')).pop().split('/')[1];
+  check('T8 user withdrawal রিকোয়েস্ট → দুইটা copy-তেই pending',
+    r.s === 200 && store.docs['withdrawals/' + wdId].status === 'pending' && store.docs['users/wdu/withdrawals/' + wdId].status === 'pending', `(${r.s})`);
+  r = await call(wdRevH, { userId: 'wdu', id: wdId, action: 'rejected' }, 'TOKEN_JA', '/api/admin/panel?op=withdrawal-review');
+  check('T8b কারণ ছাড়া বাতিল → 400 (server বাধ্যতামূলক করেছে)', r.s === 400 && /কারণ/.test(r.d.error || ''), `(${r.s} ${JSON.stringify(r.d).slice(0, 90)})`);
+  check('T8c 400-এ টাকা ফেরত কাটে না (status pending, balance অক্ষত)',
+    store.docs['withdrawals/' + wdId].status === 'pending' && store.docs['users/wdu'].balance === 400,
+    `(${store.docs['users/wdu'].balance})`);
+  r = await call(wdRevH, { userId: 'wdu', id: wdId, action: 'rejected', note: 'নম্বর ভুল — আবার ঠিক নম্বর দিন' }, 'TOKEN_JA', '/api/admin/panel?op=withdrawal-review');
+  check('T8d কারণসহ বাতিল → 200 + দুইটাই copy-তে কারণ + টাকা ফেরত',
+    r.s === 200 && /নম্বর ভুল/.test(store.docs['withdrawals/' + wdId].note) && /নম্বর ভুল/.test(store.docs['users/wdu/withdrawals/' + wdId].note) && store.docs['users/wdu'].balance === 500,
+    `(${r.s} ${JSON.stringify(store.docs['users/wdu/withdrawals/' + wdId]).slice(0, 130)})`);
+  await call(wdReqH, { amount: 60, method: 'Nagad', accountNumber: '01711111111' }, 'TOKEN_WD', '/api/withdrawal/request');
+  const wdId2 = Object.keys(store.docs).filter(k => k.startsWith('withdrawals/')).pop().split('/')[1];
+  r = await call(wdRevH, { userId: 'wdu', id: wdId2, action: 'paid' }, 'TOKEN_JA', '/api/admin/panel?op=withdrawal-review');
+  check('T8e approve → দুইটাই copy status paid (user-এর history-তে "পেন্ডিং" আর থাকে না)',
+    r.s === 200 && store.docs['withdrawals/' + wdId2].status === 'paid' && store.docs['users/wdu/withdrawals/' + wdId2].status === 'paid',
+    `(${r.s} ${JSON.stringify(r.d).slice(0, 90)})`);
+  r = await RD({ what: 'withdrawals', status: 'pending' }, 'TOKEN_JA');
+  check('T8f admin pending queue approve-এর পর খালি (একই card বারবার দেখায় না)',
+    r.s === 200 && !(r.d.items || []).some(x => x.id === wdId2), `(${JSON.stringify((r.d.items || []).map(x => x.id))})`);
+  r = await call(wdRevH, { userId: 'wdu', id: wdId2, action: 'rejected', note: 'ডাবল ক্লিক' }, 'TOKEN_JA', '/api/admin/panel?op=withdrawal-review');
+  check('T8g paid request আবার বাতিল → 409 + ব্যালেন্স বদলায় না',
+    r.s === 409 && store.docs['users/wdu'].balance === 440, `(${r.s} bal=${store.docs['users/wdu'].balance})`);
+
+  /* ---- UI/source guards (APK-তে prompt() চলে না, তাই in-page modal) ---- */
+  {
+    const src = f => fsT.readFileSync(f, 'utf8');
+    const adm = src('src/admin/main.js');
+    const uses = (adm.match(/askReason\(/g) || []).length;
+    check('T9 reject/বাতিল কারণ in-page modal দিয়ে নেওয়া হয় (prompt() ভরসা নয়) — ৪ জায়গায়',
+      uses >= 4 && /function askReason/.test(adm), `(${uses})`);
+    check('T9b withdrawal review-এ note পাঠানো হয় (cause user দেখে)',
+      /reviewWithdrawal\(w\.userId, w\.id, action, note\)/.test(adm) && /reviewWithdrawal\(selectedUid, b\.dataset\.wdRej, 'rejected', why\)/.test(adm));
+    check('T9c নোটিফিকেশন: bell + badge + native bridge + vibrate (উইথড্র: N BDT, নাম, নম্বর, সময়)',
+      /adm-bell/.test(adm) && /DigitEarnBridge/.test(adm) && /navigator\.vibrate/.test(adm) && /উইথড্র : /.test(adm) && /timeBn\(w\.createdAt\)/.test(adm));
+    check('T9d section গুলো বাঁ দিকের 3-line drawer-এ (horizontal tab strip নেই)',
+      /id="admMenu"/.test(adm) && /adm-drawer/.test(adm) && /fa-solid fa-bars/.test(adm) && !/<nav class="adm-nav">/.test(adm));
+    check('T9e login স্ক্রিনে দুইটা option: Login + Join admin',
+      /data-am="login"/.test(adm) && /data-am="join"/.test(adm) && /applyForAdmin\(/.test(adm));
+    check('T9f admin tab-এর নাম "অ্যাডমিন ম্যানেজমেন্ট" (balance section না)',
+      /label: 'অ্যাডমিন ম্যানেজমেন্ট'/.test(adm) && /Admin Management|অ্যাডমিন তালিকা ও ব্যালেন্স/.test(adm));
+    check('T9g viewTasks-এ val() usage-এর আগেই define (ReferenceError: val is not defined regression)',
+      (() => {
+        const i = adm.indexOf('async function viewTasks');
+        const seg = adm.slice(i, adm.indexOf('\nasync function ', i + 10));
+        const d = seg.indexOf('const val = k =>');
+        const u = seg.indexOf("val('");
+        return d >= 0 && u >= 0 && d < u;
+      })());
+    const kt = src('android/app/src/main/java/com/admin/digitearn/MainActivity.kt');
+    check('T10 APK: WebChromeClient দিয়ে alert/confirm/prompt (আগে চুপচাপ cancel হতো)',
+      /WebChromeClient/.test(kt) && /onJsConfirm/.test(kt) && /onJsPrompt/.test(kt) && /onJsAlert/.test(kt));
+    check('T10b APK: notification channel + POST_NOTIFICATIONS + vibrate',
+      /NotificationChannel/.test(kt) && /POST_NOTIFICATIONS/.test(kt) && /VibrationEffect/.test(kt)
+      && /POST_NOTIFICATIONS/.test(src('android/app/src/main/AndroidManifest.xml')));
+    check('T11 নতুন admin op = panel router-এর ভেতর (Vercel function সংখ্যা ১১)',
+      /'admin-join': handleJoin/.test(src('api/admin/panel.js')) &&
+      (fsT.readdirSync('api', { recursive: true }).filter(x => String(x).endsWith('.js')).length === 11 ||
+       (function () { let n = 0; for (const d of fsT.readdirSync('api')) { const sub = 'api/' + d; if (fsT.statSync(sub).isDirectory()) { for (const f of fsT.readdirSync(sub)) if (f.endsWith('.js')) n++; } else if (d.endsWith('.js')) n++; } return n === 11; })()),
+      `(${fsT.readdirSync('api', { recursive: true }).filter(x => String(x).endsWith('.js')).length})`);
+    check('T11b role/balance verdict কখনো client থেকে আসে না — admin-joins readও manager-gated',
+      /canManage\(roleOf\(meDoc\)\)/.test(src('lib/admin/write.js')) && /শুধু Owner \/ Full Access admin — আবেদন দেখতে পারেন/.test(src('lib/admin/read.js')));
+    check('T12 আবেদন form password চায় না / রাখে না (body.password পড়া হয় না)',
+      !/body\.password/.test(src('lib/admin/join.js')) && !/createUser/.test(src('lib/admin/join.js')));
+    check('T12c join.js ইচ্ছা public (requireAdmin নেই) + team.js-এ cooldown (429) আছে',
+      !/requireAdmin/.test(src('lib/admin/join.js')) && /429/.test(src('lib/admin/team.js')));
+    check('T12b auth error হলেও admin doc লেখে, কারণ panel-এ দেখায় (lock out হয় না)',
+      /authError/.test(src('lib/admin/team.js')) && /out\.authError/.test(adm));
+  }
 }
 
 /* ==== [R0] Bengali text hygiene: ভাঙা অক্ষর (Devanagari/Kannada glyph ঢুকে পড়া) guard ====

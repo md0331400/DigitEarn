@@ -28,7 +28,7 @@ export function friendlyError(err) {
     'auth/too-many-requests': 'অনেকবার চেষ্টা হয়েছে — পরে আবার চেষ্টা করুন',
     'permission-denied': 'অনুমতি নেই — আবার চেষ্টা করুন',
     'unavailable': 'সার্ভারের সাথে কানেকশন সমস্যা — আবার চেষ্টা করুন',
-    'failed-firebase-check': 'Firebase key সঠিক নয় — .env / Vercel variables চেক করুন',
+    'failed-firebase-check': 'সার্ভার যাচাই করা যায়নি — একটু পরে আবার চেষ্টা করুন বা সাপোর্টে যোগাযোগ করুন',
   };
   if (map[err.code]) return map[err.code];
   return 'কিছু একটা সমস্যা হয়েছে — আবার চেষ্টা করুন';
@@ -52,12 +52,13 @@ export async function callApi(path, body = {}, method = 'POST', { anonymous = fa
     const headers = { 'Content-Type': 'application/json' };
     if (!anonymous) {
       const cu = auth.currentUser;
-      if (!cu) throw new Error('Login required — আগে লগইন করুন');
+      if (!cu) throw new Error('আগে লগইন করুন');
       const tok = await cu.getIdToken(forceRefresh);
       /* খালি token হলে 'Bearer undefined' পাঠানো মানে server-এ "Login required" —
          কারণটা এখানেই বলানো ভালো (Firebase config/projectId ভুল হলে এমন হয়) */
       if (!tok || typeof tok !== 'string') {
-        throw new Error('Firebase token পাওয়া যায়নি — একবার লগআউট করে আবার লগইন করুন; বারবার হলে admin-কে জানান (Firebase config দেখা দরকার)');
+        throw new Error(devMsg('লগইন করা যাচ্ছে না — একবার পেজ রিফ্রেশ করে আবার চেষ্টা করুন।',
+          'Admin: Firebase token পাওয়া যায়নি (config/projectId দেখা দরকার)'));
       }
       headers.Authorization = 'Bearer ' + tok;
     }
@@ -100,6 +101,16 @@ export function shouldRetryWithFreshToken(status, data, currentUser) {
   return status === 401;
 }
 
+/** সাধারণ user-কে infra/deploy diagnostic দেখানো হয় না (Confidence §7/§13) — পুরো
+   technical line চাইলে `?debug=1` বা localStorage['de:debug']='1'। ui.js-র build
+   banner-ও এই একই gate ব্যবহার করে। */
+export function apiDebugEnabled() {
+  try {
+    return /[?&]debug=1/.test(location.search) || localStorage.getItem('de:debug') === '1';
+  } catch (_) { return false; }
+}
+const devMsg = (userLine, devLine) => (apiDebugEnabled() ? userLine + ' ' + devLine : userLine);
+
 /* server-এর message-কে user-বোধগম্য করা (lib/http.js authReject-এর reason অনুযায়ী)।
    data.error string না object-ও হতে পারে (Vercel নিজে `{"error":{"code":"401",...}}` দেয়) —
    আগে String(obj) → "[object Object]" দেখাত, সেটাও এখানে ঠিক। */
@@ -111,29 +122,31 @@ export function apiErrorMessage(status, data = {}, opts = {}) {
      সমস্যা; স্পষ্ট না বললে user বারবার login/refresh করতে থাকত (আগে ঠিক তাই হচ্ছিল)। */
   if (status >= 500 && /FUNCTION_INVOCATION_FAILED|DEPLOYMENT_NOT_FOUND|NO_BUILDER|MISSING_FILE/i.test(String(vercelError || ''))
       && !serverApi) {
-    return 'সার্ভারের function চালু হচ্ছে না (' + vercelError + ') — এটা আপনার ভুল না। '
-      + 'Admin-কে জানান: Vercel → Deployments → এই deploy → Functions/Runtime log দেখুন '
-      + '(সাধারণত Node version বা dependency)। verify: `curl -i -X POST /api/user/check`-এ '
-      + '`x-digitearn-api: v3` header থাকা কথা, আর site-এর /version.json মিলিয়ে দেখুন।';
+    return devMsg('সার্ভার এখন চালু নেই — একটু পরে আবার চেষ্টা করুন (আপনার ভুল নয়)।',
+      'Admin: Vercel → Deployments → এই deploy → Functions/Runtime log দেখুন (' + vercelError + ')। '
+      + 'verify: `curl -i -X POST /api/user/check`-এ `x-digitearn-api: v3` header থাকা কথা, '
+      + 'আর /version.json মিলিয়ে দেখুন।');
   }
   /* Vercel Deployment Protection: function-এর আগেই 401 — preview URL/APK থেকে API চলে না */
   if (d.protection || (d.error && typeof d.error === 'object' && String(d.error.code) === '401')) {
-    return 'সার্ভার Vercel Deployment Protection-এ ঢাকা — এই URL থেকে API call করা যায় না। '
-      + 'Production URL (digitearn.vercel.app) ব্যবহার করুন, নয়তো Vercel → Settings → '
-      + 'Deployment Protection → “Protected Deployment URLs” off করুন (না করলে Vercel-এ লগইন করা ব্রাউজারে চালান)।';
+    return devMsg('সার্ভার এই ঠিকানাটা লুকিয়ে রাখছে — মূল সাইটের ঠিকানা (digitearn.vercel.app) খুলুন।',
+      'Admin: Vercel → Settings → Deployment Protection → “Protected Deployment URLs” off করুন, '
+      + 'নাহলে Vercel-এ লগইন করা ব্রাউজারে চালান।');
   }
-  if (!json) return `সার্ভার JSON দেয়নি (HTTP ${status}) — deploy/build ঠিক আছে কিনা দেখুন`;
+  if (!json) return devMsg('সার্ভার ঠিকমতো উত্তর দেয়নি — একটু পরে আবার চেষ্টা করুন।',
+    `(HTTP ${status}) deploy/build ঠিক আছে কিনা দেখুন।`);
   const msg = typeof d.error === 'string' ? d.error : String((d.error && (d.error.message || d.error.code)) || d.message || '');
   if (status === 503 || /configuration|verify করতে পারছে/i.test(msg)) {
-    return 'সার্ভার সেটআপ ঠিক নেই — API token verify হচ্ছে না, admin-কে জানান' + (msg ? ` (${msg})` : '');
+    return devMsg('সার্ভারের সেটআপ ঠিক নেই — একটু পরে আবার চেষ্টা করুন।',
+      'Admin: API token verify হচ্ছে না' + (msg ? ` (${msg})` : ''));
   }
   /* serverApi খালি মানে এই response আমাদের নতুন api/ code-এর না (lib/http.js API_VERSION
      header পাঠায়) → পুরোনো/অসম্পূর্ণ deploy */
   const stale = (status === 401 || status === 403) && !serverApi
-    ? ' (সার্ভারের build পুরোনো মনে হচ্ছে — api/ + lib/ ফাইলগুলো deploy হয়েছে কিনা Vercel-এ দেখুন)'
+    ? ' (সার্ভারের build পুরোনো মনে হচ্ছে — api/ + lib/ deploy হয়েছে কিনা Vercel-এ দেখুন)'
     : '';
   if (status === 401) return 'লগইন হারিয়ে গেছে — একবার refresh করে আবার চেষ্টা করুন' + (msg ? ` (${msg})` : '') + stale;
-  return msg || `Server error (${status}) — আবার চেষ্টা করুন`;
+  return msg || (apiDebugEnabled() ? `সার্ভারে সমস্যা (HTTP ${status}) — আবার চেষ্টা করুন` : 'সার্ভারে সমস্যা — একটু পরে আবার চেষ্টা করুন');
 }
 
 /* ---------- auth ---------- */
@@ -229,7 +242,7 @@ export async function activateAccount(uid) {
    যোগ হয় (api/proof/submit → admin proof-review)। আগে এখানে /api/task/claim কল হতো
    যে endpoint কখনো তৈরিই হয়নি (404)। ভুল করে কেউ ব্যবহার করলে যাতে বোঝে: */
 export async function claimTask() {
-  throw new Error('Direct claim বন্ধ — account submit করুন, admin approve করলেই টাকা যোগ হবে');
+  throw new Error('এই পদ্ধতিটি বন্ধ আছে — কাজ জমা দিলে রিভিউ শেষে টাকা যোগ হবে');
 }
 
 export async function claimGift(uid, code) {

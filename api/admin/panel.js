@@ -13,6 +13,7 @@
      POST /api/admin/panel?op=secret          (settings/secret read+write — Admin SDK)
    POST /api/admin/panel?op=health          (auth/env self-check — "Login required" er karon ber korar jonno)
    POST /api/admin/panel?op=seed-tasks      (missing tasks/{slug} docs created from src/tasks-data.js)
+   POST /api/admin/panel?op=admin-join  (public: Join admin আবেদন — admin access দেয় না)
    নতুন op যোগ করা = lib/admin/<name>.js + এই HANDLERS map — নতুন function file না। */
 import { cors, fail } from '../../lib/http.js';
 import { default as handleVerify } from '../../lib/admin/verify.js';
@@ -24,6 +25,7 @@ import { default as handleNoticeTargeted } from '../../lib/admin/notice-targeted
 import { default as handleSecret } from '../../lib/admin/secret.js';
 import { default as handleHealth } from '../../lib/admin/health.js';
 import { default as handleSeedTasks } from '../../lib/admin/seed-tasks.js';
+import { default as handleJoin } from '../../lib/admin/join.js';
 import { default as handleRead } from '../../lib/admin/read.js';
 import { default as handleWrite } from '../../lib/admin/write.js';
 
@@ -41,6 +43,8 @@ const HANDLERS = {
      read/write করলে rules-এর isAdmin() fail-এ পুরো panel অচল হয়ে যেত */
   read: handleRead,
   write: handleWrite,
+  /* public (auth লাগে না) — 'Join admin' আবেদন; approve হয় panel থেকে */
+  'admin-join': handleJoin,
 };
 
 export default async function handler(req, res) {

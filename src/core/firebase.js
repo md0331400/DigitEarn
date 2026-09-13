@@ -29,9 +29,15 @@ if (!firebaseReady && typeof window !== 'undefined' && typeof document !== 'unde
       const bar = document.createElement('div');
       bar.id = 'deployWarn';
       bar.style.cssText = 'background:#fee2e2;border-bottom:1px solid #dc2626;color:#7f1d1d;padding:9px 14px;font-size:12.5px;text-align:center';
-      bar.innerHTML = '<b>এই বিল্ডে Firebase config নেই</b> — login/register/submit কাজ করবে না। '
-        + 'Vercel → Settings → Environment Variables → VITE_FIREBASE_* (<b>Production</b>, Sensitive নয়) বসিয়ে Redeploy করুন।'
-        + ` <span style="opacity:.7">(build: ${String(v.commit || v.buildId || '?')})</span>`;
+      /* user-facing: সাধারণ ভিজিটরকে ইনফ্রা-ডায়াগনস্টিক দেখানো হয় না (Confidence §7/§13) —
+         Vercel env / build id শুধু `?debug=1` বা localStorage['de:debug']='1' থাকলে দেখায় (ui.js-এর build banner-এর নিয়মের মতোই) */
+      let dbg = false;
+      try { dbg = /[?&]debug=1/.test(location.search) || localStorage.getItem('de:debug') === '1'; } catch (_) {}
+      bar.innerHTML = dbg
+        ? '<b>এই বিল্ডে Firebase config নেই</b> — login/register/submit কাজ করবে না। '
+          + 'Vercel → Settings → Environment Variables → VITE_FIREBASE_* (<b>Production</b>, Sensitive নয়) বসিয়ে Redeploy করুন।'
+          + ` <span style="opacity:.7">(build: ${String(v.commit || v.buildId || '?')})</span>`
+        : 'সাইট এখন ঠিকমতো কাজ করছে না — একটু পরে আবার চেষ্টা করুন বা সাপোর্টে যোগাযোগ করুন।';
       document.body.insertBefore(bar, document.body.firstChild);
     } catch (_) { /* diagnostic never breaks the app */ }
   });

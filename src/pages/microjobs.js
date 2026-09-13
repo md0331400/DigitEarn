@@ -67,7 +67,7 @@ const { all } = await getMicrojobs(user.uid, actOpts);
       box.innerHTML = `
         <a class="mj-history" href="/history.html">
           <span class="mj-history-ico"><i class="fa-solid fa-clock-rotate-left"></i></span>
-          <span><b>আপনার জমা দেওয়া কাজ</b><small>সব submission আর status দেখুন</small></span>
+          <span><b>আপনার জমা দেওয়া কাজ</b><small>সব জমা ও অবস্থা দেখুন</small></span>
           <i class="fa-solid fa-arrow-right"></i>
         </a>
         ${jobs.length

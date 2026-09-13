@@ -21,9 +21,9 @@ bootAppPage({
       box.innerHTML = `
         <div class="center-lock">
           <div class="lock-dot-green"><i class="fa-solid fa-circle-check"></i></div>
-          <h2 class="locked-title">আপনার একাউন্ট অ্যাক্টিভ!</h2>
+          <h2 class="locked-title">আপনার একাউন্ট চালু আছে!</h2>
           <p class="muted">সব টাস্ক আনলকড — এখন কাজ শুরু করুন।</p>
-          <a href="/dashboard.html" class="btn btn-gold btn-block">Dashboard-এ ফিরে যান</a>
+          <a href="/dashboard.html" class="btn btn-gold btn-block">ড্যাশবোর্ডে ফিরে যান</a>
         </div>`;
       return;
     }
@@ -47,29 +47,29 @@ bootAppPage({
       ${pending ? `
         <div class="pending-box">
           <i class="fa-solid fa-hourglass-half"></i>
-          <div><b>Deposit Review-এ আছে</b>
-          <span>আপনার payment proof (${esc(pending.method)}) admin review করছে। Approve হলেই একাউন্ট অ্যাক্টিভ হবে + ৳${bonus} বোনাস পাবেন।</span></div>
+          <div><b>ডিপোজিট রিভিউতে আছে</b>
+          <span>আপনার পাঠানো প্রমাণ (${esc(pending.method)}) দেখা হচ্ছে — অনুমোদন হলেই একাউন্ট চালু হবে + ৳${bonus} বোনাস পাবেন।</span></div>
         </div>
         ${pending.image ? `<div class="proof-thumbs"><img class="proof-thumb" src="${esc(pending.image)}" alt="payment proof"></div>` : ''}`
         : last && last.status === 'rejected' ? `
         <div class="reject-box">
           <i class="fa-solid fa-circle-xmark"></i>
-          <div><b>Deposit Reject হয়েছে।</b>${last.note ? `<span>${esc(last.note)}</span>` : '<span>সঠিক amount ও Transaction ID দিয়ে আবার চেষ্টা করুন।</span>'}</div>
+          <div><b>ডিপোজিট বাতিল হয়েছে।</b>${last.note ? `<span>${esc(last.note)}</span>` : '<span>ঠিক পরিমাণ ও লেনদেন আইডি দিয়ে আবার চেষ্টা করুন।</span>'}</div>
         </div>`
         : ''}
 
       ${methods.length ? `
         <div class="card" style="margin-top:14px">
-          <h4 class="sec-title"><i class="fa-solid fa-credit-card" style="color:var(--gold-deep)"></i> কীভাবে Deposit করবেন</h4>
+          <h4 class="sec-title"><i class="fa-solid fa-credit-card" style="color:var(--gold-deep)"></i> কীভাবে জমা দেবেন</h4>
           <div class="steps-list">
             ${methods.map((m, i) => `
-              <div class="step-line"><b class="step-num">${i + 1}</b><span><b style="color:${m.color}">${m.label}</b> নম্বরে <b>${esc(settings[m.field])}</b> (Send Money) — Amount: <b>৳${fee}</b></span></div>`).join('')}
-            <div class="step-line"><b class="step-num">${methods.length + 1}</b><span>Payment-এর <b>Transaction ID (TrxID)</b> খাতায় লিখে রাখুন</span></div>
-            <div class="step-line"><b class="step-num">${methods.length + 2}</b><span>নিচের ফর্মে <b>TrxID + sender number</b> দিয়ে submit করুন</span></div>
+              <div class="step-line"><b class="step-num">${i + 1}</b><span><b style="color:${m.color}">${m.label}</b> নম্বরে <b>${esc(settings[m.field])}</b> (টাকা পাঠান) — পরিমাণ: <b>৳${fee}</b></span></div>`).join('')}
+            <div class="step-line"><b class="step-num">${methods.length + 1}</b><span>পেমেন্টের <b>লেনদেন আইডি (TrxID)</b> খাতায় লিখে রাখুন</span></div>
+            <div class="step-line"><b class="step-num">${methods.length + 2}</b><span>নিচের ফর্মে <b>TrxID ও পাঠানোর নম্বর</b> দিয়ে জমা দিন</span></div>
           </div>
         </div>
         <div class="card" style="margin-top:14px">
-          <h4 class="sec-title"><i class="fa-solid fa-file-shield" style="color:var(--gold-deep)"></i> Deposit Submit</h4>
+          <h4 class="sec-title"><i class="fa-solid fa-file-shield" style="color:var(--gold-deep)"></i> ডিপোজিট জমা দিন</h4>
           <p class="muted" style="font-size:12.5px;margin-bottom:10px">Payment method select করুন:</p>
           <div class="pay-methods">
             ${methods.map((m, i) => `
@@ -79,11 +79,11 @@ bootAppPage({
                 <b>${m.label}</b>
               </label>`).join('')}
           </div>
-          <div class="dep-send-box">Send <b>৳${fee}</b> to this <span id="depMethodLabel">${esc(methods[0].label).toUpperCase()}</span> number:<br><span class="dep-num" id="depNumber">${esc(settings[methods[0].field])}</span> <small>(Personal)</small></div>
-          <input type="text" id="depTrxId" class="input-field" placeholder="Transaction ID (TrxID)" maxlength="30">
+          <div class="dep-send-box"><span id="depMethodLabel">${esc(methods[0].label).toUpperCase()}</span> নম্বরে <b>৳${fee}</b> পাঠান:<br><span class="dep-num" id="depNumber">${esc(settings[methods[0].field])}</span> <small>(পার্সোনাল)</small></div>
+          <input type="text" id="depTrxId" class="input-field" placeholder="লেনদেন আইডি (TrxID)" maxlength="30">
           <input type="tel" id="depSender" class="input-field" placeholder="Sender Number — যে নম্বর থেকে টাকা পাঠিয়েছেন (01XXXXXXXXX)" maxlength="13">
-          <button type="button" id="depSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> Deposit Submit করুন</button>
-          <p class="muted" style="font-size:11.5px;margin-top:10px;text-align:center">Admin review করে approve করলেই একাউন্ট অ্যাক্টিভ হবে।</p>
+          <button type="button" id="depSubmitBtn" class="btn btn-green btn-block" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> ডিপোজিট জমা দিন</button>
+          <p class="muted" style="font-size:11.5px;margin-top:10px;text-align:center">রিভিউ শেষ হলেই একাউন্ট চালু হয়ে যাবে।</p>
         </div>`
       : `
         <div class="card" style="margin-top:14px">
@@ -114,7 +114,7 @@ bootAppPage({
       submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
       try {
         await submitDeposit(user.uid, { method, trxId, senderNumber: sender, amount: fee });
-        toast('Deposit Submit হয়েছে — Admin review করবে');
+        toast('ডিপোজিট জমা পড়েছে — রিভিউ শেষ হলে ব্যালেন্সে যোগ হবে');
         location.reload();
       } catch (err) {
         toast(err.message, 'error');

@@ -11,7 +11,7 @@ bootAppPage({
       <div class="card balance-card">
         <div class="bc-label">আপনার ব্যালেন্স</div>
         <div class="bc-amount">${fmtBDT(user.balance)}</div>
-        <div class="bc-sub">মোট আর্নড: ${fmtBDT(user.totalEarned)}</div>
+        <div class="bc-sub">মোট আয়: ${fmtBDT(user.totalEarned)}</div>
       </div>
       ${user.isActive ? `
       <div class="card">
@@ -19,7 +19,7 @@ bootAppPage({
         <p class="muted" style="margin-bottom:14px;font-size:13px">ন্যূনতম উইথড্র: ${fmtBDT(settings.minWithdraw)} • পেমেন্ট: bKash / Nagad / Rocket</p>
         <form id="wdForm">
           <label class="fld-label">টাকার পরিমাণ (৳)</label>
-          <input type="number" name="amount" min="${settings.minWithdraw}" max="${Math.floor(user.balance)}" step="1" placeholder="যেমন: 100" required>
+          <input type="number" name="amount" min="${settings.minWithdraw}" max="${Math.floor(user.balance)}" step="1" placeholder="যেমন: ১০০" required>
           <label class="fld-label">পেমেন্ট মেথড</label>
           <div class="method-row">
             ${[
@@ -47,7 +47,7 @@ bootAppPage({
              পেজে রিলোড (কোনো কাজ না, user-ও বোঝে না কী হয়েছে)। এখন স্পষ্ট বার্তা। */
           : `<div class="btn btn-orange" style="opacity:.65;cursor:not-allowed"><i class="fa-solid fa-triangle-exclamation"></i> অ্যাডমিন এখনো এক্টিভেশন লিংক সেট করেননি</div>`}
       </div>`}
-      <div class="back-link"><a href="/history.html"><i class="fa-solid fa-clock-rotate-left"></i> Payment History দেখুন</a></div>`;
+      <div class="back-link"><a href="/history.html"><i class="fa-solid fa-clock-rotate-left"></i> পেমেন্টের ইতিহাস দেখুন</a></div>`;
 
     const form = document.getElementById('wdForm');
     if (form) form.addEventListener('submit', async e => {

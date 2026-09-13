@@ -50,7 +50,7 @@ bootAppPage({
     // reflect live rate
     const rate = Number(task.reward) || 0;
     document.querySelectorAll('[data-reward]').forEach(el => { el.dataset.reward = rate; });
-    document.querySelectorAll('.reward-pill').forEach(el => { el.textContent = `Rate: ৳${rate.toFixed(2)}`; });
+    document.querySelectorAll('.reward-pill').forEach(el => { el.textContent = `প্রতি কাজে ৳${rate.toFixed(2)}`; });
 
     // per-project video guide — admin panel থেকে tasks/{slug}.videoUrl সেট করলেই দেখাবে
     const vidSlot = document.getElementById('taskVideo');
@@ -82,7 +82,7 @@ bootAppPage({
             <div class="lock-ico"><i class="fa-solid fa-lock"></i></div>
             <h3>এই প্রজেক্টটি এখনো লক করা আছে</h3>
             <p>শীঘ্রই খুলে দেওয়া হবে। আপডেট পেতে আমাদের টেলিগ্রাম চ্যানেলে জয়েন করুন।</p>
-            <a href="${esc(settings.telegramLink)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> Join Telegram</a>
+            <a href="${esc(settings.telegramLink)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> টেলিগ্রামে যোগ দিন</a>
           </div>`;
         return;
       }
@@ -176,7 +176,7 @@ bootAppPage({
           ${task.password ? `
           <div class="pw-box">
             <span class="pw-label"><i class="fa-solid fa-key"></i> পাসওয়ার্ড রিকোয়ারমেন্ট:</span>
-            <div class="pw-row"><b>${esc(task.password)}</b><button type="button" id="pwCopyBtn" class="pw-copy"><i class="fa-solid fa-copy"></i> COPY</button></div>
+            <div class="pw-row"><b>${esc(task.password)}</b><button type="button" id="pwCopyBtn" class="pw-copy"><i class="fa-solid fa-copy"></i> কপি</button></div>
           </div>
           <p class="muted" style="font-size:12.5px;margin:-2px 0 12px">যে account বিক্রি করবেন তার পাসওয়ার্ড <b>এটাই</b> সেট করে তারপর জমা দিন।</p>` : ''}
 

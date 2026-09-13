@@ -27,6 +27,23 @@ export function setInitFailure(msg) { state.initError = msg ? new Error(msg) : n
    looks fine in tests and throws `TypeError: app.auth is not a function` in production
    (that is exactly how every endpoint started answering "Login required").
    Auth access = getAuth(app) → our lib exports getAdminAuth(). */
+/* Firebase Auth users (Admin SDK side) — Join admin approve/create flow এখানেই run হয়,
+   তাই createUser/getUserByEmail/generatePasswordResetLink mock লাগে (real SDK-এর সেই surface)। */
+export const AUTH_USERS = {};      /* email(lower) → { uid, email, displayName, hasPassword } */
+export const RESET_LINKS = [];     /* generatePasswordResetLink call log */
+let authSeq = 0;
+export function resetAuthUsers() {
+  for (const k of Object.keys(AUTH_USERS)) delete AUTH_USERS[k];
+  RESET_LINKS.length = 0;
+}
+export function seedAuthUser(email, uid) {
+  const k = String(email).toLowerCase();
+  AUTH_USERS[k] = { uid: uid || ('fb_' + k.replace(/\W+/g, '_')), email: k, displayName: '', hasPassword: true };
+  return AUTH_USERS[k];
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 const AUTH_SERVICE = {
   verifyIdToken: async (t) => {
     const f = FAILURES[t];
@@ -43,6 +60,25 @@ const AUTH_SERVICE = {
       throw e;
     }
     return dec;
+  },
+  getUserByEmail: async (email) => {
+    const u = AUTH_USERS[String(email || '').toLowerCase()];
+    if (!u) { const e = new Error('There is no user record corresponding to this identifier.'); e.code = 'auth/user-not-found'; throw e; }
+    return { uid: u.uid, email: u.email, displayName: u.displayName };
+  },
+  createUser: async (req) => {
+    const email = String((req && req.email) || '').toLowerCase();
+    if (!EMAIL_RE.test(email)) { const e = new Error('The email address is badly formatted.'); e.code = 'auth/invalid-email'; throw e; }
+    if (AUTH_USERS[email]) { const e = new Error('The email address is already in use by another account.'); e.code = 'auth/email-already-in-use'; throw e; }
+    const uid = (req.uid) || ('fb_' + email.replace(/\W+/g, '_') + '_' + (++authSeq));
+    AUTH_USERS[email] = { uid, email, displayName: (req.displayName || ''), hasPassword: !!req.password };
+    return { uid, email };
+  },
+  generatePasswordResetLink: async (email) => {
+    const k = String(email || '').toLowerCase();
+    if (!AUTH_USERS[k]) { const e = new Error('There is no user record corresponding to this identifier.'); e.code = 'auth/user-not-found'; throw e; }
+    RESET_LINKS.push(k);
+    return 'https://example.page.link/?link=https://app/authreset%3FoobCode=FAKE_' + k.replace(/\W+/g, '');
   },
 };
 

@@ -23,20 +23,20 @@ bootAppPage({
       <div class="stat-row2">
         <div class="stat-card2">
           <div class="sc-ico" style="background:#f3e8ff;color:#8b5cf6"><i class="fa-solid fa-users"></i></div>
-          <b>${direct.length}</b><span>Total Refer</span>
+          <b>${direct.length}</b><span>মোট রেফার</span>
         </div>
         <div class="stat-card2">
           <div class="sc-ico" style="background:#dbeafe;color:#2563eb"><i class="fa-solid fa-wallet"></i></div>
-          <b>৳${Number(refIncome).toFixed(0)}</b><span>Ref Income</span>
+          <b>৳${Number(refIncome).toFixed(0)}</b><span>রেফার আয়</span>
         </div>
       </div>
       <div class="card team-card">
         <div class="team-top">
           <div class="team-ico"><i class="fa-solid fa-users"></i></div>
-          <div><h2 class="team-title">My Referral Team</h2></div>
-          <div class="team-size"><span>Team Size:</span><b>${total}</b></div>
+          <div><h2 class="team-title">আমার রেফারেল টিম</h2></div>
+          <div class="team-size"><span>টিম সাইজ:</span><b>${total}</b></div>
         </div>
-        <div class="own-ref">আপনার Referral Code: <b>${esc(user.refCode)}</b><span class="own-ref-note">(নতুন মানুষ register-এ এটা দিবে)</span></div>
+        <div class="own-ref">আপনার রেফারেল কোড: <b>${esc(user.refCode)}</b><span class="own-ref-note">(নতুন মানুষ সাইনআপের সময় এটা দিবে)</span></div>
         <div class="ref-link-box">
           <input type="text" readonly value="${esc(refLink)}" id="refLink">
           <button type="button" class="copy-btn" id="copyRef"><i class="fa-regular fa-copy"></i> Copy</button>

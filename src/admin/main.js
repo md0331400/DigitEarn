@@ -11,6 +11,7 @@ import {
   listTasks, saveTask, seedTasks, deleteTask,
   listJobStats, listJobProofs, createMicrojob, decideProof, syncLeaderboard,
   getWallet, listAdminWallets, setAdminBalance, setAdminRole, setAdminMode, publishMicrojob,
+  listAdminJoins, approveAdminJoin, rejectAdminJoin, createAdminAccount, setAdminSuspended, applyForAdmin,
   getSettings, saveSettings, clearGiftCode,
   listNotices, addNotice, updateNotice, deleteNotice,
   listUserTargetNotices, addTargetedNotice, updateTargetedNotice, deleteTargetedNotice, listTargetedAll,
@@ -29,6 +30,37 @@ function toast(msg, type = 'success') {
   app.appendChild(t);
   requestAnimationFrame(() => t.classList.add('show'));
   setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3200);
+}
+
+/* ---------- reason modal (reject/বাতিল এর কারণ) ----------
+   `prompt()` WebView-এ reliably কাজ করে না (WebChromeClient.onJsPrompt লাগে),
+   তাই in-page modal — web + admin app দুই জায়গাতেই একই রকম। */
+function askReason(title = 'কারণ লিখুন', placeholder = 'কারণ লিখুন — user/আবেদনকারী এটাই দেখবে', opts = {}) {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.className = 'adm-modal';
+    wrap.innerHTML = `<div class="am-box">
+      <h5>${esc(title)}</h5>
+      ${opts.hint ? `<p class="muted">${esc(opts.hint)}</p>` : ''}
+      <textarea class="adm-input" rows="3" maxlength="200" placeholder="${esc(placeholder)}"></textarea>
+      <div class="am-row">
+        <button type="button" class="adm-btn ghost sm" data-x>বাতিল</button>
+        <button type="button" class="adm-btn ${opts.tone === 'green' ? 'green' : 'red'} sm" data-ok>${esc(opts.okLabel || 'পাঠিয়ে দিন')}</button>
+      </div></div>`;
+    app.appendChild(wrap);
+    const ta = wrap.querySelector('textarea');
+    setTimeout(() => ta.focus(), 30);
+    const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') done(null); };
+    document.addEventListener('keydown', onKey);
+    wrap.querySelector('[data-x]').addEventListener('click', () => done(null));
+    wrap.querySelector('[data-ok]').addEventListener('click', () => {
+      const t = String(ta.value || '').trim();
+      if (t.length < 3) { ta.classList.add('bad'); ta.placeholder = 'কমপক্ষে ৩ অক্ষর লিখুন'; return; }
+      done(t);
+    });
+    wrap.addEventListener('click', e => { if (e.target === wrap) done(null); });
+  });
 }
 
 /* ---------- auth ---------- */
@@ -64,22 +96,45 @@ async function adminGate(fbUser) {
   window.addEventListener('hashchange', onHash);
 }
 
-function renderLogin(errMsg = '') {
+function renderLogin(errMsg = '', mode = 'login') {
+  /* দুইটা option — "Login" (already admin) ও "Join admin" (নতুন admin আবেদন)।
+     Join শুধু আবেদন পাঠায়; Owner/Full Access অনুমোদন করলেই account চালু হয়। */
   app.innerHTML = `
     <div class="login-wrap">
       <div class="login-card">
         <div class="login-logo"><i class="fa-solid fa-bolt"></i></div>
         <h1>DigitEarn <span>Admin</span></h1>
-        <p class="muted">Admin panel-এ লগইন করুন</p>
+        <p class="muted">${mode === 'join' ? 'Admin হতে আবেদন পাঠান' : 'Admin panel-এ লগইন করুন'}</p>
+        <div class="auth-tabs" role="tablist">
+          <button type="button" class="auth-tab ${mode === 'login' ? 'on' : ''}" data-am="login"><i class="fa-solid fa-right-to-bracket"></i> Login</button>
+          <button type="button" class="auth-tab ${mode === 'join' ? 'on' : ''}" data-am="join"><i class="fa-solid fa-user-plus"></i> Join admin</button>
+        </div>
         ${errMsg ? `<div class="form-err"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(errMsg)}</div>` : ''}
-        <form id="loginForm">
-          <input type="email" id="lgEmail" class="adm-input" placeholder="Admin email" required>
-          <input type="password" id="lgPass" class="adm-input" placeholder="Password" required>
-          <button class="adm-btn gold" type="submit"><i class="fa-solid fa-right-to-bracket"></i> Login</button>
+        <form id="loginForm" ${mode === 'join' ? 'hidden' : ''}>
+          <input type="email" id="lgEmail" class="adm-input" placeholder="Admin email" required autocomplete="username">
+          <input type="password" id="lgPass" class="adm-input" placeholder="পাসওয়ার্ড" required autocomplete="current-password">
+          <label class="check-label"><input type="checkbox" id="keepLogin" checked> আমাকে মনে রাখুন</label>
+          <button class="adm-btn gold" type="submit"><i class="fa-solid fa-right-to-bracket"></i> লগইন করুন</button>
+          <a href="/forgot-password.html" class="forgot-link">পাসওয়ার্ড ভুলে গেছেন?</a>
+        </form>
+        <form id="joinForm" ${mode === 'join' ? '' : 'hidden'}>
+          <input class="adm-input" id="jName" placeholder="আপনার নাম" maxlength="60" required>
+          <input type="email" class="adm-input" id="jEmail" placeholder="যে email দিয়ে login করবেন" maxlength="120" required autocomplete="email">
+          <select class="adm-input" id="jRole">
+            <option value="poster">Job Poster admin (ব্যালেন্স দিয়ে job প্রকাশ)</option>
+            <option value="full">Full Access admin (সব panel, ব্যালেন্স লাগে না)</option>
+          </select>
+          <textarea class="adm-input" id="jNote" rows="3" maxlength="300" placeholder="কেন admin হতে চান? (১-২ লাইন)"></textarea>
+          <button class="adm-btn gold" type="submit"><i class="fa-solid fa-paper-plane"></i> আবেদন পাঠান</button>
+          <p class="muted" style="font-size:12px;margin-top:8px">আবেদন অনুমোদন হলে আপনাকে একটা পাসওয়ার্ড সেট করার লিংক দেওয়া হবে। এই ফর্মের কোনো লেখা public site-এ দেখায় না।</p>
         </form>
       </div>
     </div>`;
-  document.getElementById('loginForm').addEventListener('submit', async e => {
+
+  app.querySelectorAll('[data-am]').forEach(b => b.addEventListener('click', () => renderLogin('', b.dataset.am)));
+
+  const lf = document.getElementById('loginForm');
+  lf?.addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.target.querySelector('button');
     btn.disabled = true;
@@ -88,8 +143,35 @@ function renderLogin(errMsg = '') {
       await signInWithEmailAndPassword(auth, document.getElementById('lgEmail').value.trim(), document.getElementById('lgPass').value);
     } catch (err) {
       btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Login';
-      renderLogin('Login fail — email/password ঠিক আছে কিনা দেখুন (অথবা এই email-এ Firebase Auth-এ account নেই)।');
+      btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> লগইন করুন';
+      const code = String(err && (err.code || err.message) || '');
+      renderLogin(/user-not-found|wrong-password|invalid-?login/i.test(code)
+        ? 'email বা পাসওয়ার্ড ঠিক নেই (অথবা এই email-এ account নেই) — আবেদন করতে চাইলে “Join admin” টিপুন।'
+        : 'লগইন করা যায়নি: ' + (code.slice(0, 80) || 'আবার চেষ্টা করুন'), 'login');
+    }
+  });
+
+  document.getElementById('joinForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+    try {
+      await applyForAdmin({
+        fullName: document.getElementById('jName').value.trim(),
+        email: document.getElementById('jEmail').value.trim(),
+        role: document.getElementById('jRole').value,
+        note: document.getElementById('jNote').value.trim(),
+      });
+      app.innerHTML = `<div class="login-wrap"><div class="login-card">
+        <div class="login-logo ok"><i class="fa-solid fa-circle-check"></i></div>
+        <h1>আবেদন পাঠানো হয়েছে</h1>
+        <p class="muted">Owner বা Full Access admin অনুমোদন করলে আপনার email-এ পাসওয়ার্ড সেট করার লিংক পাঠানো হবে।</p>
+        <button class="adm-btn gold" id="bkLogin"><i class="fa-solid fa-right-to-bracket"></i> Login</button>
+      </div></div>`;
+      document.getElementById('bkLogin').addEventListener('click', () => renderLogin());
+    } catch (err) {
+      btn.disabled = false;
+      renderLogin(String(err.message || 'আবেদন পাঠানো যায়নি — একটু পরে আবার চেষ্টা করুন'), 'join');
     }
   });
 }
@@ -102,26 +184,114 @@ const NAV = [
   { id: 'withdrawals', label: 'Withdrawals', icon: 'fa-money-bill-transfer' },
   { id: 'users', label: 'Users', icon: 'fa-users' },
   { id: 'microjobs', label: 'MicroJobs', icon: 'fa-briefcase' },
-  { id: 'wallet', label: 'অ্যাডমিন ওয়ালেট', icon: 'fa-wallet' },
+  { id: 'wallet', label: 'অ্যাডমিন ম্যানেজমেন্ট', icon: 'fa-sitemap' },
   { id: 'tasks', label: 'টাস্ক (অ্যাকাউন্ট সেল)', icon: 'fa-store' },
   { id: 'settings', label: 'Settings', icon: 'fa-gear' },
   { id: 'notices', label: 'Notices', icon: 'fa-bullhorn' },
 ];
 
 function renderShell() {
+  /* section গুলো বাঁ দিকের 3-line (hamburger) মেনুতে — মোবাইলে ট্যাব strip স্ক্রল
+     করা কষ্টের ছিল; এখন এক ক্লিকে খুলে যেটা দরকার সেটা টিপলেই ঐ page */
   app.innerHTML = `
     <header class="adm-top">
+      <button class="adm-menu-btn" id="admMenu" aria-label="মেনু খুলুন"><i class="fa-solid fa-bars"></i></button>
       <div class="adm-logo"><i class="fa-solid fa-bolt"></i> DigitEarn <span>Admin</span></div>
       <div class="adm-top-right">
-        <span class="adm-email"><i class="fa-solid fa-user-shield"></i> ${esc(me.email)}</span>
-        <button class="adm-btn ghost sm" id="logoutBtn"><i class="fa-solid fa-right-from-bracket"></i></button>
+        <button class="adm-bell" id="admBell" aria-label="নতুন রিকোয়েস্ট"><i class="fa-solid fa-bell"></i><span class="adm-bell-n" id="bellCount" hidden>0</span></button>
+        <button class="adm-btn ghost sm" id="logoutBtn" aria-label="লগআউট"><i class="fa-solid fa-right-from-bracket"></i></button>
       </div>
     </header>
-    <nav class="adm-nav">${NAV.map(n => `<a href="#/${n.id}" data-nav="${n.id}"><i class="fa-solid ${n.icon}"></i> ${n.label}</a>`).join('')}</nav>
+    <div class="adm-drawer" id="admDrawer" hidden>
+      <div class="adm-drawer-scrim" data-close></div>
+      <nav class="adm-drawer-nav">
+        <div class="adm-drawer-who"><i class="fa-solid fa-user-shield"></i><b>${esc(me.email)}</b><span id="drawerRole" class="muted"></span></div>
+        ${NAV.map(n => `<a href="#/${n.id}" data-nav="${n.id}"><i class="fa-solid ${n.icon}"></i> ${n.label}<span class="dd-n" data-badge="${n.id}" hidden></span></a>`).join('')}
+        <button class="adm-btn ghost sm adm-drawer-out" id="drawerLogout"><i class="fa-solid fa-right-from-bracket"></i> লগআউট</button>
+      </nav>
+    </div>
+    <div class="adm-alerts" id="admAlerts" hidden></div>
     <main class="adm-main" id="admMain"><div class="loading-center"><i class="fa-solid fa-spinner fa-spin"></i></div></main>`;
-  document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+  const go = fn => { document.getElementById('logoutBtn').addEventListener('click', fn); document.getElementById('drawerLogout').addEventListener('click', fn); };
+  go(() => { stopAlerts(); signOut(auth); });
+  const drawer = document.getElementById('admDrawer');
+  document.getElementById('admMenu').addEventListener('click', () => { drawer.hidden = !drawer.hidden; });
+  drawer.addEventListener('click', e => { if (e.target.closest('[data-close]') || e.target.closest('[data-nav]')) drawer.hidden = true; });
+  document.getElementById('admBell').addEventListener('click', () => renderAlerts(true));
+  getWallet().then(w => {
+    const el = document.getElementById('drawerRole');
+    if (!el || !w || w.error) return;
+    el.textContent = (ROLE_LABEL[w.role] || w.role) + (w.needsBalance ? ` · ব্যালেন্স ${fmt(w.balance)}` : '');
+  }).catch(() => {});
   onHash();
+  startAlerts();
 }
+
+/* ---------- নতুন withdrawal রিকোয়েস্ট → admin app/panel-এ নোটিফিকেশন ----------
+   phone/no. push token লাগে না: panel খোলা থাকলে ৪৫ সেকেন্ড পরপর pending queue দেখে,
+   নতুন id পেলে toast + vibrate + bell badge। "পড়া হয়েছে" মার্ক localStorage-এ (per admin)। */
+/** admin app (WebView) থাকলে native notification পাঠায় — browser-এ চুপচাপ skip */
+function nativeNotify(title, body) {
+  try {
+    const br = window.DigitEarnBridge;
+    if (br && typeof br.notify === 'function') br.notify(String(title || ''), String(body || ''));
+  } catch (_) { /* bridge না থাকলে সমস্যা নেই — in-app toast তো আছেই */ }
+}
+
+let alertTimer = null;
+let lastPending = null;
+const seenKey = () => 'de:admSeenWd:' + String((me && me.email) || '');
+const seenIds = () => { try { return new Set(JSON.parse(localStorage.getItem(seenKey()) || '[]')); } catch (_) { return new Set(); } };
+const markSeen = ids => { try { localStorage.setItem(seenKey(), JSON.stringify(ids.slice(-400))); } catch (_) {} };
+
+async function pollAlerts(showAll = false) {
+  if (!document.getElementById('admMain') || !me) return;
+  let items = [];
+  try { items = await listWithdrawals('pending', 50); } catch (_) { return; }   /* network/5xx চুপচাপ — পরের tick */
+  const seen = seenIds();
+  const fresh = showAll ? items : items.filter(x => x && x.id && !seen.has(x.id));
+  lastPending = items;
+  const badge = document.getElementById('bellCount');
+  if (badge) { const n = items.filter(x => x && x.id && !seen.has(x.id)).length; badge.textContent = String(n); badge.hidden = !n; }
+  NAV.forEach(n => { const el = document.querySelector(`[data-badge="${n.id}"]`); if (el && n.id === 'withdrawals') { el.textContent = String(items.length); el.hidden = !items.length; } });
+  renderAlerts(false, items);
+  if (fresh.length) {
+    const first = fresh[0];
+    const who = first.name || first.userId || 'user';
+    const line = `উইথড্র : ${Number(first.amount || 0)} BDT • ${first.accountNumber || '—'}`;
+    toast(`নতুন উইথড্র রিকোয়েস্ট: ${who} — ৳${Number(first.amount || 0)}`, 'error');
+    nativeNotify(`${fresh.length > 1 ? fresh.length + 'টা নতুন উইথড্র রিকোয়েস্ট' : 'নতুন উইথড্র রিকোয়েস্ট — ' + who}`, line);
+    try { navigator.vibrate && navigator.vibrate([140, 70, 140]); } catch (_) {}
+  }
+  markSeen(items.map(x => x.id).filter(Boolean));
+}
+function renderAlerts(open, itemsArg) {
+  const box = document.getElementById('admAlerts');
+  if (!box) return;
+  const items = (itemsArg || lastPending || []).slice(0, 12);
+  if (open && !box.hidden) { box.hidden = true; return; }
+  if (open) box.hidden = false;
+  else if (box.hidden) return;
+  box.innerHTML = `<div class="al-head"><b><i class="fa-solid fa-money-bill-transfer" style="color:#d97706"></i> নতুন উইথড্র রিকোয়েস্ট</b>
+      <button class="adm-btn ghost sm" id="alClose"><i class="fa-solid fa-xmark"></i></button></div>
+    ${items.length ? items.map(w => `
+      <div class="al-row">
+        <span class="al-ico"><i class="fa-solid fa-user"></i></span>
+        <div class="al-txt"><b>${esc(w.name || w.userId || 'User')}</b>
+          <span>উইথড্র : <b>${Number(w.amount || 0)} BDT</b> • ${esc(w.method || '')} • নম্বর ${esc(w.accountNumber || '—')}</span>
+          <span class="muted">${timeBn(w.createdAt)}</span></div>
+        <a class="adm-btn gold sm" href="#/withdrawals" data-alopen>খুলুন</a>
+      </div>`).join('') : '<p class="muted" style="padding:10px 12px">এখনো কোনো অপেক্ষমাণ রিকোয়েস্ট নেই।</p>'}`;
+  document.getElementById('alClose')?.addEventListener('click', () => { box.hidden = true; });
+  box.querySelectorAll('[data-alopen]').forEach(a => a.addEventListener('click', () => { box.hidden = true; }));
+}
+function startAlerts() {
+  stopAlerts();
+  if (!me) return;
+  pollAlerts(false);
+  alertTimer = setInterval(() => pollAlerts(false), 45_000);
+}
+function stopAlerts() { if (alertTimer) clearInterval(alertTimer); alertTimer = null; lastPending = null; }
 
 async function onHash() {
   const view = (window.location.hash || '#/overview').replace('#/', '');
@@ -136,7 +306,7 @@ async function onHash() {
     else if (view === 'users') await viewUsers(main);
     else if (view === 'tasks') await viewTasks(main, 'task');
     else if (view === 'microjobs') await viewTasks(main, 'microjob');
-    else if (view === 'wallet') await viewWallet(main);
+    else if (view === 'wallet' || view === 'admins') await viewWallet(main);
     else if (view === 'settings') await viewSettings(main);
     else if (view === 'notices') await viewNotices(main);
     else await viewOverview(main);
@@ -161,8 +331,8 @@ async function viewOverview(main) {
     <div class="stat-grid">
       <div class="adm-stat gold"><i class="fa-solid fa-users"></i><b>${s.totalUsers}</b><span>মোট ইউজার</span></div>
       <div class="adm-stat green"><i class="fa-solid fa-circle-check"></i><b>${s.activeUsers}</b><span>অ্যাক্টিভ</span></div>
-      <div class="adm-stat red"><i class="fa-solid fa-clipboard-list"></i><b>${s.pendingProofs}</b><span>Task Submissions</span></div>
-      <div class="adm-stat red"><i class="fa-solid fa-money-bill-wave"></i><b>${s.pendingDeposits}</b><span>Deposit Review</span></div>
+      <div class="adm-stat red"><i class="fa-solid fa-clipboard-list"></i><b>${s.pendingProofs}</b><span>জমার রিভিউ</span></div>
+      <div class="adm-stat red"><i class="fa-solid fa-money-bill-wave"></i><b>${s.pendingDeposits}</b><span>ডিপোজিট রিভিউ</span></div>
     </div>
     <div class="adm-card"><h4><i class="fa-solid fa-scale-balanced" style="color:#d97706"></i> মোট Outstanding Balance</h4>
       <div class="big-num">${fmt(s.totalBalance)}</div>
@@ -298,9 +468,9 @@ async function viewProofs(main) {
       ${p.status === 'pending' ? `
       <div class="ai-actions">
         <button class="adm-btn green sm" data-approve="${p.id}"><i class="fa-solid fa-check"></i> Approve +${fmt(p.reward)}</button>
-        <button class="adm-btn red sm" data-rresub="${p.id}"><i class="fa-solid fa-rotate-left"></i> Reject & Allow Resubmit</button>
-        <button class="adm-btn ghost sm" data-rhide="${p.id}"><i class="fa-solid fa-eye-slash"></i> Reject & Hide</button>
-      </div>` : p.status === 'rejected' ? `<p class="ai-note"><i class="fa-solid fa-${p.hiddenForUser ? 'eye-slash' : 'rotate-left'}"></i> ${p.hiddenForUser ? 'Reject & Hide — jobটা শুধু এই user-এর list থেকে লুকানো' : 'Reject & Allow Resubmit — user আবার submit করতে পারবে'}</p>` : ''}
+        <button class="adm-btn red sm" data-rresub="${p.id}"><i class="fa-solid fa-rotate-left"></i> বাতিল — আবার জমা দিতে পারবে</button>
+        <button class="adm-btn ghost sm" data-rhide="${p.id}"><i class="fa-solid fa-eye-slash"></i> বাতিল — এই user থেকে লুকান</button>
+      </div>` : p.status === 'rejected' ? `<p class="ai-note"><i class="fa-solid fa-${p.hiddenForUser ? 'eye-slash' : 'rotate-left'}"></i> ${p.hiddenForUser ? 'বাতিল + লুকানো — jobটা শুধু এই user-এর list থেকে বাদ' : 'বাতিল করা হয়েছে — user ঠিক করে আবার জমা দিতে পারবে'}</p>` : ''}
     </div>`;
   /* Submissions = Microjob অনুযায়ী গ্রুপ (§12): job-এর Required/Approved/Pending/
      Rejected/Remaining + FULL badge, তারপর ওই job-এর submission গুলো। */
@@ -323,7 +493,7 @@ async function viewProofs(main) {
         <span class="warn"><i class="fa-solid fa-hourglass-half"></i> Pending <b>${st ? (Number(st.pending) || 0) : rows.filter(x => x.p.status === 'pending').length}</b></span>
         <span class="bad"><i class="fa-solid fa-xmark"></i> Rejected <b>${st ? (Number(st.rejected) || 0) : 0}</b></span>
         <span><i class="fa-solid fa-user-plus"></i> Remaining <b>${st && st.remaining !== null && st.remaining !== undefined ? st.remaining : '∞'}</b></span>
-        ${st && (st.full || st.closed) ? '<span class="badge red">FULL/CLOSED</span>' : ''}
+        ${st && (st.full || st.closed) ? '<span class="badge red">সম্পূর্ণ/বন্ধ</span>' : ''}
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 0">approve করলে-ই ওই user-এর list থেকে job লুকিয়ে যাবে; Required Users শেষ হলে job স্বয়ংক্রিয়ভাবে FULL হবে (তখন আর approve হয় না)।</p>
     </div>`;
@@ -354,7 +524,8 @@ async function viewProofs(main) {
   /* দুই রকম reject (spec §10): Allow Resubmit = job user-এর list-এ থাকে + warning;
      Hide = শুধু ওই user থেকে লুকানো (job global ভাবে মোছে না, অন্য user পাবে) */
   const rejectWith = async (id, action, okMsg) => {
-    const note = prompt('Reject reason (user দেখবে):') || '';
+    const note = await askReason('Reject — কারণ লিখুন (user এই কারণটাই দেখবে)', 'যেমন: স্ক্রিনশটে নাম দেখা যাচ্ছে না');
+    if (note === null) return;                     /* বাতিল = কিছুই হয় না */
     try {
       await decideProof(id, action, note);
       toast(okMsg);
@@ -402,8 +573,8 @@ async function viewDeposits(main) {
       ${d.status === 'rejected' && d.note ? `<p class="ai-note"><i class="fa-solid fa-note"></i> ${esc(d.note)}</p>` : ''}
       ${d.status === 'pending' ? `
       <div class="ai-actions">
-        <button class="adm-btn green sm" data-dapprove="${d.id}"><i class="fa-solid fa-check"></i> Approve — Account Active</button>
-        <button class="adm-btn red sm" data-dreject="${d.id}"><i class="fa-solid fa-xmark"></i> Reject</button>
+        <button class="adm-btn green sm" data-dapprove="${d.id}"><i class="fa-solid fa-check"></i> অনুমোদন — একাউন্ট চালু</button>
+        <button class="adm-btn red sm" data-dreject="${d.id}"><i class="fa-solid fa-xmark"></i> বাতিল</button>
       </div>` : ''}
     </div>`).join('');
 
@@ -417,7 +588,8 @@ async function viewDeposits(main) {
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
   }));
   box.querySelectorAll('[data-dreject]').forEach(btn => btn.addEventListener('click', async () => {
-    const note = prompt('Reject reason (user দেখবে):') || '';
+    const note = await askReason('ডিপোজিট বাতিল — কারণ লিখুন (user এটাই দেখবে)', 'যেমন: TrxID মেলেনি');
+    if (note === null) return;
     try {
       await rejectDeposit(btn.dataset.dreject, note);
       toast('Deposit reject করা হয়েছে');
@@ -431,7 +603,7 @@ let wdFilter = 'pending';
 async function viewWithdrawals(main) {
   main.innerHTML = `
     <div class="chip-row" id="wdChips">
-      ${['pending', 'paid', 'rejected', 'all'].map(f => `<button class="chip ${f === wdFilter ? 'on' : ''}" data-wf="${f}">${{ pending: 'Pending', paid: 'Paid', rejected: 'Rejected', all: 'সব' }[f]}</button>`).join('')}\n    </div>
+      ${['pending', 'paid', 'rejected', 'all'].map(f => `<button class="chip ${f === wdFilter ? 'on' : ''}" data-wf="${f}">${{ pending: 'অপেক্ষমাণ', paid: 'পাঠানো হয়েছে', rejected: 'বাতিল', all: 'সব' }[f]}</button>`).join('')}\n    </div>
     <div id="wdList"></div>`;
   document.getElementById('wdChips').addEventListener('click', e => {
     const b = e.target.closest('[data-wf]');
@@ -448,28 +620,36 @@ async function viewWithdrawals(main) {
     <div class="adm-item">
       <div class="ai-head">
         <div class="ai-user"><b>${esc(user?.name || w.name || w.userId)}</b><span class="muted">${esc(user?.mobile || '')}</span></div>
-        <span class="badge ${w.status === 'paid' ? 'green' : w.status}">${{ pending: 'PENDING', paid: 'PAID', rejected: 'REJECTED' }[w.status] || w.status}</span>
+        <span class="badge ${w.status === 'paid' ? 'green' : w.status}">${{ pending: 'অপেক্ষমাণ', paid: 'পেমেন্ট পাঠানো', rejected: 'বাতিল' }[w.status] || w.status}</span>
       </div>
       <div class="ai-meta"><i class="fa-solid fa-money-bill-transfer"></i> ${esc(w.method)} • <b class="gold-txt">${fmt(w.amount)}</b> • ${esc(w.accountNumber)}</div>
-      <div class="ai-meta muted-sm">${timeBn(w.createdAt)}${w.processedAt ? ' • processed ' + timeBn(w.processedAt) : ''}</div>
-      ${w.status === 'rejected' && w.note ? `<p class="ai-note"><i class="fa-solid fa-note"></i> ${esc(w.note)}</p>` : ''}
+      <div class="ai-meta muted-sm"><i class="fa-regular fa-clock"></i> ${timeBn(w.createdAt)}${w.processedAt ? ' • প্রসেসড ' + timeBn(w.processedAt) : ''}</div>
+      ${w.note ? `<p class="ai-note ${w.status === 'rejected' ? 'bad' : ''}"><i class="fa-solid fa-note-sticky"></i> ${w.status === 'rejected' ? 'বাতিলের কারণ: ' : 'নোট: '}${esc(w.note)}</p>` : ''}
       ${w.status === 'pending' ? `
       <div class="ai-actions">
-        <button class="adm-btn green sm" data-wpaid="${w.id}"><i class="fa-solid fa-check"></i> Paid (টাকা পাঠানো হয়েছে)</button>
-        <button class="adm-btn red sm" data-wrej="${w.id}"><i class="fa-solid fa-xmark"></i> Reject (টাকা ফেরত)</button>
+        <button class="adm-btn green sm" data-wpaid="${w.id}"><i class="fa-solid fa-check"></i> অনুমোদন — টাকা পাঠানো হয়েছে</button>
+        <button class="adm-btn red sm" data-wrej="${w.id}"><i class="fa-solid fa-xmark"></i> বাতিল — টাকা ফেরত</button>
       </div>` : ''}
     </div>`).join('');
 
   const doReview = async (btn, action) => {
-    if (action === 'paid' && !confirm('এটা Paid মার্ক করবেন? (টাকা send করে ফেলেছেন মানে)')) return;
-    if (action === 'rejected' && !confirm('Reject করলে amount user-এর balance-এ ফেরত যাবে। নিশ্চিত?')) return;
+    const w = list.find(x => x.id === btn.dataset[action === 'paid' ? 'wpaid' : 'wrej']);
+    if (!w) return;
+    let note = '';
+    if (action === 'paid') {
+      if (!confirm(`“${w.name || w.userId || "user"}” এর ${fmt(w.amount)} কি আসল টাকা পাঠানো হয়েছে? অনুমোদন করলে রিকোয়েস্ট বন্ধ হয়ে যাবে (টাকা ইতিমধ্যে কেটা হয়েছে)।`)) return;
+    } else {
+      if (!confirm(`বাতিল করলে ${fmt(w.amount)} user-এর ব্যালেন্সে ফেরত যাবে। নিশ্চিত?`)) return;
+      note = await askReason('বাতিল করার কারণ লিখুন — user এটাই দেখবে', 'যেমন: নম্বর ভুল, আবার ঠিক নম্বর দিয়ে পাঠান');
+      if (note === null) return;                      /* বাতিল = কিছু হয় না */
+    }
     btn.disabled = true;
     try {
-      const w = list.find(x => x.id === btn.dataset[action === 'paid' ? 'wpaid' : 'wrej']);
-      await reviewWithdrawal(w.userId, w.id, action);
-      toast(action === 'paid' ? 'Withdrawal paid মার্ক হয়েছে' : 'Withdrawal reject — টাকা ফেরত হয়েছে');
+      await reviewWithdrawal(w.userId, w.id, action, note);
+      toast(action === 'paid' ? 'অনুমোদিত — পেমেন্ট পাঠানো হিসেবে চিহ্নিত হয়েছে' : 'বাতিল — টাকা ব্যালেন্সে ফেরত গেছে');
+      pollAlerts(true);                                /* bell badge/ list সাথে সাথে আপডেট */
       viewWithdrawals(main);
-    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+    } catch (err) { toast(String(err.message || err), 'error'); btn.disabled = false; }
   };
   box.querySelectorAll('[data-wpaid]').forEach(b => b.addEventListener('click', () => doReview(b, 'paid')));
   box.querySelectorAll('[data-wrej]').forEach(b => b.addEventListener('click', () => doReview(b, 'rejected')));
@@ -492,7 +672,7 @@ async function viewUsers(main) {
       <div class="user-row ${u.uid === selectedUid ? 'on' : ''}" data-uid="${u.uid}">
         <div class="ur-avatar">${esc((u.name || '?').trim()[0].toUpperCase())}</div>
         <div class="ur-info"><b>${esc(u.name || '—')}</b><span class="muted">${esc(u.mobile || '')}</span></div>
-        <div class="ur-right"><b class="gold-txt">${fmt(u.balance)}</b>${u.isActive ? '<span class="badge green">ACTIVE</span>' : '<span class="badge gray">INACTIVE</span>'}</div>
+        <div class="ur-right"><b class="gold-txt">${fmt(u.balance)}</b>${u.isActive ? '<span class="badge green">চালু</span>' : '<span class="badge gray">নিষ্ক্রিয়</span>'}</div>
       </div>`).join('') || '<p class="muted center-note">কোনো ইউজার পাওয়া যায়নি।</p>';
     box.querySelectorAll('[data-uid]').forEach(r => r.addEventListener('click', () => { selectedUid = r.dataset.uid; doList(); doDetail(); }));
     doDetail();
@@ -512,28 +692,28 @@ async function viewUsers(main) {
       <div class="adm-card detail-card">
         <h4><i class="fa-solid fa-user" style="color:#d97706"></i> ${esc(u.name || 'User')} <span class="muted" style="font-weight:500">• ${esc(u.mobile || '')}</span></h4>
         <div class="detail-grid">
-          <div><span class="muted">Balance</span><b>${fmt(u.balance)}</b></div>
-          <div><span class="muted">Total Earned</span><b>${fmt(u.totalEarned)}</b></div>
-          <div><span class="muted">Status</span>${u.isActive ? '<b style="color:#16a34a">ACTIVE</b>' : '<b style="color:#dc2626">INACTIVE</b>'}</div>
-          <div><span class="muted">Joined</span><b>${timeBn(u.createdAt)}</b></div>
+          <div><span class="muted">ব্যালেন্স</span><b>${fmt(u.balance)}</b></div>
+          <div><span class="muted">মোট আয়</span><b>${fmt(u.totalEarned)}</b></div>
+          <div><span class="muted">অবস্থা</span>${u.isActive ? '<b style="color:#16a34a">চালু</b>' : '<b style="color:#dc2626">নিষ্ক্রিয়</b>'}</div>
+          <div><span class="muted">যোগ দেওয়া</span><b>${timeBn(u.createdAt)}</b></div>
         </div>
         <div class="ai-actions">
-          ${u.isActive ? `<button class="adm-btn red sm" data-deact="${u.uid}"><i class="fa-solid fa-ban"></i> Inactive করুন</button>` : `<button class="adm-btn green sm" data-act="${u.uid}"><i class="fa-solid fa-check"></i> Active করুন (manual)</button>`}
+          ${u.isActive ? `<button class="adm-btn red sm" data-deact="${u.uid}"><i class="fa-solid fa-ban"></i> নিষ্ক্রিয় করুন</button>` : `<button class="adm-btn green sm" data-act="${u.uid}"><i class="fa-solid fa-check"></i> চালু করুন</button>`}
         </div>
         <h4 style="margin-top:14px"><i class="fa-solid fa-money-bill-transfer" style="color:#d97706"></i> Withdrawals</h4>
         ${wds.length ? wds.map(w => `<div class="mini-row">
           <b>${esc(w.method)} • ${fmt(w.amount)}</b>
           <span class="muted">${esc(w.accountNumber)} • ${timeBn(w.createdAt)}</span>
           <span class="badge ${w.status === 'paid' ? 'green' : w.status}">${w.status.toUpperCase()}</span>
-          ${w.status === 'pending' ? `<button class="adm-btn green sm" style="margin-left:6px" data-wd-paid="${w.id}">Paid</button><button class="adm-btn red sm" style="margin-left:4px" data-wd-rej="${w.id}">Reject</button>` : ''}
+          ${w.status === 'pending' ? `<button class="adm-btn green sm" style="margin-left:6px" data-wd-paid="${w.id}">অনুমোদন</button><button class="adm-btn red sm" style="margin-left:4px" data-wd-rej="${w.id}">বাতিল</button>` : `<span class="badge ${w.status === 'paid' ? 'green' : 'red'}">${w.status === 'paid' ? 'পাঠানো হয়েছে' : 'বাতিল'}</span>${w.note ? `<br><span class="muted" style="font-size:11.5px">${esc(w.note)}</span>` : ''}` }
         </div>`).join('') : '<p class="muted">কোনো withdrawal নেই।</p>'}
-        <h4 style="margin-top:14px"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626"></i> এই user-এর private Notice/Warning</h4>
+        <h4 style="margin-top:14px"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626"></i> এই user-এর ব্যক্তিগত নোটিশ/সতর্কতা</h4>
         ${tns.length ? tns.map(n => `<div class="mini-row">
-          <b>${n.type === 'warning' ? '⚠️ ' : ''}${esc(n.title || '')} ${n.enabled ? '' : '<span class="badge gray">OFF</span>'}</b>
+          <b>${n.type === 'warning' ? '⚠️ ' : ''}${esc(n.title || '')} ${n.enabled ? '' : '<span class="badge gray">বন্ধ</span>'}</b>
           <span class="muted">${esc(n.body || '')}</span>
-          <span><button class="adm-btn ghost sm" style="margin-left:6px" data-tn-tgl="${n.id}">${n.enabled ? 'Hide' : 'Show'}</button><button class="adm-btn red sm" style="margin-left:4px" data-tn-del="${n.id}">Del</button></span>
+          <span><button class="adm-btn ghost sm" style="margin-left:6px" data-tn-tgl="${n.id}">${n.enabled ? 'লুকান' : 'দেখান'}</button><button class="adm-btn red sm" style="margin-left:4px" data-tn-del="${n.id}">মুছুন</button></span>
         </div>`).join('') : '<p class="muted">কোনো private notice/warning নেই। (Notices tab থেকে পাঠান)</p>'}
-        <h4 style="margin-top:14px"><i class="fa-solid fa-receipt" style="color:#d97706"></i> Recent Transactions</h4>
+        <h4 style="margin-top:14px"><i class="fa-solid fa-receipt" style="color:#d97706"></i> সাম্প্রতিক লেনদেন</h4>
         ${txs.length ? txs.map(t => `<div class="mini-row"><b>${esc(t.note || t.type)}</b><span class="muted">${timeBn(t.createdAt)}</span><span class="badge ${Number(t.amount) >= 0 ? 'green' : 'gray'}">${Number(t.amount) >= 0 ? '+' : ''}${fmt(t.amount)}</span></div>`).join('') : '<p class="muted">কোনো transaction নেই।</p>'}
       </div>`;
     const act = dbox.querySelector('[data-act]');
@@ -546,14 +726,16 @@ async function viewUsers(main) {
       try { await setUserActive(deact.dataset.deact, false); toast('User inactive করা হয়েছে'); doList(); } catch (err) { toast(err.message, 'error'); }
     });
     dbox.querySelectorAll('[data-wd-paid]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('Paid মার্ক করবেন?')) return;
+      if (!confirm('অনুমোদন করবেন? (টাকা পাঠানো শেষ মানে)')) return;
       b.disabled = true;
-      try { await reviewWithdrawal(selectedUid, b.dataset.wdPaid, 'paid'); toast('Paid মার্ক হয়েছে'); doDetail(); } catch (err) { toast(err.message, 'error'); b.disabled = false; }
+      try { await reviewWithdrawal(selectedUid, b.dataset.wdPaid, 'paid'); toast('অনুমোদিত ✓'); pollAlerts(true); doDetail(); } catch (err) { toast(String(err.message || err), 'error'); b.disabled = false; }
     }));
     dbox.querySelectorAll('[data-wd-rej]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('Reject করলে টাকা user-এর balance-এ ফেরত যাবে। নিশ্চিত?')) return;
+      if (!confirm('বাতিল করলে টাকা user-এর ব্যালেন্সে ফেরত যাবে। নিশ্চিত?')) return;
+      const why = await askReason('বাতিল করার কারণ লিখুন — user এটাই দেখবে', 'যেমন: নম্বর ভুল হয়েছে');
+      if (why === null) return;
       b.disabled = true;
-      try { await reviewWithdrawal(selectedUid, b.dataset.wdRej, 'rejected'); toast('Reject — টাকা ফেরত'); doDetail(); } catch (err) { toast(err.message, 'error'); b.disabled = false; }
+      try { await reviewWithdrawal(selectedUid, b.dataset.wdRej, 'rejected', why); toast('বাতিল — টাকা ফেরত গেছে'); pollAlerts(true); doDetail(); } catch (err) { toast(String(err.message || err), 'error'); b.disabled = false; }
     }));
     dbox.querySelectorAll('[data-tn-tgl]').forEach(b => b.addEventListener('click', async () => {
       const n = tns.find(x => x.id === b.dataset.tnTgl);
@@ -611,21 +793,21 @@ async function viewWallet(main) {
   const money = v => `৳${(Number(v) || 0).toFixed(2)}`;
   const cards = `
     <div class="wt-grid">
-      <div class="wt-card"><span>Role</span><b>${ROLE_LABEL[w.role] || w.role}${w.activeMode === 'poster' && w.isOwner ? ' (Poster mode)' : ''}</b></div>
+      <div class="wt-card"><span>রোল</span><b>${ROLE_LABEL[w.role] || w.role}${w.activeMode === 'poster' && w.isOwner ? ' (Poster মোড)' : ''}</b></div>
       <div class="wt-card"><span>ব্যালেন্স</span><b class="${w.needsBalance && Number(w.balance) <= 0 ? 'bad' : ''}">${money(w.balance)}</b></div>
       <div class="wt-card"><span>job-এ আটকা (reserved)</span><b>${money(w.reserved)}</b></div>
       <div class="wt-card"><span>প্রকাশের নিয়ম</span><b>${w.needsBalance ? 'reward × requiredUsers আগে কাটে' : 'ব্যালেন্স লাগে না'}</b></div>
     </div>`;
   const modeSwitch = w.isOwner ? `
     <div class="adm-card wt-mode">
-      <div><b>Owner mode switch</b><br><span class="muted">Full Access mode-এ নিজের publishing-এ ব্যালেন্স লাগে না; Job Poster mode চললে নিজেরও বাজেট কাটে (testing/audit-এর জন্য)।</span></div>
+      <div><b>Owner মোড বদল</b><br><span class="muted">Full Access mode-এ নিজের publishing-এ ব্যালেন্স লাগে না; Job Poster mode চললে নিজেরও বাজেট কাটে (testing/audit-এর জন্য)।</span></div>
       <button class="adm-btn ${w.activeMode === 'poster' ? 'gold' : 'ghost'} sm" data-wtm="full"><i class="fa-solid fa-key"></i> Full Access Mode</button>
       <button class="adm-btn ${w.activeMode !== 'poster' ? 'gold' : 'ghost'} sm" data-wtm="poster"><i class="fa-solid fa-user-shield"></i> Job Poster Mode</button>
     </div>` : '';
   const jobsTable = (w.jobs || []).length ? `
     <div class="adm-card">
       <h4><i class="fa-solid fa-briefcase" style="color:#d97706"></i> আপনার ফান্ড করা job</h4>
-      <table class="adm-table"><thead><tr><th>Job</th><th>Reward</th><th>Required</th><th>Budget</th><th>Reserved</th><th>Status</th></tr></thead>
+      <table class="adm-table"><thead><tr><th>জব</th><th>রোয়ার্ড</th><th>লাগত জন</th><th>বাজেট</th><th>আটকানো</th><th>অবস্থা</th></tr></thead>
       <tbody>${w.jobs.map(j => `<tr>
         <td><b>${esc(j.nameBn || j.slug)}</b><br><span class="muted">${esc(j.slug)}</span></td>
         <td>${money(j.reward)}</td><td>${j.requiredUsers}</td><td>${money(j.budget)}</td><td>${money(j.reservedBudget)}</td>
@@ -635,42 +817,165 @@ async function viewWallet(main) {
   const ledger = `
     <div class="adm-card">
       <h4><i class="fa-solid fa-receipt" style="color:#d97706"></i> ওয়ালেট লগ</h4>
-      ${(w.ledger || []).length ? `<table class="adm-table"><thead><tr><th>কী</th><th>Job</th><th>টাকা</th><th>পরবর্তী ব্যালেন্স</th></tr></thead>
+      ${(w.ledger || []).length ? `<table class="adm-table"><thead><tr><th>কী</th><th>জব</th><th>টাকা</th><th>পরবর্তী ব্যালেন্স</th></tr></thead>
         <tbody>${w.ledger.map(x => `<tr><td>${esc(x.type || '')}${x.note ? ` <span class="muted">— ${esc(String(x.note))}</span>` : ''}${x.by && x.by !== '' ? `<br><span class="muted">by ${esc(String(x.by))}</span>` : ''}</td>
           <td>${esc(x.jobSlug || '—')}</td><td class="${Number(x.amount) < 0 ? 'bad' : 'ok'}">${Number(x.amount) < 0 ? '-' : '+'}${money(Math.abs(Number(x.amount) || 0)).slice(1)}</td>
           <td>${x.balanceAfter === undefined || x.balanceAfter === null ? '—' : money(x.balanceAfter)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="muted">এখনো কোনো লেনদেন নেই।</p>'}
     </div>`;
-  const adminTable = admins.isOwner ? `
+  const isOwner = !!admins.isOwner;
+  /* Owner + Full Access = manager (Job Poster admin manage করতে পারে না) */
+  const isManager = !!admins.isManager || isOwner;
+
+  /* ---- "Join admin" আবেদন — approve করলেই account + role তৈরি হয় ---- */
+  const joins = isManager ? await listAdminJoins().catch(() => ({ items: [] })) : { items: [] };
+  const pend = (joins.items || []).filter(j => String(j.status) === 'pending');
+  const joinsHtml = !isManager ? '' : `
     <div class="adm-card">
-      <h4><i class="fa-solid fa-user-shield" style="color:#d97706"></i> Admin ব্যবস্থাপনা (শুধু Owner)</h4>
-      <p class="muted" style="font-size:12.5px">Owner ও Full Access — কারও ব্যালেন্স লাগে না। Job Poster-কে প্রকাশের আগে ব্যালেন্স দিতে হয় (রোয়ার্ড ৳১–৳৫০০)।</p>
-      <table class="adm-table"><thead><tr><th>Email</th><th>Role</th><th>ব্যালেন্স</th><th></th></tr></thead><tbody>
-        ${admins.items.map(a => `<tr>
-          <td>${esc(a.email)}${a.email === w.email ? ' <span class="badge gold">আপনি</span>' : ''}</td>
-          <td><select class="adm-input wt-role" data-email="${esc(a.email)}">
+      <h4><i class="fa-solid fa-user-plus" style="color:#d97706"></i> Join admin আবেদন${pend.length ? ` <span class="badge red">${pend.length}টা অপেক্ষমাণ</span>` : ''}</h4>
+      <p class="muted" style="font-size:12.5px">যে কেউ আবেদন পাঠাতে পারে, কিন্তু approve না করা পর্যন্ত তার কোনো access নেই। Owner role শুধু Ownerই দিতে পারেন।</p>
+      ${pend.length ? `<div class="jj-list">${pend.map(j => `
+        <div class="jj-row">
+          <div class="jj-who"><b>${esc(j.fullName || '—')}</b><span class="muted">${esc(j.email)}</span>
+            ${j.alreadyAdmin ? '<span class="badge gold">এই email আগে থেকেই ব্যবহৃত</span>' : ''}
+            ${j.note ? `<span class="muted jj-note">“${esc(j.note)}”</span>` : ''}</div>
+          <div class="jj-act">
+            <select class="adm-input jj-role" data-jrole="${esc(j.email)}">
+              ${[['poster', 'Job Poster'], ['full', 'Full Access']].concat(isOwner ? [['owner', 'Owner']] : [])
+                .map(([v, l]) => `<option value="${v}" ${j.requestedRole === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+            <button class="adm-btn green sm" data-jok="${esc(j.email)}"><i class="fa-solid fa-check"></i> অনুমোদন</button>
+            <button class="adm-btn red sm" data-jno="${esc(j.email)}"><i class="fa-solid fa-xmark"></i> বাতিল</button>
+          </div>
+          <div class="jj-rej" data-jrej="${esc(j.email)}" hidden>
+            <input class="adm-input" data-jreason="${esc(j.email)}" maxlength="300" placeholder="বাতিল করার কারণ লিখুন (আবেদনকারী এটাই দেখবে)">
+            <button class="adm-btn red sm" data-jrok="${esc(j.email)}">কারণ দিয়ে বাতিল</button>
+          </div>
+        </div>`).join('')}</div>` : '<p class="muted">এখনো কোনো আবেদন নেই।</p>'}
+    </div>`;
+
+  /* ---- নতুন admin account তৈরি (Owner / Full Access) ---- */
+  const createHtml = !isManager ? '' : `
+    <div class="adm-card">
+      <h4><i class="fa-solid fa-user-plus" style="color:#d97706"></i> Admin account তৈরি করুন</h4>
+      <p class="muted" style="font-size:12.5px">email-এ Firebase Auth account না থাকলে server নিজেই বানায়; password খালি রাখলে একটা <b>সেটআপ লিংক</b> দেখাবে — সেটা পাঠিয়ে দিন।</p>
+      <div class="ac-grid">
+        <input class="adm-input" id="acEmail" type="email" placeholder="admin email">
+        <input class="adm-input" id="acName" placeholder="নাম">
+        <select class="adm-input" id="acRole">${isOwner ? '<option value="owner">Owner</option>' : ''}<option value="full">Full Access</option><option value="poster" selected>Job Poster</option></select>
+        <input class="adm-input" id="acBal" type="number" min="0" step="1" placeholder="শুরু ব্যালেন্স (Poster) ৳">
+        <input class="adm-input" id="acPass" type="text" placeholder="password (খালি রাখলে setup link)" autocomplete="new-password">
+        <button class="adm-btn gold sm" id="acCreate"><i class="fa-solid fa-plus"></i> তৈরি করুন</button>
+      </div>
+      <div id="acOut"></div>
+    </div>`;
+
+  /* ---- admin list: role/balance/suspend + details (manager) ---- */
+  const adminTable = !isManager ? '' : `
+    <div class="adm-card">
+      <h4><i class="fa-solid fa-user-shield" style="color:#d97706"></i> অ্যাডমিন তালিকা ও ব্যালেন্স${isOwner ? '' : ' <span class="badge gray">Role বদল শুধু Owner</span>'}</h4>
+      <p class="muted" style="font-size:12.5px">Owner ও Full Access-এর ব্যালেন্স লাগে না। Job Poster-কে প্রকাশের আগেই <b>reward × requiredUsers</b> ব্যালেন্স থাকতে হয় (রোয়ার্ড ৳১–৳৫০০)। সাসপেন্ড করলে সেই admin-এর সব panel access সাথে সাথে বন্ধ।</p>
+      <table class="adm-table"><thead><tr><th>অ্যাডমিন</th><th>রোল</th><th>ব্যালেন্স / আটকা</th><th>কাজ</th></tr></thead><tbody>
+        ${admins.items.map(a => `<tr class="${a.suspended ? 'wt-off' : ''}">
+          <td><b>${esc(a.fullName || a.email)}</b><br><span class="muted">${esc(a.email)}</span>
+            ${a.email === w.email ? ' <span class="badge gold">আপনি</span>' : ''}
+            ${a.suspended ? `<span class="badge red">সাসপেন্ডেড</span>${a.suspendReason ? `<br><span class="muted">কারণ: ${esc(a.suspendReason)}</span>` : ''}` : ''}
+            ${a.joinedAt ? `<br><span class="muted">যোগ দেওয়া: ${esc(timeBn(a.joinedAt))}</span>` : ''}</td>
+          <td>${isOwner ? `<select class="adm-input wt-role" data-email="${esc(a.email)}">
             ${[['owner', 'Owner'], ['full', 'Full Access'], ['poster', 'Job Poster']].map(([v, l]) => `<option value="${v}" ${a.role === v ? 'selected' : ''}>${l}</option>`).join('')}
-          </select> <button class="adm-btn ghost sm" data-rolessave="${esc(a.email)}">Save</button></td>
-          <td><b>${money(a.balance)}</b></td>
+          </select> <button class="adm-btn ghost sm" data-rolessave="${esc(a.email)}">সেভ</button>`
+            : `<b>${ROLE_LABEL[a.role] || a.role}</b>${a.activeMode === 'poster' && a.isOwner ? '<br><span class="muted">Poster মোড</span>' : ''}`}
+            <br><span class="muted">${a.needsBalance ? 'ব্যালেন্স দিয়ে প্রকাশ করে' : 'ব্যালেন্স লাগে না'}</span></td>
+          <td><b>${money(a.balance)}</b><br><span class="muted">job-এ আটকা ${money(a.reserved)}</span></td>
           <td class="wt-acts">
-            <input class="adm-input wt-amt" data-amtfor="${esc(a.email)}" type="number" step="1" min="0" placeholder="৳" style="width:92px">
+            <input class="adm-input wt-amt" data-amtfor="${esc(a.email)}" type="number" step="1" min="0" placeholder="৳" style="width:88px">
             <button class="adm-btn green sm" data-baladd="${esc(a.email)}">যোগ</button>
             <button class="adm-btn red sm" data-balsub="${esc(a.email)}">বাদ</button>
-            <button class="adm-btn ghost sm" data-balset="${esc(a.email)}">Set</button>
+            <button class="adm-btn ghost sm" data-balset="${esc(a.email)}">সেট</button>
+            <button class="adm-btn ${a.suspended ? 'green' : 'ghost'} sm" data-sus="${esc(a.email)}" data-sus-on="${a.suspended ? '0' : '1'}">
+              <i class="fa-solid ${a.suspended ? 'fa-circle-check' : 'fa-ban'}"></i> ${a.suspended ? 'চালু করুন' : 'সাসপেন্ড'}
+            </button>
           </td></tr>`).join('')}
       </tbody></table>
-    </div>` : '';
+    </div>`;
   main.innerHTML = `
     <div class="adm-card">
-      <h4><i class="fa-solid fa-wallet" style="color:#d97706"></i> অ্যাডমিন ওয়ালেট — MicroJob প্রকাশের বাজেট</h4>
-      <p class="muted" style="font-size:12.5px">সব হিসাব server-এ হয় (client-এর balance/role কখনো ধরা হয় না)। প্রকাশের আগেই
-        <b>reward × requiredUsers</b> ব্যালেন্স থেকে কেটে job doc-এর সাথে একই transaction-এ বসে — টাকা না কাটলে job public হয় না।</p>
+      <h4><i class="fa-solid fa-sitemap" style="color:#d97706"></i> অ্যাডমিন ম্যানেজমেন্ট</h4>
+      <p class="muted" style="font-size:12.5px">Admin account, আবেদন, ব্যালেন্স ও suspend — এখানে। সব হিসাব server-এ হয় (client-এর balance/role কখনো ধরা হয় না);
+        Job Poster-এর জন্য শুধু নিজের ব্যালেন্স ও job-এ আটকা টাকা।</p>
       ${cards}
     </div>
+    ${joinsHtml}
+    ${createHtml}
     ${modeSwitch}
     ${adminTable}
     ${jobsTable}
     ${ledger}`;
+
+  /* ---- আবেদন approve/reject ---- */
+  main.querySelectorAll('[data-jno]').forEach(b => b.addEventListener('click', () => {
+    const box = main.querySelector(`.jj-rej[data-jrej="${b.dataset.jno}"]`);
+    if (box) { box.hidden = !box.hidden; if (!box.hidden) box.querySelector('input')?.focus(); }
+  }));
+  main.querySelectorAll('[data-jrok]').forEach(b => b.addEventListener('click', async () => {
+    const email = b.dataset.jrok;
+    const reason = String(main.querySelector(`[data-jreason="${email}"]`)?.value || '').trim();
+    if (reason.length < 3) { toast('বাতিল করার কারণ লিখুন', 'error'); return; }
+    b.disabled = true;
+    try { await rejectAdminJoin(email, reason); toast('আবেদন বাতিল হয়েছে'); viewWallet(main); }
+    catch (err) { toast(String(err.message || err), 'error'); b.disabled = false; }
+  }));
+  main.querySelectorAll('[data-jok]').forEach(b => b.addEventListener('click', async () => {
+    const email = b.dataset.jok;
+    const role = main.querySelector(`.jj-role[data-jrole="${email}"]`)?.value || 'poster';
+    if (!confirm(`“${email}” কে ${ROLE_LABEL[role] || role} হিসেবে অনুমোদন করবেন?`)) return;
+    b.disabled = true;
+    try {
+      const out = await approveAdminJoin(email, role);
+      toast('Admin তৈরি হয়েছে ✓');
+      const box = document.getElementById('acOut');
+      if (box && out && out.setupLink) {
+        box.innerHTML = `<p class="muted" style="font-size:12.5px">পাসওয়ার্ড সেট করার লিংক (${esc(out.email)}):</p>
+          <input class="adm-input" value="${esc(out.setupLink)}" readonly onclick="this.select()">`;
+      }
+      viewWallet(main);
+    } catch (err) { toast(String(err.message || err), 'error'); b.disabled = false; }
+  }));
+
+  /* ---- নতুন admin তৈরি ---- */
+  document.getElementById('acCreate')?.addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    const email = String(document.getElementById('acEmail').value || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast('email ঠিক করে লিখুন', 'error'); return; }
+    btn.disabled = true;
+    try {
+      const out = await createAdminAccount({
+        email,
+        fullName: String(document.getElementById('acName').value || '').trim(),
+        role: document.getElementById('acRole').value,
+        balance: Number(document.getElementById('acBal').value) || null,
+        password: String(document.getElementById('acPass').value || ''),
+      });
+      document.getElementById('acOut').innerHTML = `<p class="ok-note">✓ ${esc(out.email)} — ${esc(ROLE_LABEL[out.role] || out.role)} তৈরি হয়েছে।${out.uid ? '' : ' <span class="muted">(Firebase account আগে থেকে ছিল)</span>'}${out.authError ? `<br><span class="muted">${esc(out.authError)}</span>` : ''}</p>
+        ${out.setupLink ? `<p class="muted" style="font-size:12.5px">পাসওয়ার্ড সেট করার লিংক — পাঠিয়ে দিন:</p><input class="adm-input" value="${esc(out.setupLink)}" readonly onclick="this.select()">` : ''}`;
+      toast('Admin account তৈরি হয়েছে ✓');
+      viewWallet(main);
+    } catch (err) { toast(String(err.message || err), 'error'); }
+    btn.disabled = false;
+  });
+
+  /* ---- suspend / unsuspend ---- */
+  main.querySelectorAll('[data-sus]').forEach(b => b.addEventListener('click', async () => {
+    const email = b.dataset.sus;
+    const on = b.dataset.susOn === '1';
+    if (on && !confirm(`${email} কে সাসপেন্ড করবেন? — সাথে সাথে ওই admin-এর panel access বন্ধ হয়ে যাবে।`)) return;
+    b.disabled = true;
+    try {
+      await setAdminSuspended(email, on, on ? 'Admin Management থেকে সাসপেন্ড করা হয়েছে' : '');
+      toast(on ? 'সাসপেন্ড করা হয়েছে' : 'আবার চালু করা হয়েছে');
+      viewWallet(main);
+    } catch (err) { toast(String(err.message || err), 'error'); b.disabled = false; }
+  }));
 
   main.querySelectorAll('[data-wtm]').forEach(b => b.addEventListener('click', async () => {
     try { await setAdminMode(b.dataset.wtm); toast('Mode বদলেছে'); viewWallet(main); }
@@ -731,10 +1036,10 @@ async function viewTasks(main, kind) {
           <p class="muted" style="font-size:11.5px;margin:4px 0 0">Job Poster: ৳১–৳৫০০</p></div>
         <div><label>Required Users *</label><input type="number" min="1" max="1000000" class="adm-input" data-nc="requiredUsers" value="100"></div>
       </div>
-      <label>Short Description</label><input class="adm-input" data-nc="shortDesc" maxlength="200" placeholder="কার্ডে দেখানো এক লাইন">
+      <label>সংক্ষিপ্ত বিবরণ</label><input class="adm-input" data-nc="shortDesc" maxlength="200" placeholder="কার্ডে দেখানো এক লাইন">
       <label>Main Job Link (https://…)</label><input class="adm-input" data-nc="url" maxlength="300" placeholder="https://">
       <label>Tutorial Video Link (optional)</label><input class="adm-input" data-nc="videoUrl" maxlength="300" placeholder="https://youtu.be/…">
-      <label>Job Image</label>
+      <label>জবের ছবি</label>
       <div class="img-pick">
         <input type="hidden" data-nc="image" id="mjNewImage">
         <input type="file" accept="image/png,image/jpeg,image/webp" id="mjNewImageFile" hidden>
@@ -744,7 +1049,7 @@ async function viewTasks(main, kind) {
       <label>কাজের নিয়ম (এক লাইনে একটা করে ধাপ)</label>
       <textarea class="adm-input" data-nc="steps" rows="3" placeholder="লিংক ওপেন করুন&#10;লাইক + কমেন্ট দিন&#10;স্ক্রিনশটসহ submit করুন"></textarea>
       <div class="two-col">
-        <div><label>Sort order</label><input type="number" class="adm-input" data-nc="sort" value="100"></div>
+        <div><label>ক্রম</label><input type="number" class="adm-input" data-nc="sort" value="100"></div>
         <label class="chk" style="align-self:flex-end;margin-bottom:8px"><input type="checkbox" data-nc="publish" checked> সাথে সাথেই প্রকাশ (Public)</label>
       </div>
       <div class="mj-budget" id="mjBudgetHint">বাজেট হিসাব হচ্ছে...</div>
@@ -775,7 +1080,7 @@ async function viewTasks(main, kind) {
       <div class="adm-card task-card" data-slug="${esc(t.slug)}">
         <div class="task-row">
           <div class="task-info">
-            <b>${esc(t.nameBn || t.slug)} ${t.enabled === false ? '<span class="badge gray">OFF</span>' : ''} ${t.locked ? '<span class="badge gold">LOCKED</span>' : ''}</b>
+            <b>${esc(t.nameBn || t.slug)} ${t.enabled === false ? '<span class="badge gray">বন্ধ</span>' : ''} ${t.locked ? '<span class="badge gold">লকড</span>' : ''}</b>
             <span class="muted">${isMJ ? `/microjobs.html#job-${esc(t.slug)}` : `/task/${esc(t.slug)}.html`} • ${fmt(t.reward)}${Array.isArray(t.inputFields) && t.inputFields.length ? ` • ${t.inputFields.length} field(s)` : ''}</span>
             ${(() => { const st = statOf(t.slug); if (!st) return '';
               const need = Number(st.requiredUsers) || 0;
@@ -785,8 +1090,8 @@ async function viewTasks(main, kind) {
                 <span class="warn"><i class="fa-solid fa-hourglass-half"></i> Pending <b>${Number(st.pending) || 0}</b></span>
                 <span class="bad"><i class="fa-solid fa-xmark"></i> Rejected <b>${Number(st.rejected) || 0}</b></span>
                 <span><i class="fa-solid fa-user-plus"></i> বাকি <b>${st.remaining === null || st.remaining === undefined ? '∞' : st.remaining}</b></span>
-                ${st.full || st.closed ? '<span class="badge red">FULL/CLOSED</span>' : ''}
-                ${st.mode === 'single' ? '<span class="badge gray">১ user = ১ submit</span>' : '<span class="badge gray">marketplace</span>'}
+                ${st.full || st.closed ? '<span class="badge red">সম্পূর্ণ/বন্ধ</span>' : ''}
+                ${st.mode === 'single' ? '<span class="badge gray">১ user = ১ submit</span>' : '<span class="badge gray">মার্কেটপ্লেস</span>'}
                 ${isMJ ? `<span class="badge ${t.funded === 'budget' ? 'gold' : 'gray'}">Budget ৳${((Number(t.reward) || 0) * (need || 0)).toFixed(2)}</span>
                  <span class="badge ${t.funded === 'budget' ? 'green' : 'gray'}">${t.funded === 'budget' ? 'ফান্ডেড ' + fmt(t.reservedBudget || 0) : t.enabled === false ? 'ড্রাফট — প্রকাশ হলে কাটা হবে' : 'Owner/Full — ফ্রি'}</span>` : ''}
               </div>`; })()}
@@ -800,12 +1105,12 @@ async function viewTasks(main, kind) {
           <label>Task URL (user-এর জন্য Open Link) — শুধু http/https</label><input class="adm-input" data-f="url" value="${esc(t.url || '')}" placeholder="https://...">
           <div class="two-col">
             <div><label>Amount / Reward (৳)</label><input type="number" step="0.5" class="adm-input" data-f="reward" value="${Number(t.reward) || 0}"></div>
-            <div><label>Sort order</label><input type="number" class="adm-input" data-f="sort" value="${Number(t.sort) || 10}"></div>
+            <div><label>ক্রম</label><input type="number" class="adm-input" data-f="sort" value="${Number(t.sort) || 10}"></div>
           </div>
           <div class="two-col">
             <div><label>Required Users (০ = unlimited)</label><input type="number" min="0" max="1000000" class="adm-input" data-f="requiredUsers" value="${Number(t.requiredUsers) || 0}">
               <p class="muted" style="font-size:11.5px;margin:4px 0 0">এই সংখ্যক approved user হলে job স্বয়ংক্রিয়ভাবে FULL/CLOSED হবে (পুরোনো marketplace job-এর জন্য ০ রাখুন)</p></div>
-            <div><label>Submission mode</label>
+            <div><label>জমার ধরন</label>
               <select class="adm-input" data-f="mode">
                 ${(() => { /* পুরোনো seeded task (mode নেই, requiredUsers নেই) = marketplace —
                      নাহলে শুধু edit করে Save চাপলেই ৮টা account-sell task এক-submit মোডে
@@ -815,17 +1120,17 @@ async function viewTasks(main, kind) {
                 <option value="marketplace" ${cur === 'marketplace' ? 'selected' : ''}>Marketplace — দিনে একাধিক (account sell)</option>`; })()}
               </select></div>
           </div>
-          <label>Job Image (card/post-এর ছবি)</label>
+          <label>জবের ছবি (কার্ড/পোস্টে)</label>
           <div class="img-pick">
             <input type="hidden" class="adm-input" data-f="image" value="${esc(t.image || '')}">
             <input type="file" accept="image/png,image/jpeg,image/webp" data-imgfile="${esc(t.slug)}" hidden>
             <button type="button" class="adm-btn ghost sm" data-imgbtn="${esc(t.slug)}"><i class="fa-solid fa-image"></i> ছবি আপলোড</button>
             <input class="adm-input" data-imgurl value="${esc(/^https?:/.test(String(t.image || '')) ? t.image : '')}" placeholder="অথবা image URL (https://…)">
             <div class="img-prev" data-imgprev="${esc(t.slug)}" ${/^data:image/.test(String(t.image || '')) || /^https?:/.test(String(t.image || '')) ? '' : 'hidden'}>
-              <img src="${esc(t.image || '')}" alt="preview"><button type="button" class="adm-btn red sm" data-imgclear="${esc(t.slug)}">Clear</button>
+              <img src="${esc(t.image || '')}" alt="preview"><button type="button" class="adm-btn red sm" data-imgclear="${esc(t.slug)}">মুছুন</button>
             </div>
           </div>
-          <label>Short Description (card-এর এক লাইন)</label>
+          <label>সংক্ষিপ্ত বিবরণ (কার্ডের এক লাইন)</label>
           <input class="adm-input" data-f="shortDesc" value="${esc(t.shortDesc || '')}" maxlength="200" placeholder="যেমন: ভিডিওতে like + comment করুন">
           <label>Account Password (seller যে পাসওয়ার্ড সেট করবে — খালি রাখলে hide)</label><input class="adm-input" data-f="password" value="${esc(t.password || '')}" maxlength="60">
           <label>Description / Instructions (project page-এ description)</label><textarea class="adm-input" data-f="description" rows="3" maxlength="300">${esc(t.description || '')}</textarea>
@@ -841,7 +1146,7 @@ async function viewTasks(main, kind) {
             <label class="chk"><input type="checkbox" data-f="locked" ${t.locked ? 'checked' : ''}> Locked</label>
           </div>
           <div class="ai-actions">
-            <button class="adm-btn gold sm" data-save="${esc(t.slug)}"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button class="adm-btn gold sm" data-save="${esc(t.slug)}"><i class="fa-solid fa-floppy-disk"></i> সেভ</button>
           </div>
         </div>
       </div>`).join('')}</div>`;
@@ -911,6 +1216,9 @@ async function viewTasks(main, kind) {
   /* Job Poster হলে publish-এর আগেই budget = reward × requiredUsers balance-এ থাকতে হবে
      (§2) — hint এখানে শুধু দেখানোর জন্য, আসল verify server-এর transaction-এ */
   const budgetHint = document.getElementById('mjBudgetHint');
+  /* ⚠️ val() এখানেই define করতে হবে — updHint + input listener + submit handler তিনটাই
+     এটা ব্যবহার করে (ভেতরে define করলে বাইরে ReferenceError: val is not defined হতো) */
+  const val = k => main.querySelector(`[data-nc="${k}"]`);
   const updHint = () => {
     if (!budgetHint) return;
     const r = Number(val('reward')?.value) || 0, n = Number(val('requiredUsers')?.value) || 0;
@@ -947,7 +1255,6 @@ async function viewTasks(main, kind) {
     if (host) addRow(host);
   });
   document.getElementById('mjCreateBtn')?.addEventListener('click', async () => {
-    const val = k => main.querySelector(`[data-nc="${k}"]`);
     const title = String(val('nameBn')?.value || '').trim();
     if (title.length < 2) { toast('Job Title লিখুন', 'error'); return; }
     const steps = String(val('steps')?.value || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 20);
@@ -1120,7 +1427,7 @@ async function viewSettings(main) {
           }).join('')}
         </div>
         ${g.group === 'Gift' && secretOff ? '<p class="muted" style="margin-top:8px"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626"></i> Gift Code server API থেকে পড়া যায়নি — এই ঘরটা এখন change হবে না (ভুলবশত কোড মুছে যাবে না)।</p>' : ''}
-        ${g.group === 'Gift' && !secretOff ? `<p class="muted" style="margin-top:8px">কোড: <b>${esc(s.giftCode || '(খালি)')}</b> <button type="button" class="adm-btn ghost sm" id="clearGiftBtn" style="margin-left:8px">Clear</button></p>` : ''}
+        ${g.group === 'Gift' && !secretOff ? `<p class="muted" style="margin-top:8px">কোড: <b>${esc(s.giftCode || '(খালি)')}</b> <button type="button" class="adm-btn ghost sm" id="clearGiftBtn" style="margin-left:8px">মুছুন</button></p>` : ''}
       </div>`).join('')}
       <button type="submit" class="adm-btn gold"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
       <button type="button" class="adm-btn ghost" id="lbSyncBtn" style="margin-left:8px"><i class="fa-solid fa-trophy"></i> Leaderboard count sync</button>
@@ -1171,11 +1478,11 @@ async function viewNotices(main) {
     <div class="adm-card">
       <h4><i class="fa-solid fa-bullhorn" style="color:#d97706"></i> নতুন Notice / Warning</h4>
       <div class="two-col">
-        <div><label>Type</label>
-          <select class="adm-input" id="ntType"><option value="notice">Notice</option><option value="warning">Warning</option></select>
+        <div><label>ধরন</label>
+          <select class="adm-input" id="ntType"><option value="notice">নোটিশ</option><option value="warning">সতর্কতা</option></select>
         </div>
-        <div><label>Target</label>
-          <select class="adm-input" id="ntTarget"><option value="all">সব user (All)</option><option value="user">Specific user</option></select>
+        <div><label>টার্গেট</label>
+          <select class="adm-input" id="ntTarget"><option value="all">সব user (All)</option><option value="user">নির্দিষ্ট user</option></select>
         </div>
       </div>
       <div id="ntUserWrap" hidden style="margin-top:8px">
@@ -1214,7 +1521,7 @@ async function viewNotices(main) {
             <span class="muted">→ ${esc(n.userName || '—')} (${esc(n.userMobile || n.uid)}) • ${n.enabled ? 'ACTIVE' : 'OFF'}${n.expiresAt ? ' • expire ' + n.expiresAt : ''}</span>
           </div>
           <div class="ai-actions" style="flex-wrap:wrap">
-            <button class="adm-btn ghost sm" data-tn-tgl="${n.uid}::${n.id}">${n.enabled ? 'Hide' : 'Show'}</button>
+            <button class="adm-btn ghost sm" data-tn-tgl="${n.uid}::${n.id}">${n.enabled ? 'লুকান' : 'দেখান'}</button>
             <button class="adm-btn red sm" data-tn-del="${n.uid}::${n.id}"><i class="fa-solid fa-trash"></i></button>
           </div>
         </div>

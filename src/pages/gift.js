@@ -13,9 +13,9 @@ bootAppPage({
       box.innerHTML = `
         <div class="card center-lock">
           <div class="lock-dot-red"></div>
-          <h2 class="locked-title">Gift Code Locked!</h2>
+          <h2 class="locked-title">উপহার কোড লক করা আছে!</h2>
           <p class="muted">আপনার একাউন্টটি অ্যাক্টিভ হলে তবেই গিফট কোড ব্যবহার করা যাবে।</p>
-          <a href="/deposit.html" class="btn btn-orange btn-block" style="margin-top:16px"><i class="fa-solid fa-unlock"></i> Deposit করে অ্যাক্টিভ করুন</a>
+          <a href="/deposit.html" class="btn btn-orange btn-block" style="margin-top:16px"><i class="fa-solid fa-unlock"></i> জমা দিয়ে একাউন্ট চালু করুন</a>
         </div>`;
       return;
     }
@@ -30,14 +30,14 @@ bootAppPage({
       <div class="card">
         <h4 class="sec-title">কোড এন্ট্রি করুন</h4>
         ${claimed
-          ? '<div class="ok-box"><i class="fa-solid fa-circle-check"></i> আজকের গিফট বোনাস ইতিমধ্যে Claim করেছেন</div>'
+          ? '<div class="ok-box"><i class="fa-solid fa-circle-check"></i> আজকের উপহার বোনাস আগেই নিয়েছেন</div>'
           : `
           <form id="giftForm">
             <div class="field">
               <i class="fa-solid fa-ticket left"></i>
               <input type="text" name="code" placeholder="গিফট কোড লিখুন" required>
             </div>
-            <button type="submit" class="btn btn-gold btn-block"><i class="fa-solid fa-gift"></i> Claim করুন</button>
+            <button type="submit" class="btn btn-gold btn-block"><i class="fa-solid fa-gift"></i> নিয়ে নিন</button>
           </form>`}
       </div>`;
     const form = document.getElementById('giftForm');
@@ -49,10 +49,10 @@ bootAppPage({
       try {
         const reward = await claimGift(user.uid, code);
         toast(`+৳${reward} গিফট বোনাস যোগ হয়েছে`);
-        form.closest('.card').innerHTML = '<div class="ok-box"><i class="fa-solid fa-circle-check"></i> আজকের গিফট বোনাস Claim করা হয়েছে</div>';
+        form.closest('.card').innerHTML = '<div class="ok-box"><i class="fa-solid fa-circle-check"></i> আজকের উপহার বোনাস যোগ হয়েছে</div>';
       } catch (err) {
         toast(err.message, 'error');
-        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-gift"></i> Claim করুন';
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-gift"></i> নিয়ে নিন';
       }
     });
   },

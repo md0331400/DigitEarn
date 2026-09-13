@@ -99,12 +99,12 @@ async function vRef(quiet = false) {
   const inp = $f('ref_code');
   const v = inp.value.trim();
   if (!v) {
-    if (!quiet) setField(inp, $m('msgRef'), '', 'Referral Code দিন — এটা mandatory');
+    if (!quiet) setField(inp, $m('msgRef'), '', 'রেফারেল কোড দিন — এটা লাগত');
     state.ref.ok = false; state.ref.checked = false;
     return false;
   }
   if (!/^[A-Za-z0-9]{4,20}$/.test(v)) {
-    setField(inp, $m('msgRef'), 'err', 'Referral Code-এ শুধু হাতা/নম্বর থাকবে (৪-২০)');
+    setField(inp, $m('msgRef'), 'err', 'রেফারেল কোডে অক্ষর ও সংখ্যা দিন (৪–২০)');
     state.ref.ok = false; state.ref.checked = false;
     return false;
   }
@@ -219,7 +219,7 @@ $f('ref_code').addEventListener('input', () => {
     state.ref.checked = false; state.ref.ok = false;
     seq.ref++; // pending চেক stale হয়ে যাবে
     const v = $f('ref_code').value.trim();
-    setField($f('ref_code'), $m('msgRef'), '', v ? 'চেক হচ্ছে...' : 'Referral Code দিন — এটা mandatory');
+    setField($f('ref_code'), $m('msgRef'), '', v ? 'চেক হচ্ছে...' : 'রেফারেল কোড দিন — এটা লাগত');
   }
   debRef();
 });

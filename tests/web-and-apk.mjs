@@ -7,6 +7,16 @@ import { createServer } from 'vite';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, collection } from 'firebase/firestore';
 
+/* apiErrorMessage: default e user-safe line, `?debug=1` thakle full diagnostic */
+const withDebug = fn => {
+  const prev = Object.getOwnPropertyDescriptor(globalThis, 'location');
+  globalThis.location = { search: '?debug=1' };
+  try { return fn(); } finally {
+    if (prev) Object.defineProperty(globalThis, 'location', prev);
+    else delete globalThis.location;
+  }
+};
+
 let pass = 0, failN = 0;
 function check(name, cond, extra = '') {
   if (cond) { pass++; console.log(`  ✅ ${name}`); }
@@ -85,8 +95,11 @@ console.log('\n[A2] api client survives an expired token and never says "Login r
   }
   if (typeof M === 'function') {
     check('401 message: session gone, not "you must log in again"', /লগইন হারিয়ে গেছে/.test(M(401, { error: 'x' })), M(401, { error: 'x' }));
-    check('503 message blames the server setup, not the user', /সার্ভার সেটআপ ঠিক নেই/.test(M(503, { error: 'nope' })), M(503, { error: 'nope' }));
-    check('config message keeps the admin-actionable part', /project/.test(M(503, { error: 'token project: a, server project: b' })));
+    check('503 message blames the server setup, not the user', /সার্ভারের সেটআপ ঠিক নেই/.test(M(503, { error: 'nope' })), M(503, { error: 'nope' }));
+    check('…and the user line carries no admin/infra wording', !/admin|Vercel|token/i.test(M(503, { error: 'nope' })), M(503, { error: 'nope' }));
+    check('config detail only shows in debug mode (never to a normal user)',
+      !/project/.test(M(503, { error: 'token project: a, server project: b' }))
+      && withDebug(() => /project/.test(M(503, { error: 'token project: a, server project: b' }))));
     check('ordinary errors pass the server message through', /duplicate/.test(M(400, { error: 'duplicate account' })));
   }
   const src = codeOnly(read('src/core/api.js'));
@@ -325,13 +338,18 @@ console.log('\n[I] firebase-admin v14 surface + client error handling');
   const M = api.apiErrorMessage;
   if (typeof M === 'function') {
     check('Vercel Deployment Protection 401 gets its own message (not "Login required")',
-      /Deployment Protection/.test(M(401, { error: { code: '401', message: 'Protected deployment' }, protection: {} })),
+      /ঠিকানা/.test(M(401, { error: { code: '401', message: 'Protected deployment' }, protection: {} }))
+      && !/লগইন হারিয়ে গেছে/.test(M(401, { error: { code: '401', protection: {} } })),
       M(401, { error: { code: '401', message: 'Protected deployment' }, protection: {} }));
+    check('…with the Vercel fix visible in debug mode only',
+      /Deployment Protection/.test(withDebug(() => M(401, { error: { code: '401' }, protection: {} })))
+      && !/Deployment Protection/.test(M(401, { error: { code: '401' }, protection: {} })));
     check('object-shaped error never prints [object Object]', !/\[object Object\]/.test(M(500, { error: { code: 'x', message: 'boom' } })));
-    check('non-JSON response (HTML error page) is reported as such', /JSON দেয়নি/.test(M(502, {}, { json: false })));
+    check('non-JSON response (HTML error page) is reported as such',
+      /উত্তর দেয়নি/.test(M(502, {}, { json: false })) && withDebug(() => /HTTP 502/.test(M(502, {}, { json: false }))));
     check('auth error without the version marker hints at a stale deploy', /পুরোনো/.test(M(401, { error: 'Login required' }, { json: true, serverApi: '' })));
     check('…and does NOT hint when the marker is present', !/পুরোনো/.test(M(401, { error: 'Login required' }, { json: true, serverApi: 'v3' })));
-    check('503 still reads as a server setup problem', /সার্ভার সেটআপ ঠিক নেই/.test(M(503, { error: 'Server configuration সমস্যা' })));
+    check('503 still reads as a server setup problem', /সার্ভারের সেটআপ ঠিক নেই/.test(M(503, { error: 'Server configuration সমস্যা' })));
   } else {
     check('apiErrorMessage exported', false);
   }
@@ -602,7 +620,8 @@ console.log('\n[M] deploy identity: /version.json + API header + client diagnosi
   check('checkApiBuild reads /version.json alongside the header', /fetch\('\/version\.json'/.test(api) && /cache: 'no-store'/.test(api));
   check('crash detection: x-vercel-error FUNCTION_INVOCATION_FAILED → build.crash', /x-vercel-error/.test(api) && /FUNCTION_INVOCATION_FAILED/.test(api) && /crash/.test(api));
   check('no-Firebase-config build is detected as its own case', /noFirebase:\s*!!\(site && site\.firebaseConfig === false\)/.test(api));
-  check('apiErrorMessage explains a function crash instead of a generic server error', /function চালু হচ্ছে না/.test(api) && /vercelError/.test(api));
+  check('apiErrorMessage explains a function crash instead of a generic server error',
+    /সার্ভার এখন চালু নেই/.test(api) && /vercelError/.test(api) && /devMsg/.test(api));
   check('banner has separate copy for crash / no-config / protection / stale', ['fa-fire', 'Firebase config নেই', 'Deployment Protection', 'build পুরোনো'].every(t => read('src/core/ui.js').includes(t)));
   check('deployed build id is printed in the banner', /b\.site\.commit \|\| b\.site\.buildId/.test(read('src/core/ui.js')));
   check('login/register pages also get the banner (no bootAppPage there)', /showBuildBannerIfBroken|v\.firebaseConfig !== false/.test(fb));
@@ -645,7 +664,10 @@ console.log('\n[M] deploy identity: /version.json + API header + client diagnosi
   check('offline check never throws', b.ok === false && b.status === 0, JSON.stringify(b));
   globalThis.fetch = real;
   const msg = m.apiErrorMessage(500, {}, { json: false, serverApi: '', vercelError: 'FUNCTION_INVOCATION_FAILED' });
-  check('crash message tells admin where to look (Vercel log) and never a secret', /FUNCTION_INVOCATION_FAILED/.test(msg) && /Vercel/.test(msg) && !/[A-Za-z0-9+/]{40,}/.test(msg), msg.slice(0, 70));
+  check('crash message: user gets a plain line, admin detail only in debug — and never a secret',
+    !/Vercel|FUNCTION_INVOCATION_FAILED/.test(msg) && !/[A-Za-z0-9+/]{40,}/.test(msg)
+    && withDebug(() => /FUNCTION_INVOCATION_FAILED/.test(m.apiErrorMessage(500, {}, { json: false, serverApi: '', vercelError: 'FUNCTION_INVOCATION_FAILED' }))
+      && /Vercel/.test(m.apiErrorMessage(500, {}, { json: false, serverApi: '', vercelError: 'FUNCTION_INVOCATION_FAILED' }))), msg.slice(0, 70));
   await vite.close();
 }
 
@@ -756,7 +778,7 @@ console.log('\n[N] firebase-admin is require()-able from CJS (Vercel nodejs20 ou
   const api = await vite.ssrLoadModule('/src/core/api.js');
   const msg = api.apiErrorMessage(500, {}, { json: false, serverApi: '', vercelError: 'FUNCTION_INVOCATION_FAILED' });
   check('user sees a deploy problem (not a login prompt) when the function itself fails to load',
-    /function চালু হচ্ছে না/.test(msg) && !/লগইন হারিয়ে গেছে/.test(msg), msg.slice(0, 60));
+    /সার্ভার এখন চালু নেই/.test(msg) && !/লগইন হারিয়ে গেছে/.test(msg), msg.slice(0, 60));
   await vite.close();
 }
 
@@ -854,6 +876,29 @@ console.log('\n[P] admin panel — web build + APK config shape');
     /project_info/.test(kt) && /google-services\.json/.test(kt) && /configError/.test(kt));
   check('P13 screen-এ flat JSON example আছে (কী বসাতে হবে guess করতে হয় না)',
     /"storageBucket"/.test(kt) && /"appId"/.test(kt));
+}
+
+/* ============================================================
+   [F2] admin time helper — Firestore {seconds,nanoseconds} '—' হলে পুরো queue ভাঙে
+   ============================================================ */
+console.log('\n[F2] src/admin/time.js');
+{
+  const tm = await import('../src/admin/time.js');
+  const { msOf, timeBn } = tm;
+  check('time.js: Firestore timestamp shape → ms', msOf({ seconds: 1700000000, nanoseconds: 500000000 }) === 1700000000500, `(${msOf({ seconds: 1700000000, nanoseconds: 500000000 })})`);
+  check('time.js: test-fake {__srvTs} shape → ms', msOf({ __srvTs: 1789294953618 }) === 1789294953618);
+  check('time.js: Timestamp-like (toDate) shape → ms', msOf({ toDate: () => new Date(1700000000000) }) === 1700000000000);
+  check('time.js: ISO string + number shape → ms',
+    msOf('2026-09-13T10:00:00.000Z') === Date.parse('2026-09-13T10:00:00.000Z') && msOf(1700000000000) === 1700000000000);
+  check('timeBn ছাপে "—" না (Firestore timestamp থেকে) — withdraw queue/notification-এর সময়',
+    timeBn({ seconds: 1700000000, nanoseconds: 0 }) !== '—', timeBn({ seconds: 1700000000 }));
+  check('timeBn ভ্যালু না থাকলে "—" — crash/Invalid Date দেখায় না',
+    timeBn(null) === '—' && timeBn(0) === '—' && timeBn('') === '—' && timeBn({ nonsense: 1 }) === '—');
+  check('core.js timeBn = একই helper re-export (panel নিজের আলাদা নিয়ম চালাবে না)',
+    /export \{ timeBn, msOf \} from '\.\/time\.js'/.test(read('src/admin/core.js')));
+  check('panel notification-এ সময় + নম্বর দুটোই আছে (user-এর চাওয়া format)',
+    /উইথড্র : /.test(read('src/admin/main.js')) && /নম্বর \$\{esc\(w\.accountNumber/.test(read('src/admin/main.js'))
+    && /timeBn\(w\.createdAt\)/.test(read('src/admin/main.js')));
 }
 
 console.log('\n=============================');

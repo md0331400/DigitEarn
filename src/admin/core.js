@@ -57,11 +57,9 @@ export const db = getFirestore(app);
 
 /* ---------- helpers ---------- */
 export const fmt = n => '৳' + Number(n || 0).toLocaleString('en-BD', { maximumFractionDigits: 2 });
-export const timeBn = ts => {
-  const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : new Date(0));
-  if (!d.getTime()) return '—';
-  return d.toLocaleString('en-BD', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-};
+/* সময় দেখানো = আলাদা module (src/admin/time.js) — Firestore-এর {seconds,nanoseconds}
+   shape না বুঝলে পুরো panel-এর টাইম '—' হয়ে যায় (withdraw queue/processedAt/notification) */
+export { timeBn, msOf } from './time.js';
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /* ---------- secure API helper (admin) ----------
@@ -231,7 +229,34 @@ export async function getWallet() {
 }
 export async function listAdminWallets() {
   const d = await callApi('/api/admin/read', { what: 'admins' });
-  return { items: Array.isArray(d.items) ? d.items : [], isOwner: !!d.isOwner };
+  return {
+    items: Array.isArray(d.items) ? d.items : [],
+    isOwner: !!d.isOwner,
+    isManager: d.isManager !== false && (!!d.isOwner || !!d.isManager),
+  };
+}
+/** pending "Join admin" আবেদন (শুধু Owner / Full Access) */
+export async function listAdminJoins() {
+  const d = await callApi('/api/admin/read', { what: 'admin-joins' });
+  if (d && d.error) throw new Error(d.error);
+  return { items: Array.isArray(d.items) ? d.items : [], isManager: !!d.isManager, isOwner: !!d.isOwner };
+}
+export async function approveAdminJoin(email, role) {
+  return adminWrite('join-approve', { email, role });
+}
+export async function rejectAdminJoin(email, reason) {
+  return adminWrite('join-reject', { email, reason });
+}
+export async function createAdminAccount({ email, fullName = '', role = 'poster', balance = null, password = '' } = {}) {
+  /* grant = শুরুর ব্যালেন্স (server allowlist করে নেয়) */
+  return adminWrite('admin-create', { email, fullName, role, grant: balance, password });
+}
+export async function setAdminSuspended(email, suspended, reason = '') {
+  return adminWrite('admin-suspend', { email, suspended, reason });
+}
+/** public (login screen) — 'Join admin' আবেদন, কোনো access দেয় না */
+export async function applyForAdmin({ email, fullName, role = 'poster', note = '' } = {}) {
+  return callApi('/api/admin/admin-join', { email, fullName, role, note });
 }
 /** owner-only: Job Poster balance (delta = add/remove, setBalance = absolute) */
 export async function setAdminBalance(email, { delta = null, setBalance = null, note = '' } = {}) {
@@ -307,7 +332,8 @@ export async function listWithdrawals(status = 'pending', limitN = 100) {
 }
 
 export async function reviewWithdrawal(userId, id, action, note = '') {
-  await callApi('/api/admin/withdrawal-review', { userId, id, action, note });
+  /* note = reject-এর কারণ (server বাধ্যতামূলক করে) — user-এর history-তে দেখায় */
+  return callApi('/api/admin/withdrawal-review', { userId, id, action, note });
 }
 
 export async function saveSettings(data) {

@@ -233,6 +233,10 @@ console.log('\n[8] WITHDRAWAL REVIEW (admin, atomic, refund on reject)');
 
   r = res();
   await wdH(req('POST', auth('TOKEN_ADMIN'), { id: 'w2', action: 'rejected' }), r);
+  check('reject without a reason → 400 (user কারণটা দেখবে, তাই বাধ্যতামূলক)', r.statusCode === 400, `(got ${r.statusCode} ${r.body})`);
+  check('missing-reason rejection cuts no money (balance stays 120)', store.docs['users/alice'].balance === 120, `(got ${store.docs['users/alice'].balance})`);
+  r = res();
+  await wdH(req('POST', auth('TOKEN_ADMIN'), { id: 'w2', action: 'rejected', note: 'double attempt' }), r);
   check('second reject (double-refund attempt) → 409', r.statusCode === 409, `(got ${r.statusCode})`);
   check('balance still 120 (no double refund)', store.docs['users/alice'].balance === 120, `(got ${store.docs['users/alice'].balance})`);
 

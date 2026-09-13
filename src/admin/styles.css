@@ -184,3 +184,51 @@ a { color: var(--gold-deep); }
 .mj-budget { margin-top: 8px; font-size: 12.5px; font-weight: 700; border-radius: 10px; padding: 8px 10px; border: 1.5px solid #e7e5e4; background: #fafaf9; color: #57534e; }
 .mj-budget.ok { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
 .mj-budget.bad { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+
+/* ===== Admin Management (join request / create / suspend) + নতুন shell ===== */
+.adm-menu-btn { background: #fff7e6; border: 1px solid #fde68a; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #b45309; display: inline-flex; align-items: center; justify-content: center; }
+.adm-top { display: flex; align-items: center; gap: 10px; }
+.adm-top .adm-logo { flex: 1 1 auto; }
+.adm-bell { position: relative; background: #fff7e6; border: 1px solid #fde68a; border-radius: 10px; width: 38px; height: 38px; color: #b45309; }
+.adm-bell-n { position: absolute; top: -5px; right: -5px; background: #dc2626; color: #fff; font-size: 10px; line-height: 16px; min-width: 16px; height: 16px; border-radius: 999px; padding: 0 3px; }
+/* বাঁ দিকের 3-line drawer (মোবাইলে section list) */
+.adm-drawer { position: fixed; inset: 0; z-index: 70; }
+.adm-drawer[hidden] { display: none; }
+.adm-drawer-scrim { position: absolute; inset: 0; background: rgba(15, 23, 42, .45); }
+.adm-drawer-nav { position: absolute; top: 0; bottom: 0; left: 0; width: min(78vw, 300px); background: #fffdf6; border-right: 1px solid #f1e3c4; padding: 14px 12px 22px; overflow-y: auto; box-shadow: 8px 0 26px rgba(15, 23, 42, .16); display: flex; flex-direction: column; gap: 6px; }
+.adm-drawer-nav a { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 12px; color: #1f2937; text-decoration: none; font-weight: 600; font-size: 14px; border: 1px solid transparent; }
+.adm-drawer-nav a i { width: 18px; text-align: center; color: #b45309; }
+.adm-drawer-nav a.on { background: #fef3c7; border-color: #fcd34d; }
+.adm-drawer-who { padding: 6px 10px 12px; border-bottom: 1px dashed #f1e3c4; margin-bottom: 6px; display: flex; flex-direction: column; }
+.adm-drawer-who b { font-size: 13px; word-break: break-all; }
+.adm-drawer-out { margin-top: 12px; align-self: flex-start; }
+.dd-n { margin-left: auto; background: #dc2626; color: #fff; font-size: 10.5px; border-radius: 999px; padding: 1px 7px; }
+/* নতুন রিকোয়েস্টের alert list (bell) */
+.adm-alerts { margin: 10px 12px 0; background: #fff; border: 1px solid #fde68a; border-radius: 14px; overflow: hidden; }
+.adm-alerts[hidden] { display: none; }
+.al-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #fffbeb; border-bottom: 1px solid #fde68a; font-size: 13px; }
+.al-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-bottom: 1px dashed #f3e8cf; }
+.al-row:last-child { border-bottom: 0; }
+.al-ico { width: 30px; height: 30px; border-radius: 9px; background: #fef3c7; color: #b45309; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.al-txt { flex: 1 1 auto; display: flex; flex-direction: column; font-size: 12.5px; line-height: 1.45; }
+/* Admin Management rows */
+.jj-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.jj-row { border: 1px solid #f1e3c4; border-radius: 12px; padding: 10px; background: #fffdf6; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.jj-who { flex: 1 1 190px; display: flex; flex-direction: column; font-size: 12.5px; }
+.jj-note { font-style: italic; }
+.jj-act { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.jj-rej { flex: 1 1 100%; display: flex; gap: 6px; align-items: center; }
+.jj-rej[hidden] { display: none; }
+.ac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 8px; }
+.ac-grid .adm-input { width: 100%; box-sizing: border-box; }
+.ok-note { color: #15803d; font-size: 12.5px; margin: 8px 0 0; word-break: break-word; }
+tr.wt-off td { opacity: .55; }
+tr.wt-off td:first-child { opacity: 1; }
+/* reason modal (reject/বাতিল কারণ) */
+.adm-modal { position: fixed; inset: 0; z-index: 90; background: rgba(15, 23, 42, .5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.adm-modal .am-box { background: #fff; border-radius: 16px; padding: 14px; width: min(420px, 100%); box-shadow: 0 18px 50px rgba(15, 23, 42, .3); }
+.adm-modal h5 { margin: 0 0 6px; font-size: 14.5px; }
+.adm-modal .am-box > p { font-size: 12.5px; margin: 0 0 8px; }
+.adm-modal textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.adm-modal textarea.bad { border-color: #dc2626; }
+.adm-modal .am-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }

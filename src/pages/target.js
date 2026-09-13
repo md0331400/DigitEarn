@@ -44,21 +44,21 @@ bootAppPage({
             <span class="tier-bonus">৳${t.bonus}</span>
           </div>
           ${t.claimed
-            ? '<div class="ok-box"><i class="fa-solid fa-check"></i> বোনাস Claim করা হয়েছে</div>'
-            : `<button type="button" class="btn btn-gold btn-block" data-tier="${t.tier}" data-bonus="${t.bonus}" ${reached ? '' : 'disabled style="opacity:.6"'}>${reached ? 'বোনাস Claim করুন' : `আরও ${need - directCount} জন সরাসরি রেফার দরকার`}</button>`}
+            ? '<div class="ok-box"><i class="fa-solid fa-check"></i> বোনাস যোগ হয়েছে</div>'
+            : `<button type="button" class="btn btn-gold btn-block" data-tier="${t.tier}" data-bonus="${t.bonus}" ${reached ? '' : 'disabled style="opacity:.6"'}>${reached ? 'বোনাস নিন' : `আরও ${need - directCount} জন সরাসরি রেফার দরকার`}</button>`}
         </div>`;
       }).join('')}`;
 
     box.querySelectorAll('button[data-tier]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Claim হচ্ছে...';
+        btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> নেওয়া হচ্ছে...';
         try {
           const bonus = await claimTarget(user.uid, btn.dataset.tier);
           toast(`+৳${bonus} টার্গেট বোনাস যোগ হয়েছে`);
           location.reload();
         } catch (err) {
           toast(err.message, 'error');
-          btn.disabled = false; btn.textContent = 'বোনাস Claim করুন';
+          btn.disabled = false; btn.textContent = 'বোনাস নিন';
         }
       });
     });

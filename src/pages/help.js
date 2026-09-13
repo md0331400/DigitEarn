@@ -18,11 +18,11 @@ bootAppPage({
       </div>`;
     box.innerHTML = `
       <div class="help-head">
-        <h2 class="hist-title"><i class="fa-solid fa-headset"></i> Customer Support</h2>
+        <h2 class="hist-title"><i class="fa-solid fa-headset"></i> গ্রাহক সেবা</h2>
         <p class="muted">যেকোনো সমস্যায় আমাদের সাথে যোগাযোগ করুন</p>
       </div>
       <div class="card">
-        <h4 class="sec-title">Support Channels</h4>
+        <h4 class="sec-title">যোগাযোগের মাধ্যম</h4>
         <div class="support-list">
           ${socialItem(settings.facebookLink, 'fa-brands fa-facebook-f', '#1877f2', 'Facebook Page', 'Like &amp; Follow us')}
           ${socialItem(settings.telegramLink, 'fa-brands fa-telegram', '#229ed9', 'Telegram Channel', 'Get all updates')}
@@ -32,11 +32,11 @@ bootAppPage({
         </div>
       </div>
       <div class="card">
-        <h4 class="sec-title"><i class="fa-solid fa-circle-play" style="color:#ef4444"></i> Training Tutorials</h4>
+        <h4 class="sec-title"><i class="fa-solid fa-circle-play" style="color:#ef4444"></i> শেখার ভিডিও</h4>
         ${videoHtml}
       </div>
       <div class="dev-credit">
-        <b>Developer:</b> Ami Sayem<br>
+        <b>ডেভেলপার:</b> Ami Sayem<br>
         <a href="mailto:support.amisayem@gmail.com">support.amisayem@gmail.com</a>
       </div>`;
 

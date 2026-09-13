@@ -17,9 +17,9 @@ bootAppPage({
         <div class="active-banner">
           <i class="fa-solid fa-triangle-exclamation banner-alert"></i>
           <h3>আপনার একাউন্ট একটিভ নয়!</h3>
-          <p>৳${esc(settings.activationFee || 30)} deposit করে একাউন্ট অ্যাক্টিভ করুন — সাথে সাথে ${esc(settings.activationBonus)} টাকা বোনাস 💸</p>
+          <p>৳${esc(settings.activationFee || 30)} জমা দিলেই একাউন্ট চালু — সাথে সাথে ${esc(settings.activationBonus)} টাকা বোনাস 💸</p>
           <div class="banner-actions">
-            <a href="/deposit.html" class="pill-btn"><i class="fa-solid fa-bolt"></i> Deposit করে অ্যাক্টিভ করুন</a>
+            <a href="/deposit.html" class="pill-btn"><i class="fa-solid fa-bolt"></i> জমা দিয়ে একাউন্ট চালু করুন</a>
           </div>
         </div>`);
     }
