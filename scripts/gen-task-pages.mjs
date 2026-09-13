@@ -58,7 +58,7 @@ for (const t of TASKS) {
     url: canonical,
     provider: { '@type': 'Organization', name: SITE.name, url: SITE.url },
     areaServed: 'BD',
-    offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(t.reward), description: 'প্রতি account ৳' + bn(t.reward) + ' — account জমা দিন, approve হলেই টাকা' },
+    offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(t.reward), description: 'প্রতি account ৳' + bn(t.reward) + ' — তথ্য জমা দিন, অনুমোদন হলেই টাকা' },
   }).replace(/</g, '\\u003c');
 
   const stepsHtml = t.steps.map((s, i) => `            <li><span class="step-num">${i + 1}</span>${esc(s)}</li>`).join('\n');
@@ -106,7 +106,7 @@ for (const t of TASKS) {
 ${stepsHtml}
       </ol>
       <div id="taskActions" data-reward="${t.reward}">
-        <p class="muted claim-hint">লগইন করে account জমা দিন — admin approve করলেই ৳${Number(t.reward).toFixed(2)} ব্যালেন্সে যোগ হবে।</p>
+        <p class="muted claim-hint">লগইন করে তথ্য জমা দিন — অনুমোদন হলেই ৳${Number(t.reward).toFixed(2)} ব্যালেন্সে যোগ হবে।</p>
         <a href="/login.html?next=/task/${t.slug}.html" class="btn btn-gold btn-block">লগইন করে Account জমা দিন</a>
         <a href="/register.html" class="btn btn-outline-gold btn-block">নতুন? আইডি তৈরি করুন (৳১০ বোনাস)</a>
       </div>
@@ -124,7 +124,7 @@ ${stepsHtml}
     <div class="foot-grid">
       <div>
         <img src="/logo.png" alt="${SITE.name}" width="40" height="40">
-        <p class="muted" style="font-size:13px;margin-top:8px">Facebook, Gmail, Instagram account বিক্রি করে টাকা আর্ন করুন — approve হলেই পেমেন্ট! 💰</p>
+        <p class="muted" style="font-size:13px;margin-top:8px">Facebook, Gmail, Instagram account বিক্রি করে টাকা আর্ন করুন — অনুমোদন হলেই পেমেন্ট! 💰</p>
       </div>
       <div>
         <b>কুইক লিংক</b>

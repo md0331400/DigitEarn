@@ -10,6 +10,7 @@ import {
   listUsers, getUserWithdrawals, getUserTransactions, setUserActive,
   listTasks, saveTask, seedTasks, deleteTask,
   listJobStats, listJobProofs, createMicrojob, decideProof, syncLeaderboard,
+  getWallet, listAdminWallets, setAdminBalance, setAdminRole, setAdminMode, publishMicrojob,
   getSettings, saveSettings, clearGiftCode,
   listNotices, addNotice, updateNotice, deleteNotice,
   listUserTargetNotices, addTargetedNotice, updateTargetedNotice, deleteTargetedNotice, listTargetedAll,
@@ -101,6 +102,7 @@ const NAV = [
   { id: 'withdrawals', label: 'Withdrawals', icon: 'fa-money-bill-transfer' },
   { id: 'users', label: 'Users', icon: 'fa-users' },
   { id: 'microjobs', label: 'MicroJobs', icon: 'fa-briefcase' },
+  { id: 'wallet', label: 'অ্যাডমিন ওয়ালেট', icon: 'fa-wallet' },
   { id: 'tasks', label: 'টাস্ক (অ্যাকাউন্ট সেল)', icon: 'fa-store' },
   { id: 'settings', label: 'Settings', icon: 'fa-gear' },
   { id: 'notices', label: 'Notices', icon: 'fa-bullhorn' },
@@ -134,6 +136,7 @@ async function onHash() {
     else if (view === 'users') await viewUsers(main);
     else if (view === 'tasks') await viewTasks(main, 'task');
     else if (view === 'microjobs') await viewTasks(main, 'microjob');
+    else if (view === 'wallet') await viewWallet(main);
     else if (view === 'settings') await viewSettings(main);
     else if (view === 'notices') await viewNotices(main);
     else await viewOverview(main);
@@ -569,26 +572,135 @@ async function viewUsers(main) {
 /* dynamic field types — lib/http.js FIELD_TYPES + src/pages/task.js F_TYPES এর mirror
    (তিনটা copy; tests/web-and-apk.mjs [L] হুবহু মিল check করে) */
 const TF_TYPES = ['text', 'email', 'password', 'tel', 'number', 'url', 'textarea', 'image'];
-function fieldRowHtml(f = {}) {
+/* MicroJobs-এ user-এর কাছ থেকে password নেওয়া যায় না (§9) — সেই ট্যাবে option-টাই থাকে না;
+   পুরোনো account-sell টাস্ক নিজের account-এর তথ্য বিক্রি করে, তাই সেখানে থাকছে */
+const MJ_TF_TYPES = TF_TYPES.filter(x => x !== 'password');
+function fieldRowHtml(f = {}, types = TF_TYPES) {
   return `<div class="if-row" data-if-row>
     <input class="adm-input if-label" placeholder="Field Title (যেমন: UID, Password, Cookies)" value="${esc(f.label || '')}" maxlength="50">
-    <select class="adm-input if-type">${TF_TYPES.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <select class="adm-input if-type">${types.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <input class="adm-input if-ph" placeholder="Placeholder (খালি রাখলে default)" value="${esc(f.placeholder || '')}" maxlength="60">
     <label class="chk if-req"><input type="checkbox" data-ifreq ${f.required ? 'checked' : ''}> Required</label>
     <button type="button" class="adm-btn red sm if-del" data-ifdel><i class="fa-solid fa-trash"></i></button>
   </div>`;
 }
-function inputFieldsEditorHtml(t) {
+function inputFieldsEditorHtml(t, isMJ = false) {
   const fields = Array.isArray(t.inputFields) ? t.inputFields : [];
+  const types = isMJ ? MJ_TF_TYPES : TF_TYPES;
+  void types; // নিচের data-iftypes দিয়ে row গুলোতে লাগে
   return `
     <div class="if-editor">
       <div class="if-head">
         <label>Input Fields — user task page-এ এই field গুলো পূরণ করে submit করবে</label>
         <button type="button" class="adm-btn ghost sm" data-ifadd><i class="fa-solid fa-plus"></i> Add Input Field</button>
       </div>
-      <div class="if-rows" data-ifrows>${fields.map(fieldRowHtml).join('') || '<p class="muted if-empty">কোনো field নেই — task শুধু "link + submit" flow-এ থাকবে।</p>'}</div>
+      <div class="if-rows" data-ifrows data-iftypes="${isMJ ? 'mj' : ''}">${fields.map(f => fieldRowHtml(f, types)).join('') || '<p class="muted if-empty">কোনো field নেই — task শুধু "link + submit" flow-এ থাকবে।</p>'}</div>
     </div>`;
 }
+/* ---------- admin wallet tab (owner rule: Job Poster-এর balance) ---------- */
+const ROLE_LABEL = { owner: 'Owner / Main Admin', full: 'Full Access Admin', poster: 'Job Poster Admin' };
+async function viewWallet(main) {
+  const [w, admins] = await Promise.all([
+    getWallet().catch(() => null),
+    listAdminWallets().catch(() => ({ items: [], isOwner: false })),
+  ]);
+  if (!w || w.ok === false || w.error) {
+    main.innerHTML = `<div class="form-err"><i class="fa-solid fa-triangle-exclamation"></i> ওয়ালেট পড়া যায়নি${w && w.error ? `: ${esc(String(w.error))}` : ''}</div>`;
+    return;
+  }
+  const money = v => `৳${(Number(v) || 0).toFixed(2)}`;
+  const cards = `
+    <div class="wt-grid">
+      <div class="wt-card"><span>Role</span><b>${ROLE_LABEL[w.role] || w.role}${w.activeMode === 'poster' && w.isOwner ? ' (Poster mode)' : ''}</b></div>
+      <div class="wt-card"><span>ব্যালেন্স</span><b class="${w.needsBalance && Number(w.balance) <= 0 ? 'bad' : ''}">${money(w.balance)}</b></div>
+      <div class="wt-card"><span>job-এ আটকা (reserved)</span><b>${money(w.reserved)}</b></div>
+      <div class="wt-card"><span>প্রকাশের নিয়ম</span><b>${w.needsBalance ? 'reward × requiredUsers আগে কাটে' : 'ব্যালেন্স লাগে না'}</b></div>
+    </div>`;
+  const modeSwitch = w.isOwner ? `
+    <div class="adm-card wt-mode">
+      <div><b>Owner mode switch</b><br><span class="muted">Full Access mode-এ নিজের publishing-এ ব্যালেন্স লাগে না; Job Poster mode চললে নিজেরও বাজেট কাটে (testing/audit-এর জন্য)।</span></div>
+      <button class="adm-btn ${w.activeMode === 'poster' ? 'gold' : 'ghost'} sm" data-wtm="full"><i class="fa-solid fa-key"></i> Full Access Mode</button>
+      <button class="adm-btn ${w.activeMode !== 'poster' ? 'gold' : 'ghost'} sm" data-wtm="poster"><i class="fa-solid fa-user-shield"></i> Job Poster Mode</button>
+    </div>` : '';
+  const jobsTable = (w.jobs || []).length ? `
+    <div class="adm-card">
+      <h4><i class="fa-solid fa-briefcase" style="color:#d97706"></i> আপনার ফান্ড করা job</h4>
+      <table class="adm-table"><thead><tr><th>Job</th><th>Reward</th><th>Required</th><th>Budget</th><th>Reserved</th><th>Status</th></tr></thead>
+      <tbody>${w.jobs.map(j => `<tr>
+        <td><b>${esc(j.nameBn || j.slug)}</b><br><span class="muted">${esc(j.slug)}</span></td>
+        <td>${money(j.reward)}</td><td>${j.requiredUsers}</td><td>${money(j.budget)}</td><td>${money(j.reservedBudget)}</td>
+        <td><span class="badge ${j.status === 'live' ? 'green' : j.status === 'draft' ? 'gray' : 'red'}">${j.status === 'live' ? 'লাইভ' : j.status === 'draft' ? 'ড্রাফট' : 'বন্ধ'}</span></td>
+      </tr>`).join('')}</tbody></table>
+    </div>` : '';
+  const ledger = `
+    <div class="adm-card">
+      <h4><i class="fa-solid fa-receipt" style="color:#d97706"></i> ওয়ালেট লগ</h4>
+      ${(w.ledger || []).length ? `<table class="adm-table"><thead><tr><th>কী</th><th>Job</th><th>টাকা</th><th>পরবর্তী ব্যালেন্স</th></tr></thead>
+        <tbody>${w.ledger.map(x => `<tr><td>${esc(x.type || '')}${x.note ? ` <span class="muted">— ${esc(String(x.note))}</span>` : ''}${x.by && x.by !== '' ? `<br><span class="muted">by ${esc(String(x.by))}</span>` : ''}</td>
+          <td>${esc(x.jobSlug || '—')}</td><td class="${Number(x.amount) < 0 ? 'bad' : 'ok'}">${Number(x.amount) < 0 ? '-' : '+'}${money(Math.abs(Number(x.amount) || 0)).slice(1)}</td>
+          <td>${x.balanceAfter === undefined || x.balanceAfter === null ? '—' : money(x.balanceAfter)}</td></tr>`).join('')}</tbody></table>`
+        : '<p class="muted">এখনো কোনো লেনদেন নেই।</p>'}
+    </div>`;
+  const adminTable = admins.isOwner ? `
+    <div class="adm-card">
+      <h4><i class="fa-solid fa-user-shield" style="color:#d97706"></i> Admin ব্যবস্থাপনা (শুধু Owner)</h4>
+      <p class="muted" style="font-size:12.5px">Owner ও Full Access — কারও ব্যালেন্স লাগে না। Job Poster-কে প্রকাশের আগে ব্যালেন্স দিতে হয় (রোয়ার্ড ৳১–৳৫০০)।</p>
+      <table class="adm-table"><thead><tr><th>Email</th><th>Role</th><th>ব্যালেন্স</th><th></th></tr></thead><tbody>
+        ${admins.items.map(a => `<tr>
+          <td>${esc(a.email)}${a.email === w.email ? ' <span class="badge gold">আপনি</span>' : ''}</td>
+          <td><select class="adm-input wt-role" data-email="${esc(a.email)}">
+            ${[['owner', 'Owner'], ['full', 'Full Access'], ['poster', 'Job Poster']].map(([v, l]) => `<option value="${v}" ${a.role === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select> <button class="adm-btn ghost sm" data-rolessave="${esc(a.email)}">Save</button></td>
+          <td><b>${money(a.balance)}</b></td>
+          <td class="wt-acts">
+            <input class="adm-input wt-amt" data-amtfor="${esc(a.email)}" type="number" step="1" min="0" placeholder="৳" style="width:92px">
+            <button class="adm-btn green sm" data-baladd="${esc(a.email)}">যোগ</button>
+            <button class="adm-btn red sm" data-balsub="${esc(a.email)}">বাদ</button>
+            <button class="adm-btn ghost sm" data-balset="${esc(a.email)}">Set</button>
+          </td></tr>`).join('')}
+      </tbody></table>
+    </div>` : '';
+  main.innerHTML = `
+    <div class="adm-card">
+      <h4><i class="fa-solid fa-wallet" style="color:#d97706"></i> অ্যাডমিন ওয়ালেট — MicroJob প্রকাশের বাজেট</h4>
+      <p class="muted" style="font-size:12.5px">সব হিসাব server-এ হয় (client-এর balance/role কখনো ধরা হয় না)। প্রকাশের আগেই
+        <b>reward × requiredUsers</b> ব্যালেন্স থেকে কেটে job doc-এর সাথে একই transaction-এ বসে — টাকা না কাটলে job public হয় না।</p>
+      ${cards}
+    </div>
+    ${modeSwitch}
+    ${adminTable}
+    ${jobsTable}
+    ${ledger}`;
+
+  main.querySelectorAll('[data-wtm]').forEach(b => b.addEventListener('click', async () => {
+    try { await setAdminMode(b.dataset.wtm); toast('Mode বদলেছে'); viewWallet(main); }
+    catch (err) { toast(String(err.message || err), 'error'); }
+  }));
+  main.querySelectorAll('[data-rolessave]').forEach(b => b.addEventListener('click', async () => {
+    const sel = main.querySelector(`.wt-role[data-email="${b.dataset.rolessave}"]`);
+    try { await setAdminRole(b.dataset.rolessave, sel.value); toast('Role সেভ হয়েছে'); viewWallet(main); }
+    catch (err) { toast(String(err.message || err), 'error'); }
+  }));
+  const bal = async (email, mode, btn) => {
+    const input = main.querySelector(`.wt-amt[data-amtfor="${email}"]`);
+    const amount = Math.round((Number(input && input.value) || 0) * 100) / 100;
+    if (!amount && amount !== 0) { toast('অংক লিখুন', 'error'); return; }
+    if (btn) btn.disabled = true;
+    try {
+      const out = await setAdminBalance(email, mode === 'add' ? { delta: amount, note: 'owner credit' }
+        : mode === 'sub' ? { delta: -amount, note: 'owner debit' } : { setBalance: amount, note: 'owner set' });
+      toast(`ব্যালেন্স: ${money(out.balance || 0)}`);
+      viewWallet(main);
+    } catch (err) {
+      toast(String(err.message || err), 'error');
+      if (btn) btn.disabled = false;
+    }
+  };
+  main.querySelectorAll('[data-baladd]').forEach(b => b.addEventListener('click', () => bal(b.dataset.baladd, 'add', b)));
+  main.querySelectorAll('[data-balsub]').forEach(b => b.addEventListener('click', () => bal(b.dataset.balsub, 'sub', b)));
+  main.querySelectorAll('[data-balset]').forEach(b => b.addEventListener('click', () => bal(b.dataset.balset, 'set', b)));
+}
+
 /* দুইটা আলাদা সিস্টেম, panel-এও আলাদা tab — একই `tasks` collection কিন্তু `kind`
    field দিয়ে ভাগ (MicroJobs = kind 'microjob', পুরোনো অ্যাকাউন্ট-সেল = 'task')।
    তাই MicroJobs tab-এ ফেসবুক/জিমাইল টাস্ক দেখায় না, টাস্ক tab-এ নতুন MicroJob দেখায় না। */
@@ -596,6 +708,8 @@ async function viewTasks(main, kind) {
   kind = kind === 'microjob' ? 'microjob' : 'task';
   const isMJ = kind === 'microjob';
   const redraw = () => viewTasks(main, kind);
+  /* wallet = server-এর হিসাব (balance/role) — শুধু hint দেখাতে, verdict না */
+  const wallet = isMJ ? await getWallet().catch(() => null) : null;
   const [allTasks, stats] = await Promise.all([listTasks(), listJobStats(kind).catch(() => [])]);
   const tasks = (allTasks || []).filter(x => ((x && x.kind) === 'microjob' ? 'microjob' : 'task') === kind);
   const statOf = slug => stats.find(x => x.slug === slug) || null;
@@ -613,7 +727,8 @@ async function viewTasks(main, kind) {
         <div><label>Slug (খালি রাখলে বানিয়ে নেওয়া হবে)</label><input class="adm-input" data-nc="slug" maxlength="50" placeholder="like-comment-video"></div>
       </div>
       <div class="two-col">
-        <div><label>Reward / প্রতি user (৳)</label><input type="number" step="0.5" min="0" class="adm-input" data-nc="reward" value="1"></div>
+        <div><label>Reward / প্রতি user (৳)</label><input type="number" step="0.5" min="0" class="adm-input" data-nc="reward" value="1">
+          <p class="muted" style="font-size:11.5px;margin:4px 0 0">Job Poster: ৳১–৳৫০০</p></div>
         <div><label>Required Users *</label><input type="number" min="1" max="1000000" class="adm-input" data-nc="requiredUsers" value="100"></div>
       </div>
       <label>Short Description</label><input class="adm-input" data-nc="shortDesc" maxlength="200" placeholder="কার্ডে দেখানো এক লাইন">
@@ -630,8 +745,9 @@ async function viewTasks(main, kind) {
       <textarea class="adm-input" data-nc="steps" rows="3" placeholder="লিংক ওপেন করুন&#10;লাইক + কমেন্ট দিন&#10;স্ক্রিনশটসহ submit করুন"></textarea>
       <div class="two-col">
         <div><label>Sort order</label><input type="number" class="adm-input" data-nc="sort" value="100"></div>
-        <label class="chk" style="align-self:flex-end;margin-bottom:8px"><input type="checkbox" data-nc="enabled" checked> সাথে সাথেই Active</label>
+        <label class="chk" style="align-self:flex-end;margin-bottom:8px"><input type="checkbox" data-nc="publish" checked> সাথে সাথেই প্রকাশ (Public)</label>
       </div>
+      <div class="mj-budget" id="mjBudgetHint">বাজেট হিসাব হচ্ছে...</div>
       <details style="margin:10px 0 4px"><summary class="muted" style="font-size:12.5px;cursor:pointer">Submission fields (user কী কী জমা দেবে)</summary>
         <div class="if-rows" id="mjNewFields"></div>
         <button type="button" class="adm-btn ghost sm" id="mjNewFieldAdd" style="margin-top:8px"><i class="fa-solid fa-plus"></i> Field যোগ করুন</button>
@@ -671,8 +787,11 @@ async function viewTasks(main, kind) {
                 <span><i class="fa-solid fa-user-plus"></i> বাকি <b>${st.remaining === null || st.remaining === undefined ? '∞' : st.remaining}</b></span>
                 ${st.full || st.closed ? '<span class="badge red">FULL/CLOSED</span>' : ''}
                 ${st.mode === 'single' ? '<span class="badge gray">১ user = ১ submit</span>' : '<span class="badge gray">marketplace</span>'}
+                ${isMJ ? `<span class="badge ${t.funded === 'budget' ? 'gold' : 'gray'}">Budget ৳${((Number(t.reward) || 0) * (need || 0)).toFixed(2)}</span>
+                 <span class="badge ${t.funded === 'budget' ? 'green' : 'gray'}">${t.funded === 'budget' ? 'ফান্ডেড ' + fmt(t.reservedBudget || 0) : t.enabled === false ? 'ড্রাফট — প্রকাশ হলে কাটা হবে' : 'Owner/Full — ফ্রি'}</span>` : ''}
               </div>`; })()}
           </div>
+          ${isMJ && t.enabled === false ? `<button class="adm-btn green sm" data-publish="${esc(t.slug)}" data-budget="${((Number(t.reward) || 0) * (Number(t.requiredUsers) || 0)).toFixed(2)}"><i class="fa-solid fa-paper-plane"></i> প্রকাশ</button>` : ''}
           <button class="adm-btn ghost sm" data-edit="${esc(t.slug)}"><i class="fa-solid fa-pen"></i></button>
           <button class="adm-btn red sm" data-del="${esc(t.slug)}" title="Doc মুছে ফেলুন"><i class="fa-solid fa-trash"></i></button>
         </div>
@@ -715,7 +834,7 @@ async function viewTasks(main, kind) {
             <div><label>History বাটনের লেখা</label><input class="adm-input" data-f="historyLabel" value="${esc(t.historyLabel || '')}" placeholder="View Gmail History" maxlength="40"></div>
           </div>
           <label>দৈনিক সর্বোচ্চ কয়টি account জমা দেওয়া যাবে (per seller)</label><input type="number" min="1" max="200" class="adm-input" data-f="dailyLimit" value="${Number(t.dailyLimit) || 20}">
-          ${inputFieldsEditorHtml(t)}
+          ${inputFieldsEditorHtml(t, isMJ)}
           <label>Video URL (YouTube link বা mp4) — task page-এ guide video</label><input class="adm-input" data-f="videoUrl" value="${esc(t.videoUrl || '')}">
           <div class="two-col">
             <label class="chk"><input type="checkbox" data-f="enabled" ${t.enabled !== false ? 'checked' : ''}> Task ON / Active</label>
@@ -732,7 +851,7 @@ async function viewTasks(main, kind) {
     const rows = btn.closest('.if-editor').querySelector('[data-ifrows]');
     rows.querySelector('.if-empty')?.remove();
     const wrap = document.createElement('div');
-    wrap.innerHTML = fieldRowHtml();
+    wrap.innerHTML = fieldRowHtml({}, rows.dataset.iftypes === 'mj' ? MJ_TF_TYPES : TF_TYPES);
     rows.appendChild(wrap.firstElementChild);
   }));
   main.querySelectorAll('[data-ifdel]').forEach(btn => btn.addEventListener('click', () => {
@@ -786,9 +905,43 @@ async function viewTasks(main, kind) {
   });
   const addRow = (host, f = {}) => {
     const wrap = document.createElement('div');
-    wrap.innerHTML = fieldRowHtml(f);
+    wrap.innerHTML = fieldRowHtml(f, MJ_TF_TYPES);   // MicroJob create form-এ password field নেই (§9)
     host.appendChild(wrap.firstElementChild);
   };
+  /* Job Poster হলে publish-এর আগেই budget = reward × requiredUsers balance-এ থাকতে হবে
+     (§2) — hint এখানে শুধু দেখানোর জন্য, আসল verify server-এর transaction-এ */
+  const budgetHint = document.getElementById('mjBudgetHint');
+  const updHint = () => {
+    if (!budgetHint) return;
+    const r = Number(val('reward')?.value) || 0, n = Number(val('requiredUsers')?.value) || 0;
+    const need = Math.round(r * n * 100) / 100;
+    if (!wallet || !wallet.needsBalance) {
+      budgetHint.className = 'mj-budget ok';
+      budgetHint.innerHTML = `<i class="fa-solid fa-unlock-keyhole"></i> ${wallet && wallet.isOwner ? 'Owner' : 'Full Access'} — প্রকাশের জন্য ব্যালেন্স লাগে না। <b>মোট বাজেট ${fmt(need)}</b>`;
+      return;
+    }
+    const ok = Number(wallet.balance) >= need;
+    budgetHint.className = 'mj-budget ' + (ok ? 'ok' : 'bad');
+    budgetHint.innerHTML = `<i class="fa-solid fa-${ok ? 'circle-check' : 'triangle-exclamation'}"></i> Job Poster: বাজেট <b>${fmt(need)}</b> (রোয়ার্ড ${fmt(r)} × ${n} জন) — আপনার ব্যালেন্স ${fmt(wallet.balance)}${ok ? '' : ' — যথেষ্ট নয়, প্রকাশ হবে না'}`;
+  };
+  ['reward', 'requiredUsers'].forEach(k => val(k)?.addEventListener('input', updHint));
+  updHint();
+  /* Draft → Public (server atomically ফান্ড করে) */
+  main.querySelectorAll('[data-publish]').forEach(btn => btn.addEventListener('click', async () => {
+    const slug = btn.dataset.publish;
+    const budget = Number(btn.dataset.budget) || 0;
+    if (!confirm(`“${slug}” প্রকাশ করবেন?${wallet && wallet.needsBalance ? ` Job Poster হিসেবে বাজেট ${fmt(budget)} আপনার ব্যালেন্স থেকে কেটে নেওয়া হবে (ব্যালেন্স ${fmt(wallet.balance)})।` : ''}`)) return;
+    btn.disabled = true;
+    try {
+      const out = await publishMicrojob(slug);
+      toast(`প্রকাশিত: ${slug}${out.budget ? ` — বাজেট ${fmt(out.budget)} কেটেছে, বাকি ${fmt(out.balanceAfter || 0)}` : ''}`);
+      redraw();
+    } catch (err) {
+      toast(String(err.message || err), 'error');
+      btn.disabled = false;
+    }
+  }));
+
   document.getElementById('mjNewFieldAdd')?.addEventListener('click', () => {
     const host = document.getElementById('mjNewFields');
     if (host) addRow(host);
@@ -815,7 +968,9 @@ async function viewTasks(main, kind) {
           placeholder: r.querySelector('.if-ph')?.value.trim() || '',
           required: r.querySelector('[data-ifreq]').checked,
         })).filter(x => x.label);
+      const publish = !!val('publish')?.checked;
       const out = await createMicrojob({
+        publish,
         /* kind: 'microjob' = আলাদা সিস্টেমের doc — user-এর মাইক্রো জব পেজ এটাই দেখায় */
         kind: 'microjob',
         /* subscription field না দিলে default দুটো (রিপোর্ট + ছবি) — admin চাইলে বদলায় */
@@ -831,9 +986,11 @@ async function viewTasks(main, kind) {
         videoUrl: String(val('videoUrl')?.value || '').trim(),
         image: newImg ? newImg.value : '',
         steps, sort: Number(val('sort')?.value) || 100,
-        mode: 'single', enabled: !!val('enabled')?.checked,
+        mode: 'single',
       });
-      toast(`জব তৈরি হয়েছে: ${out.slug || ''} — user-এর মাইক্রো জব পেজে আলাদা কার্ড দেখাবে`);
+      toast(out.draft
+        ? `ড্রাফট সেভ হয়েছে: ${out.slug || ''} — “প্রকাশ” চাপলে ব্যালেন্স থেকে বাজেট কেটে public হবে`
+        : `জব প্রকাশিত: ${out.slug || ''}${out.budget ? ` — বাজেট ${fmt(out.budget)} কেটেছে, বাকি ${fmt(out.balanceAfter || 0)}` : ''}`);
       redraw();
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
   });

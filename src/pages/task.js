@@ -5,7 +5,7 @@ import { getTaskBySlug, getTodaySales, submitProof, getJobView } from '../core/a
 /* fields render + validation = shared module (microjobs page-ও একটাই ব্যবহার করে),
    per-user state/remaining/FULL logic = shared microjobs model (server-ও একই module) */
 import { cleanFields, fieldsHtml, readFields, paintErrors, mountImageFields, stateBannerHtml } from '../core/jobform.js';
-import { isSingleMode, ST } from '../core/microjobs.js';
+import { isSingleMode, ST, userCopy } from '../core/microjobs.js';
 import { TASKS } from '../tasks-data.js';
 
 const slug = document.body.dataset.taskSlug || '';
@@ -44,7 +44,7 @@ bootAppPage({
     if (stepsEl) {
       const steps = task.steps && task.steps.length ? task.steps : staticTask.steps;
       if (steps && steps.length) {
-        stepsEl.innerHTML = steps.map((s, i) => `<li><span class="step-num">${i + 1}</span>${esc(s)}</li>`).join('');
+        stepsEl.innerHTML = steps.map((s, i) => `<li><span class="step-num">${i + 1}</span>${esc(userCopy(s))}</li>`).join('');
       }
     }
     // reflect live rate
@@ -58,7 +58,7 @@ bootAppPage({
       const vu = task.videoUrl || '';
       const embed = videoEmbedHtml(vu);
       if (embed) {
-        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ${esc(task.nameBn)} ভিডিও গাইড</p><div class="video-box">${embed}</div></div>`;
+        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ${esc(userCopy(task.nameBn))} ভিডিও গাইড</p><div class="video-box">${embed}</div></div>`;
       } else if (vu) {
         vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ${esc(task.nameBn)} ভিডিও গাইড</p><a href="${esc(vu)}" target="_blank" rel="noopener" class="btn btn-indigo btn-block" style="margin-top:10px"><i class="fa-solid fa-arrow-up-right-from-square"></i> ভিডিও লিংক খুলুন</a></div>`;
       }
@@ -97,8 +97,7 @@ bootAppPage({
         box.innerHTML = `
           <div class="notice-orange"><i class="fa-solid fa-triangle-exclamation"></i><div>
             <b>এই প্রজেক্টের সেটিং সার্ভারে সেট করা নেই</b><br>
-            এখন submit করলে server ফিরিয়ে দেবে (“Project পাওয়া যায়নি”)। Admin-কে জানান —
-            Admin Panel → Micro Jobs → “Built-in list থেকে তৈরি করুন” চাপলেই এক সেকেন্ডে ঠিক
+            এই কাজটি এখন খোলা নেই — তালিকায় থাকা অন্য কাজ করুন বা সাপোর্টে জানান।
             হয়ে যাবে, তারপর আবার এই পেজে আসুন।
           </div></div>
           <a href="/dashboard.html" class="btn btn-orange btn-block" style="margin-top:12px"><i class="fa-solid fa-layer-group"></i> অন্য প্রজেক্ট দেখুন</a>`;
@@ -161,8 +160,8 @@ bootAppPage({
         ${stateBannerHtml(task, state, gate)}
         ${safeUrl ? `<a href="${esc(safeUrl)}" target="_blank" rel="noopener" class="btn btn-gold btn-block"><i class="fa-solid fa-link"></i> কাজের লিংক ওপেন করুন</a>` : ''}
         <div class="card proof-card" style="margin-top:14px">
-          <h4 class="sec-title"><i class="${esc(task.icon || 'fa-solid fa-store')}" style="color:${/^#[0-9a-fA-F]{3,8}$/.test(task.color || '') ? task.color : 'var(--gold-deep)'}"></i> ${esc(task.nameBn)} <span class="reward-pill" style="float:right">Rate: ৳${rate.toFixed(2)}</span></h4>
-          ${task.description ? `<p class="muted" style="margin:8px 0 12px;font-size:13.5px;line-height:1.55">${esc(task.description)}</p>` : ''}
+          <h4 class="sec-title"><i class="${esc(task.icon || 'fa-solid fa-store')}" style="color:${/^#[0-9a-fA-F]{3,8}$/.test(task.color || '') ? task.color : 'var(--gold-deep)'}"></i> ${esc(userCopy(task.nameBn))} <span class="reward-pill" style="float:right">প্রতি কাজে ৳${rate.toFixed(2)}</span></h4>
+          ${task.description ? `<p class="muted" style="margin:8px 0 12px;font-size:13.5px;line-height:1.55">${esc(userCopy(task.description))}</p>` : ''}
 
           ${singleMode ? `
           <div class="notice-orange" style="margin-bottom:12px">
@@ -184,7 +183,7 @@ bootAppPage({
           <div class="steps-list" style="margin-bottom:${fieldsHtml ? '6px' : '14px'}">
             <div class="step-line"><b class="step-num">১</b><span>যে account বিক্রি করবেন তার পাসওয়ার্ড উপরের মতো সেট করুন</span></div>
             <div class="step-line"><b class="step-num">২</b><span>নিচের ঘরগুলোতে <b>সেই account</b>-এর তথ্য দিন</span></div>
-            <div class="step-line"><b class="step-num">৩</b><span>Submit করুন — admin <b>approve</b> করলেই +৳${rate.toFixed(2)} ব্যালেন্সে যোগ হবে</span></div>
+            <div class="step-line"><b class="step-num">৩</b><span>জমা দিন — অনুমোদন হলেই +৳${rate.toFixed(2)} ব্যালেন্সে যোগ হবে</span></div>
           </div>
           ${fieldsMarkup}
           ${settings.admin1Link ? `<a href="${esc(settings.admin1Link)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> ${esc(settings.admin1Name)}-এর সাথে চ্যাট করুন</a>` : ''}
@@ -225,8 +224,8 @@ bootAppPage({
         try {
           await submitProof(user.uid, { taskSlug: slug, data });
           toast(singleMode
-            ? 'Submit হয়েছে — admin approval-এর অপেক্ষায় ✓'
-            : 'Account জমা হয়েছে — admin approve করলেই টাকা যোগ হবে');
+            ? 'জমা হয়েছে ✓ — অনুমোদনের অপেক্ষায়'
+            : 'তথ্য জমা হয়েছে ✓ — অনুমোদন হলেই টাকা যোগ হবে');
           render(); // MicroJob: state pending হয়ে বাটন বন্ধ হবে; marketplace: ফর্ম আবার খোলা
         } catch (err) {
           toast(err.message, 'error');

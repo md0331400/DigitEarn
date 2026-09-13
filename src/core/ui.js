@@ -1,5 +1,6 @@
 /* Shared UI: header, drawer, bottom nav, toast, timer, marquee, app bootstrap. */
 import { auth, db, firebaseReady, notConfiguredMsg } from './firebase.js';
+import { userCopy } from './microjobs.js';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getSettings, getUserDoc } from './store.js';
 import { TASKS, INTERNAL_PAGES, SITE } from '../tasks-data.js';
@@ -93,7 +94,7 @@ export function projectGrid(tasks) {
         <i class="${icon}"></i>
         ${t.locked ? '<span class="lock"><i class="fa-solid fa-lock"></i></span>' : ''}
       </div>
-      <span class="proj-name">${esc(t.nameBn)}</span>
+      <span class="proj-name">${esc(userCopy(t.nameBn))}</span>
     </a>`;
   }).join('');
 }
@@ -191,7 +192,7 @@ function openAdminLink(link, toastFn) {
   if (link && /^https?:\/\//i.test(String(link))) {
     window.open(String(link), '_blank', 'noopener');
   } else {
-    toastFn && toastFn('Admin not set it — এখনো admin panel থেকে set করা হয়নি', 'error');
+    toastFn && toastFn('এখনো এই লিংকটি যোগ করা হয়নি — সাপোর্টে যোগাযোগ করুন', 'error');
   }
 }
 
@@ -260,6 +261,15 @@ function renderBootFailure(reason, build) {
 
 /* নতুন client + পুরোনো functions = আধা deploy; user যেন "fix কাজ করেনি" ভুলটা
    বারবার না করে, সেজন্য boot-এই দেখিয়ে দেওয়া হয় (profile ঠিক থাকলেও)। */
+/* এই banner-এর ভেতরের লেখা deploy/admin diagnostic (Vercel, env var, redeploy) —
+   normal user-এর সেটা দেখানো যাবে না (§7/§11/§13)। তাই:
+     · default → শুধু এক লাইন বোঝার মতো বার্তা (technical নাম নেই)
+     · `?debug=1` বা localStorage['de:debug']='1' → পুরো diagnostic (owner/ডেভ debug) */
+const buildDebugEnabled = () => {
+  try {
+    return /[?&]debug=1/.test(location.search) || localStorage.getItem('de:debug') === '1';
+  } catch (_) { return false; }
+};
 function showBuildBanner(build) {
   if (document.getElementById('deployWarn')) return;
   const b = build || {};
@@ -270,6 +280,13 @@ function showBuildBanner(build) {
     ? 'background:#fee2e2;border-bottom:1px solid #dc2626;color:#7f1d1d;padding:9px 14px;font-size:12.5px;text-align:center'
     : 'background:#fef3c7;border-bottom:1px solid #f59e0b;color:#92400e;padding:9px 14px;font-size:12.5px;text-align:center';
   const site = b.site ? ` <span style="opacity:.7">(deployed build: ${esc(b.site.commit || b.site.buildId || '?')}${b.site.api ? ', api ' + esc(b.site.api) : ''})</span>` : '';
+  if (!buildDebugEnabled()) {
+    /* user-facing: সমস্যাটা বুঝবে, সমাধানের internal নির্দেশনা পড়বে না */
+    if (!red) return;                      // পুরোনো build/protection-ish → user-কে ঝামেলায় ফেলা হয় না
+    bar.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> <b>সাইটটি এখন সাময়িকভাবে ঠিকমতো চলছে না</b> — একটু পরে আবার চেষ্টা করুন, না চললে সাপোর্টে জানান।';
+    document.body.insertBefore(bar, document.body.firstChild);
+    return;
+  }
   if (b.crash) {
     bar.innerHTML = '<i class="fa-solid fa-fire"></i> <b>সার্ভারের function চালু হচ্ছে না</b> (' +
       esc(b.vercelError || 'FUNCTION_INVOCATION_FAILED') + ') — login/submit এখন কাজ করবে না। ' +

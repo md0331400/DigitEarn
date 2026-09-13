@@ -225,6 +225,30 @@ export async function listJobProofs(jobSlug, status = 'all', limitN = 200) {
 export async function createMicrojob(data) {
   return adminWrite('task-create', { data });
 }
+/* ---------- admin wallet (MicroJob publishing budget) ---------- */
+export async function getWallet() {
+  return callApi('/api/admin/read', { what: 'wallet' });
+}
+export async function listAdminWallets() {
+  const d = await callApi('/api/admin/read', { what: 'admins' });
+  return { items: Array.isArray(d.items) ? d.items : [], isOwner: !!d.isOwner };
+}
+/** owner-only: Job Poster balance (delta = add/remove, setBalance = absolute) */
+export async function setAdminBalance(email, { delta = null, setBalance = null, note = '' } = {}) {
+  return adminWrite('admin-balance', { email, delta, setBalance, note });
+}
+export async function setAdminRole(email, role) {
+  return adminWrite('admin-role', { email, role });
+}
+/** owner নিজের mode: 'full' | 'poster' (Job Poster mode-লে নিজের publishing-এ wallet rule লাগে) */
+export async function setAdminMode(activeMode) {
+  return adminWrite('admin-mode', { activeMode });
+}
+/** MicroJob draft → publish (server atomically balance কেটে job public করে) */
+export async function publishMicrojob(slug) {
+  return adminWrite('task-publish', { slug });
+}
+
 /** job/টাস্ক doc মুছুন (pending submission থাকলে server 409 দেয়) */
 export async function deleteTask(slug) {
   return adminWrite('task-delete', { slug });

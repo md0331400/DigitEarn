@@ -353,7 +353,14 @@ console.log('\n[I] firebase-admin v14 surface + client error handling');
     const apiSrc = read('src/core/api.js');
     const mj = read('src/pages/microjobs.js');
     const admMain = read('src/admin/main.js');
-    check('getTasks() (পুরোনো টাস্ক grid) MicroJob doc বাদ দেয়',
+    check('MicroJob detail নিজের getter দিয়ে পড়ে (getTaskByslug MicroJob দেয় না — detail ভাঙত)',
+      /readMicrojobDoc\(slug\)/.test(read('src/core/api.js')) && /export async function readMicrojobDoc/.test(read('src/core/api.js')));
+  check('Draft MicroJob user-facing list/detail দুটোতেই বাদ (§6/§8)',
+      /jobStatus\(t\) !== JOB_STATUS\.DRAFT/.test(read('src/core/api.js')) && /notPublic: true/.test(read('src/core/api.js')));
+  check('inactive একাউন্ট = submit gate (client) + backend নিজের check (§10)',
+      /accountActive: opts\.accountActive !== false/.test(read('src/core/api.js')) &&
+      /singleMode \? 403 : 409/.test(read('api/proof/submit.js')));
+  check('getTasks() (পুরোনো টাস্ক grid) MicroJob doc বাদ দেয়',
       /!isMicrojobDoc\(t\)/.test(apiSrc) && /export async function getMicrojobTasks/.test(apiSrc));
     check('MicroJobs page শুধু getMicrojobTasks() পড়ে (কোনো hardcode job list নেই)',
       /getMicrojobs\(/.test(mj) && !/getTasks\(\)/.test(mj) && !/TASKS/.test(codeOnly(mj)));
@@ -508,7 +515,7 @@ console.log('\n[L] dynamic fields: no hardcoded task fields, textarea supported'
     /Array\.isArray\(inputFields\)/.test(jobform) && /cleanFields\(task\.inputFields\)/.test(task) && !/task\.(uidField|gmailField)/.test(task));
   check('user page-এ নিজস্ব F_TYPES copy নেই (drift রোধে jobform-ই একমাত্র source)',
     !/const F_TYPES = /.test(task) && !/const F_MAXLEN = /.test(task));
-  check('field label rendered escaped from config', /esc\(f\.label\)/.test(jobform));
+  check('field label rendered escaped (admin config) + userCopy filter (§7)', /esc\(userCopy\(f\.label\)\)/.test(jobform));
   check('textarea renders a real <textarea> with the same data-tf accessor', /<textarea class="tf-area" data-tf="\$\{i\}"/.test(jobform));
   check('proof image field = data URL + preview + resize (Storage bucket লাগে না)',
     /type === 'image'/.test(jobform) && /toDataURL\('image\/jpeg'/.test(jobform) && /data-tf-img=/.test(jobform));
@@ -534,7 +541,10 @@ console.log('\n[L] dynamic fields: no hardcoded task fields, textarea supported'
   check('admin has an "Add Input Field" button', /data-ifadd[^>]*>[\s\S]{0,120}Add Input Field/.test(admMain));
   check('field rows: title + type + placeholder + required + delete', /if-label/.test(admMain) && /if-type/.test(admMain) && /if-ph/.test(admMain) && /data-ifreq/.test(admMain) && /if-del/.test(admMain));
   check('Field Title wording matches the spec (UID, Password, Cookies example)', /Field Title \(যেমন: UID, Password, Cookies\)/.test(admMain));
-  check('type select is built from the shared list (so textarea is selectable)', /TF_TYPES\.map\(t => `<option value="\$\{t\}"/.test(admMain));
+  check('type select is built from the shared list (so textarea is selectable)', /types\.map\(t => `<option value="\$\{t\}"/.test(admMain) && /function fieldRowHtml\(f = \{\}, types = TF_TYPES\)/.test(admMain));
+  check('MicroJob field editor-এ password option নেই (§9 — user কাছে password চাওয়া হয় না)',
+    /const MJ_TF_TYPES = TF_TYPES\.filter\(x => x !== 'password'\)/.test(admMain) &&
+    /fieldRowHtml\(f, MJ_TF_TYPES\)/.test(admMain) && /data-iftypes="\$\{isMJ \? 'mj' : ''\}"/.test(admMain));
   check('empty editor explains the no-field flow', /কোনো field নেই/.test(admMain));
   check('review card passes the stored snapshot (not just current config)', /submittedFieldsHtml\(p\.submittedData, p\.submittedFields\)/.test(admMain));
   check('password values masked + reveal + copy-all', /'•'\.repeat\(Math\.min\(r\.value\.length, 14\)\)/.test(admMain) && /data-reveal/.test(admMain) && /data-copyall/.test(admMain));

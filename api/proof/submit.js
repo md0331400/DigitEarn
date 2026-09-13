@@ -55,19 +55,23 @@ export default async function handler(req, res) {
   // trusted task config (server-এই পড়ে — client-এর rate/amount কখনো নয়)
   const taskSnap = await db.collection('tasks').doc(taskSlug).get();
   if (!taskSnap.exists) {
-    /* আগে শুধু "Project পাওয়া যায়নি" — admin বুঝতেই পারতেন না যে Firestore-এ সেই
-       task-এর config doc-ই নেই (empty collection = fresh deploy)। এখন doc path +
-       এক-ক্লিক সমাধান (?op=seed-tasks) বলে দেয়। */
-    return fail(res, 404, `Project পাওয়া যায়নি (tasks/${taskSlug} doc নেই) — Admin: Panel → Micro Jobs → “Built-in list থেকে তৈরি করুন” চাপান`);
+    /* internal detail (doc path, seed hint) শুধু server log-এ — user-এর message
+       generic বাংলা (§7/§11: user-facing-এ admin workflow দেখানো যাবে না) */
+    console.warn(`[proof/submit] tasks/${taskSlug} doc নেই — Admin Panel থেকে job তৈরি/seed করুন`);
+    return fail(res, 404, 'এই কাজটি এখন খোলা নেই — একটু পরে আবার চেষ্টা করুন বা সাপোর্টে জানান');
   }
   const task = { ...taskSnap.data(), slug: taskSlug };
-  if (task.enabled === false) return fail(res, 400, 'এই প্রজেক্টটি বর্তমানে বন্ধ আছে');
-  if (task.locked) return fail(res, 400, 'এই প্রজেক্টটি এখনো লক করা আছে');
-  /* MicroJob: admin-এর প্রতিটা job = আলাদা post; requiredUsers পূরণ হলে job
-     globally FULL/CLOSED — আর কোনো নতুন submit না (এই check server-এ, client trust না) */
-  if (isFull(task)) return fail(res, 400, 'এই job-এর সব slot পূরণ হয়েছে (FULL/CLOSED) — অন্য job দেখুন');
+  const mjMode = isMicrojobDoc(task);
+  /* §6: draft/অপ্রকাশিত job কখনো public হয় না — API সরাসরি call করলেও submit চলবে না */
+  if (task.enabled === false) {
+    return fail(res, 400, mjMode ? 'এই কাজটি এখন চালু নেই — তালিকায় থাকা অন্য কাজ করুন' : 'এই প্রজেক্টটি বর্তমানে বন্ধ আছে');
+  }
+  if (task.locked) return fail(res, 400, mjMode ? 'এই কাজটি এখনো খোলা হয়নি' : 'এই প্রজেক্টটি এখনো লক করা আছে');
+  /* MicroJob: requiredUsers পূরণ হলে job globally FULL/CLOSED — নতুন submit না
+     (check server-এই হয়, client-এর view trust করা হয় না) */
+  if (isFull(task)) return fail(res, 400, mjMode ? 'এই কাজের সব জায়গা পূর্ণ — অন্য কাজ দেখুন' : 'এই job-এর সব slot পূরণ হয়েছে (FULL/CLOSED) — অন্য job দেখুন');
   const reward = Number(task.reward) || 0;
-  if (reward <= 0) return fail(res, 400, 'প্রজেক্টের rate সেট করা নেই');
+  if (reward <= 0) return fail(res, 400, mjMode ? 'এই কাজের রেয়ার্ড এখনো ঠিক করা হয়নি' : 'প্রজেক্টের rate সেট করা নেই');
 
   /* ---------- submitted fields validate (per admin config) ----------
      label = field key, type = admin-selected field type — দুটোই submission-এর সাথে
@@ -107,7 +111,7 @@ export default async function handler(req, res) {
     }
     // config-এর বাইরের field reject — arbitrary JSON save হয় না
     for (const k of Object.keys(body.data)) {
-      if (!known.has(k)) return fail(res, 400, 'Submission-এ invalid field পাওয়া গেছে');
+      if (!known.has(k)) return fail(res, 400, 'অতিরিক্ত তথ্য পাঠানো হয়েছে — শুধু কাজের ফর্মে যা চাওয়া হয়েছে তা-ই দিন');
     }
     /* মোট সাইজ guard — textarea (২০০০ অক্ষর/ফিল্ড) যেন বৈধ submission না বোঝায়,
        তাই limit ২৪KB (Firestore doc limit 1MB-এর অনেক নিচে, review card-এর জন্যও যথেষ্ট) */
@@ -156,7 +160,15 @@ export default async function handler(req, res) {
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists) throw new ApiError(409, 'আপনার প্রোফাইল পাওয়া যায়নি');
       const u = userSnap.data();
-      if (!u.isActive) throw new ApiError(409, 'Account বিক্রি করতে আগে নিজের একাউন্ট অ্যাক্টিভ করুন');
+      /* §10 — শুধু একাউন্ট-একটিভ userই submit করতে পারবে (backend check; frontend
+         disable শুধু convenience, bypass করলেও এখানেই আটকাবে) */
+      if (!u.isActive) {
+        /* status: MicroJob = 403 (access rule), পুরোনো marketplace = আগের 409
+           (কোনো existing client/টেস্টের behaviour বদলায় না) */
+        throw new ApiError(singleMode ? 403 : 409, singleMode
+          ? 'কাজ জমা দিতে আগে আপনার একাউন্ট একটিভ করুন'
+          : 'Account বিক্রি করতে আগে নিজের একাউন্ট অ্যাক্টিভ করুন');
+      }
 
       if (singleMode) {
         /* MICROJOB MODE — এক user = একটাই submission per job।
@@ -167,10 +179,10 @@ export default async function handler(req, res) {
         const mine = await tx.get(userProofs.where('taskSlug', '==', taskSlug).limit(50));
         const rows = mine.docs.map(d => ({ id: d.id, ...d.data() }));
         const st = stateOf(task, rows);
-        if (st === ST.PENDING) throw new ApiError(409, 'আপনি এই job-এর কাজটি জমা দিয়েছেন — admin approval-এর অপেক্ষায় আছেন');
-        if (st === ST.APPROVED) throw new ApiError(409, 'এই jobটি আপনি আগেই complete করেছেন — আবার জমা দেওয়া যাবে না');
-        if (st === ST.HIDDEN) throw new ApiError(409, 'এই jobটি আপনার জন্য বন্ধ (rejected) — নতুন job করুন');
-        if (st === ST.FULL || isFull(task)) throw new ApiError(409, 'এই job-এর সব slot পূরণ হয়েছে (FULL/CLOSED)');
+        if (st === ST.PENDING) throw new ApiError(409, 'আপনি এই কাজটি জমা দিয়েছেন — অনুমোদনের অপেক্ষায় আছেন');
+        if (st === ST.APPROVED) throw new ApiError(409, 'এই কাজটি আপনি আগেই সম্পন্ন করেছেন — আবার জমা দেওয়া যাবে না');
+        if (st === ST.HIDDEN) throw new ApiError(409, 'এই কাজটি আপনার জন্য বন্ধ — অন্য কাজ দেখুন');
+        if (st === ST.FULL || isFull(task)) throw new ApiError(409, 'এই কাজের সব জায়গা পূরণ হয়েছে');
       } else {
         const todayQ = await tx.get(userProofs.where('day', '==', day).limit(dailyLimit + 50));
         const todayForTask = todayQ.docs.filter(x => x.data().taskSlug === taskSlug && x.data().status !== 'rejected');

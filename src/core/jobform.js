@@ -6,7 +6,7 @@
 
    ⚠️ F_TYPES/F_MAXLEN = lib/http.js-এর FIELD_TYPES/FIELD_MAXLEN-এর mirror
    (tests/web-and-apk.mjs [L] মিল check করে) — নতুন type দুদিকেই বসাতে হবে। */
-import { ST, submitGate, remainingOf, leftBadge, bnDigits } from './microjobs.js';
+import { ST, submitGate, remainingOf, leftBadge, bnDigits, userCopy } from './microjobs.js';
 
 /* ⚠️ এখানে src/core/ui.js import করা যাবে না — admin panel (src/admin/*) এই module-টা
    import করে, আর ui.js firebase.js টেনে আনে (admin-এর নিজস্ব firebase init আছে)।
@@ -40,7 +40,7 @@ export function fieldsHtml(fields) {
     const type = ftype(f.type);
     const maxLen = maxlen(type);
     const ph = String(f.placeholder || '').trim() || PH[type];
-    const label = `<label class="fld-label">${esc(f.label)} ${f.required ? '<b style="color:#dc2626">*</b>' : ''}</label>`;
+    const label = `<label class="fld-label">${esc(userCopy(f.label))} ${f.required ? '<b style="color:#dc2626">*</b>' : ''}</label>`;
     if (type === 'image') {
       return `${label}
         <div class="field field-img" data-imgfield="${i}">
@@ -184,12 +184,18 @@ export function stateBannerHtml(task, state, gate = submitGate(task, state)) {
   const head = chips.length ? `<div class="mj-chips">${chips.join('')}</div>` : '';
   if (state === ST.PENDING) {
     return head + `<div class="mj-note pending"><i class="fa-solid fa-hourglass-half"></i><div>
-      <b>আপনি এটি জমা দিয়েছেন</b><br>অ্যাডমিন অনুমোদনের অপেক্ষায় আছি — approve হলেই ৳${(Number(task.reward) || 0).toFixed(2)} আপনার ব্যালেন্সে যোগ হবে।
+      <b>আপনি এটি জমা দিয়েছেন</b><br>জমাটি রিভিউতে আছে — অনুমোদন হলেই ৳${(Number(task.reward) || 0).toFixed(2)} আপনার ব্যালেন্সে যোগ হবে।
     </div></div>`;
   }
   if (state === ST.APPROVED) {
     return head + `<div class="mj-note ok"><i class="fa-solid fa-circle-check"></i><div>
       <b>এই কাজটি আপনি সম্পন্ন করেছেন ✓</b><br>টাকা আপনার ব্যালেন্সে যোগ হয়েছে। এটি আর জমা দেওয়া যাবে না।
+    </div></div>`;
+  }
+  if (state === ST.AVAILABLE && gate && gate.allowed === false) {
+    /* যেমন একাউন্ট এখনো একটিভ হয়নি — gate-এর কারণটাই user-কে বলা হয় */
+    return head + `<div class="mj-note warn"><i class="fa-solid fa-circle-exclamation"></i><div>
+      <b>${esc(gate.label || 'এই কাজটি এখন করার জন্য খোলা নেই')}</b><br>সমস্যা থাকলে সাপোর্টে যোগাযোগ করুন।
     </div></div>`;
   }
   if (state === ST.HIDDEN) {
@@ -204,7 +210,7 @@ export function stateBannerHtml(task, state, gate = submitGate(task, state)) {
   }
   if (state === ST.FULL || (badge.full && state !== ST.PENDING)) {
     return head + `<div class="mj-note warn"><i class="fa-solid fa-lock"></i><div>
-      <b>এই কাজটি বন্ধ — সব জায়গা পূর্ণ</b><br>${left === 0 ? 'সব জায়গা পূরণ হয়ে গেছে — অ্যাডমিন জায়গা বাড়ালে আবার খুলে যাবে।' : 'নতুন জমা বন্ধ আছে।'}
+      <b>এই কাজটি বন্ধ — সব জায়গা পূর্ণ</b><br>${left === 0 ? 'সব জায়গা পূরণ হয়ে গেছে, তাই এই কাজটি এখন বন্ধ।' : 'এই কাজে নতুন জমা বন্ধ আছে।'}
     </div></div>`;
   }
   return head;

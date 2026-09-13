@@ -302,12 +302,25 @@ export async function getTasks() {
 }
 
 /** MicroJobs page-এর data source: শুধু admin-এর বানানো microjob doc (hardcode নেই) */
-export async function getMicrojobTasks() {
-  const { isMicrojobDoc } = await import('./microjobs.js');
+export async function getMicrojobTasks({ includeDrafts = false } = {}) {
+  const { isMicrojobDoc, jobStatus, JOB_STATUS } = await import('./microjobs.js');
   const all = await readTaskDocs();
   return all
     .filter(t => isMicrojobDoc(t))
+    /* §6/§8: draft (প্রকাশ হয়নি) job user-এর পেজে আসে না */
+    .filter(t => includeDrafts || jobStatus(t) !== JOB_STATUS.DRAFT)
     .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
+}
+/** নিজের MicroJob doc পড়া (kind filter ছাড়া) — getJobView-এর জন্য।
+   getTaskBySlug ইচ্ছা করেই MicroJob doc দেয় না (পুরোনো /task/x.html সিস্টেম আলাদা),
+   তাই detail page এটা ব্যবহার করে — নাহলে MicroJob detail কখনো খুলতই না। */
+export async function readMicrojobDoc(slug) {
+  if (!firebaseReady || !slug) return null;
+  const snap = await getDoc(doc(db, 'tasks', slug));
+  if (!snap.exists()) return null;
+  const { isMicrojobDoc } = await import('./microjobs.js');
+  const t = { slug: snap.id, ...snap.data() };
+  return isMicrojobDoc(t) ? t : null;
 }
 
 export async function getTaskBySlug(slug) {
@@ -331,25 +344,30 @@ export async function getMyJobProofs(uid, limitN = 500) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-export async function getMicrojobs(uid) {
+export async function getMicrojobs(uid, opts = {}) {
   const { viewsFor, activeJobs } = await import('./microjobs.js');
   const [tasks, proofs] = await Promise.all([getMicrojobTasks(), getMyJobProofs(uid)]);
-  const views = viewsFor(tasks, proofs);
+  /* §10: inactive একাউন্ট = submit বন্ধ (backend আবার নিজের check নিজে করে) */
+  const views = viewsFor(tasks, proofs, { accountActive: opts.accountActive !== false });
   return { all: views, jobs: activeJobs(views) };
 }
 
 /** একটা job-এর detail view (task page / microjobs detail দুটোতেই লাগে) */
-export async function getJobView(uid, slug) {
-  const { viewsFor, isMicrojobDoc } = await import('./microjobs.js');
+export async function getJobView(uid, slug, opts = {}) {
+  const { viewsFor, jobStatus, JOB_STATUS } = await import('./microjobs.js');
   const [task, proofs] = await Promise.all([
-    getTaskBySlug(slug),
+    readMicrojobDoc(slug),
     getMyJobProofs(uid),
   ]);
-  if (!task) return { task: null, view: null, proofs: [] };
-  // MicroJobs page শুধু নিজের system-এর job খোলে (পুরোনো টাস্কের doc না)
-  if (!isMicrojobDoc(task)) return { task: null, view: null, proofs: [], wrongSystem: true };
+  if (!task) {
+    /* পুরোনো টাস্কের doc হলে আলাদা message (দুই সিস্টেম আলাদা) */
+    const legacy = await getTaskBySlug(slug);
+    return { task: null, view: null, proofs: [], wrongSystem: !!legacy };
+  }
+  /* §6: শুধু fund/prakashit job-ই public — draft সরাসরি লিংকেও খোলে না */
+  if (jobStatus(task) === JOB_STATUS.DRAFT) return { task: null, view: null, proofs: [], notPublic: true };
   const mine = (proofs || []).filter(x => x.taskSlug === slug);
-  const view = viewsFor([task], mine)[0] || null;
+  const view = viewsFor([task], mine, { accountActive: opts.accountActive !== false })[0] || null;
   return { task, view, proofs: mine };
 }
 

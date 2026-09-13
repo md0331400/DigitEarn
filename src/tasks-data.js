@@ -31,7 +31,7 @@ export const TASKS = [
     steps: [
       'যে Facebook account বিক্রি করবেন তার পাসওয়ার্ড উপরের পাসওয়ার্ডে পরিবর্তন করুন',
       'সেই account-এর UID, Password ও Cookies নিচের ঘরে দিন',
-      'Submit করুন — admin approve করলেই টাকা ব্যালেন্সে যোগ হবে',
+      'জমা দিন — অনুমোদন হলেই টাকা ব্যালেন্সে যোগ হবে',
     ],
     seo: {
       title: 'Facebook Sale Task — প্রতিদিন ৳৫ রিওয়ার্ড | DigitEarn',
@@ -59,7 +59,7 @@ export const TASKS = [
     steps: [
       'যে Gmail account বিক্রি করবেন তার পাসওয়ার্ড উপরের পাসওয়ার্ডে পরিবর্তন করুন',
       'সেই Gmail এড্রেস ও পাসওয়ার্ড নিচের ঘরে দিন',
-      'Submit করুন — admin approve করলেই টাকা ব্যালেন্সে যোগ হবে',
+      'জমা দিন — অনুমোদন হলেই টাকা ব্যালেন্সে যোগ হবে',
     ],
     seo: {
       title: 'Gmail Sale Task — প্রতিদিন ৳১০ রিওয়ার্ড | DigitEarn',
@@ -88,7 +88,7 @@ export const TASKS = [
     steps: [
       'যে Instagram account বিক্রি করবেন তার পাসওয়ার্ড উপরের পাসওয়ার্ডে পরিবর্তন করুন',
       'সেই account-এর Username, Password ও 2FA Key নিচের ঘরে দিন',
-      'Submit করুন — admin approve করলেই টাকা ব্যালেন্সে যোগ হবে',
+      'জমা দিন — অনুমোদন হলেই টাকা ব্যালেন্সে যোগ হবে',
     ],
     seo: {
       title: 'Instagram Sale Task — প্রতিদিন ৳৫ রিওয়ার্ড | DigitEarn',

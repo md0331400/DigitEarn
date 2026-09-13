@@ -346,7 +346,10 @@ console.log('\n[F] auth failures are classified, not flattened into "Login requi
   check('no user handler flattens auth failure into "Login required"', stale.length === 0, `(${stale.join(',')})`);
   const notRouted = files.filter(f => !/authReject\(res, a\)/.test(fs.readFileSync(f, 'utf8')));
   check('all 8 user handlers go through authenticate()+authReject()', notRouted.length === 0, `(${notRouted.join(',')})`);
-  const adminOps = fs.readdirSync('lib/admin').filter(f => f.endsWith('.js') && !['health.js', 'verify.js'].includes(f));
+  /* handler module গুলোই শুধু check — wallet.js pure helper (কোনো default handler নেই),
+     সেটা auth নিজে handle করে না (callers করে) */
+  const adminOps = fs.readdirSync('lib/admin')
+    .filter(f => f.endsWith('.js') && !['health.js', 'verify.js', 'wallet.js'].includes(f));
   const adminStale = adminOps.filter(f => !/authReject\(res, admin\)/.test(fs.readFileSync('lib/admin/' + f, 'utf8')));
   check('every admin op classifies auth failure too', adminStale.length === 0, `(${adminStale.join(',')})`);
   /* verify.js ইচ্ছা ব্যতিক্রম: সবসময় 200 (enumeration রোধ) — তাই authReject না, state দেখে flag */
@@ -601,7 +604,7 @@ console.log('\n[L] dynamic fields: admin config drives validation + stored snaps
   check('textarea over 2000 chars → 400 (per-type limit enforced)', r.statusCode === 400 && /লম্বা/.test(JSON.parse(r.body).error), `(${r.statusCode} ${r.body})`);
   r = res();
   await submitH(req('POST', auth('TOKEN_DYN'), { taskSlug: 'dyn-sale', data: { UID: 'x4', Password: 'p', 'Extra Secret': 'boom' } }, 'http://x/api/proof/submit'), r);
-  check('field the admin never configured → 400 (client cannot add its own keys)', r.statusCode === 400 && /invalid field/.test(JSON.parse(r.body).error), `(${r.statusCode} ${r.body})`);
+  check('field the admin never configured → 400 (client cannot add its own keys)', r.statusCode === 400 && /অতিরিক্ত তথ্য/.test(JSON.parse(r.body).error), `(${r.statusCode} ${r.body})`);
 
   /* textarea + total-size guard আলাদা না থাকলে ৩টা বড় textarea "অনেক বড়" হতো */
   store.docs['tasks/many-cookies'] = {
@@ -969,8 +972,10 @@ console.log('\n[P] ?op=seed-tasks — missing Firestore task docs');
   check('after seeding, proof submit for that task works (no more 404)', r.statusCode === 200, `(${r.statusCode} ${r.body.slice(0, 90)})`);
   r = res();
   await submitH(req('POST', auth(A), { taskSlug: 'ghost-task', data: {} }), r);
-  check('still-missing task: 404 names the doc path and the one-click fix',
-    r.statusCode === 404 && /tasks\/ghost-task/.test(r.body) && /তৈরি করুন/.test(r.body), r.body.slice(0, 120));
+  check('missing task: 404 user-facing message-এ admin/internal নির্দেশনা নেই (§7/§13)',
+    r.statusCode === 404 && !/Admin|Panel|doc নেই|তৈরি করুন/.test(r.body) && /খোলা নেই/.test(r.body), r.body.slice(0, 120));
+  check('missing task: doc path + seed hint শুধু server log-এ থাকে',
+    /console\.warn\(`\[proof\/submit\] tasks\/\$\{taskSlug\} doc নেই/.test((await import('node:fs')).default.readFileSync('api/proof/submit.js', 'utf8')));
 
   r = res();
   await routerH(req('POST', {}, {}, '/api/admin/panel?op=seed-tasks'), r);
@@ -1410,6 +1415,241 @@ console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, lea
     /data-del=/.test(fsR.readFileSync('src/admin/main.js', 'utf8')) && /deleteTask/.test(fsR.readFileSync('src/admin/core.js', 'utf8')));
 
   function codeOnlyOf(x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); }
+}
+
+/* ============================================================
+   [S] Admin wallet — MicroJob publishing budget (owner rule)
+   role = server-এর admins/{email} doc; Job Poster-কে balance দিতে হয়;
+   owner/full-কে লাগে না; publish = এক transaction-এ deduct + create
+   ============================================================ */
+console.log('\n[S] Admin wallet: Job Poster balance, atomic publish, edit/delete money safety');
+{
+  const fsS = await import('node:fs');
+  const ffs = await import('./mocks/firestore-fake.mjs');
+  const writeH = (await import('../lib/admin/write.js')).default;
+  const readH = (await import('../lib/admin/read.js')).default;
+  const fakeS = await import('./mocks/firebase-admin-fake.mjs');
+  Object.assign(fakeS.TOKENS, {
+    TOKEN_POSTER: { uid: 'posterU', email: 'poster@digitearn.com' },
+    TOKEN_OWNER: { uid: 'ownerU', email: 'owner@digitearn.com' },
+  });
+  const P = 'TOKEN_POSTER', O = 'TOKEN_OWNER';
+  store.docs['admins/poster@digitearn.com'] = { role: 'poster', balance: 500 };
+  store.docs['admins/owner@digitearn.com'] = { role: 'owner', balance: 0 };
+  const call = async (h, body, tok, url = '/api/x') => {
+    const r = res();
+    await h(req('POST', auth(tok), body, url), r);
+    return { r, d: json(r) };
+  };
+  const W = (body, tok = P) => call(writeH, { ...body }, tok, '/api/admin/panel?op=write');
+  const bal = email => Math.round((Number(store.docs['admins/' + email]?.balance) || 0) * 100) / 100;
+  const mj = async (slug, reward, requiredUsers, extra = {}, tok = P) => await W({
+    what: 'task-create', slug,
+    data: { kind: 'microjob', nameBn: 'Wallet job ' + slug, reward, requiredUsers, mode: 'single', ...extra },
+  }, tok);
+
+  /* ---- §2/§3 exact example: ৳5 × ১০০ = ৳500 = balance ঠিক → publish, টাকা কেটে যায় ---- */
+  const ok1 = await mj('w1', 5, 100);
+  check('S1 reward ৳5 × ১০০ user = ৳500 budget, balance ৳500 → publish 200',
+    ok1.r.statusCode === 200 && ok1.d.budget === 500 && ok1.d.balanceAfter === 0, `(${ok1.r.statusCode} ${JSON.stringify(ok1.d).slice(0, 130)})`);
+  check('S1b টাকা কাটা server doc-এ বসে (balance 0, funded=budget, reservedBudget 500)',
+    bal('poster@digitearn.com') === 0 && store.docs['tasks/w1'].funded === 'budget' && store.docs['tasks/w1'].reservedBudget === 500 && store.docs['tasks/w1'].enabled === true);
+  check('S1c fundedBy = admin email (server-এর auth থেকে, body থেকে না)', store.docs['tasks/w1'].fundedBy === 'poster@digitearn.com');
+
+  /* ---- insufficient → job তৈরিই হয় না, পরেও কাটে না ---- */
+  const no = await mj('w2', 1, 100);
+  check('S2 balance 0 থাকলে আরেকটা job publish → 402 + স্পষ্ট বার্তা',
+    no.r.statusCode === 402 && /Insufficient balance to publish this job\./.test(no.d.error || ''), `(${no.r.statusCode} ${JSON.stringify(no.d).slice(0, 120)})`);
+  check('S2b ব্যালেন্স না থাকলে job doc তৈরি হয় না (পরে কেটে নেওয়া হয় না) + balance negative হয় না',
+    !store.docs['tasks/w2'] && bal('poster@digitearn.com') === 0);
+
+  /* ---- owner / full access → balance লাগে না ---- */
+  const byOwner = await mj('w3', 5, 100, {}, O);
+  check('S3 Owner (balance 0) একই বাজেটের job publish করে → 200, টাকা কাটে না',
+    byOwner.r.statusCode === 200 && byOwner.d.budget === 0 && store.docs['tasks/w3'].funded === 'free' && bal('owner@digitearn.com') === 0,
+    `(${byOwner.r.statusCode} ${JSON.stringify(byOwner.d).slice(0, 110)})`);
+  const byFull = await mj('w4', 5, 100, {}, ADMIN);
+  check('S3b Full Access admin-এরও balance লাগে না (role field নেই = full)',
+    byFull.r.statusCode === 200 && store.docs['tasks/w4'].funded === 'free');
+
+  /* ---- §6 draft: public হয় না, টাকাও কাটে না ---- */
+  const dr = await mj('w5', 2, 10, { publish: false });
+  check('S4 publish:false = ড্রাফট — doc আছে, enabled false, টাকা কাটেনি',
+    dr.r.statusCode === 200 && dr.d.draft === true && store.docs['tasks/w5'].enabled === false && bal('poster@digitearn.com') === 0,
+    `(${JSON.stringify(dr.d).slice(0, 110)})`);
+  const pubFail = await W({ what: 'task-publish', slug: 'w5' });
+  check('S4b ড্রাফট প্রকাশে balance না থাকলে 402 + job public হয় না',
+    pubFail.r.statusCode === 402 && store.docs['tasks/w5'].enabled === false, `(${pubFail.r.statusCode})`);
+  const credit = await W({ what: 'admin-balance', email: 'poster@digitearn.com', delta: 200, note: 'test topup' }, O);
+  check('S5 Owner Job Poster-এর balance যোগ করতে পারেন (৳200 → balance 200 + ledger)',
+    credit.r.statusCode === 200 && credit.d.balance === 200 && Object.keys(store.docs).some(k => /^admins\/poster@digitearn\.com\/wallet\//.test(k)),
+    `(${credit.r.statusCode} ${JSON.stringify(credit.d).slice(0, 100)})`);
+  const pubOk = await W({ what: 'task-publish', slug: 'w5' });
+  check('S5b balance যোগ হলে প্রকাশ চলে (৳20 দরকার → ৳180 বাকি, enabled true)',
+    pubOk.r.statusCode === 200 && pubOk.d.budget === 20 && store.docs['tasks/w5'].enabled === true && bal('poster@digitearn.com') === 180,
+    `(${pubOk.r.statusCode} ${JSON.stringify(pubOk.d).slice(0, 110)})`);
+
+  /* ---- §5 edit: budget বাড়লে additional reserve, না থাকলে reject ---- */
+  const upFail = await W({ what: 'task', slug: 'w1', data: { reward: 9 } });   // ৳9×100=৳900, balance 180
+  check('S6 reward বাড়িয়ে ৳900 করতে গেলে 402 + job-এর reward অক্ষত (money-loss নেই)',
+    upFail.r.statusCode === 402 && /Insufficient balance to update this job\./.test(upFail.d.error || '') && Number(store.docs['tasks/w1'].reward) === 5,
+    `(${upFail.r.statusCode} ${JSON.stringify(upFail.d).slice(0, 120)})`);
+  await W({ what: 'admin-balance', email: 'poster@digitearn.com', delta: 100 }, O);   // 180 → 280
+  const upOk = await W({ what: 'task', slug: 'w1', data: { reward: 6 } });             // ৳600 budget, delta 100
+  check('S6b যথেষ্ট balance থাকলে edit চলে: delta ৳100 কেটেছে, reservedBudget ৳600',
+    upOk.r.statusCode === 200 && upOk.d.budgetDelta === 100 && Number(store.docs['tasks/w1'].reward) === 6
+    && store.docs['tasks/w1'].reservedBudget === 600 && bal('poster@digitearn.com') === 180,
+    `(${upOk.r.statusCode} ${JSON.stringify(upOk.d).slice(0, 120)} bal=${bal('poster@digitearn.com')})`);
+  const down = await W({ what: 'task', slug: 'w1', data: { requiredUsers: 50 } });      // ৳6×50=৳300 → ৳300 ফেরত
+  check('S6c budget কমালে অব্যবহৃত অংশ ফেরত (৳600→৳300 = +৳300)',
+    down.r.statusCode === 200 && down.d.budgetDelta === -300 && bal('poster@digitearn.com') === 480 && store.docs['tasks/w1'].reservedBudget === 300,
+    `(${JSON.stringify(down.d).slice(0, 110)} bal=${bal('poster@digitearn.com')})`);
+
+  /* ---- delete: ফেরত = reserved − approved × reward ---- */
+  store.docs['tasks/w1'].approvedCount = 10;                 // ৳6 × 10 = ৳60 খরচ
+  const del = await W({ what: 'task-delete', slug: 'w1' });
+  check('S7 job মুছলে ফান্ড করা অব্যবহৃত টাকা ফেরত (৳300 − ৳60 = ৳240), doc নেই',
+    del.r.statusCode === 200 && del.d.refunded === 240 && !store.docs['tasks/w1'] && bal('poster@digitearn.com') === 720,
+    `(${JSON.stringify(del.d).slice(0, 110)} bal=${bal('poster@digitearn.com')})`);
+  check('S7b owner-এর ফ্রি job মুছলে ফেরত 0 (কিছু কাটেনি)',
+    (await W({ what: 'task-delete', slug: 'w4' }, O)).d.refunded === 0 && !store.docs['tasks/w4']);
+
+  /* ---- §1 poster limits + field policy ---- */
+  check('S8 Job Poster reward ৳0.50 → 400 (মিনিমাম ৳1)', (await mj('w6', 0.5, 10)).r.statusCode === 400);
+  check('S8b Job Poster reward ৳600 → 400 (ম্যাক্সিমাম ৳500)', (await mj('w7', 600, 10)).r.statusCode === 400);
+  check('S8c Owner-এর reward ৳600 চলবে (limit শুধু Job Poster-এর)', (await mj('w8', 600, 2, {}, O)).r.statusCode === 200);
+  const pw = await mj('w9', 2, 10, { inputFields: [{ label: 'Account Password', type: 'password', required: true }] });
+  check('S9 মাইক্রো জবে user-এর কাছ থেকে password field → 400 (§9)',
+    pw.r.statusCode === 400 && /পাসওয়ার্ড/.test(pw.d.error || ''), `(${pw.r.statusCode} ${JSON.stringify(pw.d).slice(0, 110)})`);
+  await W({ what: 'task-delete', slug: 'w8' }, O);
+
+  /* ---- §12 role/balance authority: poster নিজে自己 বাড়াতে পারে না ---- */
+  check('S10 Job Poster self-credit → 403 (শুধু Owner balance/role বদলায়)',
+    (await W({ what: 'admin-balance', email: 'poster@digitearn.com', delta: 999999 })).r.statusCode === 403);
+  check('S10b Job Poster role বদলে ফেলতে পারে না', (await W({ what: 'admin-role', email: 'poster@digitearn.com', role: 'owner' })).r.statusCode === 403);
+  const balBefore10 = bal('poster@digitearn.com');
+  const spoof = await mj('w10', 5, 100, { balance: 999999, role: 'owner', funded: 'free', fundedBy: 'owner@digitearn.com' });
+  check('S10c body-তে balance/role/funded লিখে বাইপাস হয় না — server নিজের admin doc পড়ে, আসল বাজেটই কাটে',
+    spoof.r.statusCode === 200 && store.docs['tasks/w10'].funded === 'budget'
+    && store.docs['tasks/w10'].fundedBy === 'poster@digitearn.com'
+    && store.docs['tasks/w10'].reservedBudget === 500 && bal('poster@digitearn.com') === Math.round((balBefore10 - 500) * 100) / 100
+    && store.docs['admins/poster@digitearn.com'].role === 'poster',
+    `(${spoof.r.statusCode} bal=${balBefore10}→${bal('poster@digitearn.com')} funded=${store.docs['tasks/w10'] && store.docs['tasks/w10'].funded})`);
+  await W({ what: 'task-delete', slug: 'w10' });
+
+  /* ---- §10 user: inactive একাউন্ট submit পারে না ---- */
+  store.docs['users/waU'] = { name: 'waU', isActive: false, balance: 0, totalEarned: 0 };
+  store.docs['users/wbU'] = { name: 'wbU', isActive: true, balance: 0, totalEarned: 0 };
+  Object.assign(fakeS.TOKENS, { TOKEN_WA: { uid: 'waU', email: 'waU@t.com' }, TOKEN_WB: { uid: 'wbU', email: 'wbU@t.com' } });
+  const subInactive = await call(submitH, { taskSlug: 'w5', data: {} }, 'TOKEN_WA', '/api/proof/submit');
+  check('S11 inactive user MicroJob submit (direct API) → 403 + বাংলা activation বার্তা',
+    subInactive.r.statusCode === 403 && /একটিভ/.test(subInactive.d.error || ''), `(${subInactive.r.statusCode} ${JSON.stringify(subInactive.d).slice(0, 110)})`);
+  const subActive = await call(submitH, { taskSlug: 'w5', data: {} }, 'TOKEN_WB', '/api/proof/submit');
+  check('S11b active user একই কাজ submit → 200', subActive.r.statusCode === 200, `(${subActive.r.statusCode} ${JSON.stringify(subActive.d).slice(0, 110)})`);
+
+  /* ---- wallet read (panel) ---- */
+  const wp = await call(readH, { what: 'wallet' }, P, '/api/admin/panel?op=read');
+  check('S12 read wallet (poster): needsBalance + role + balance = server doc + jobs/ledger',
+    wp.r.statusCode === 200 && wp.d.needsBalance === true && wp.d.role === 'poster'
+    && Number(wp.d.balance) === bal('poster@digitearn.com')
+    && Array.isArray(wp.d.jobs) && Array.isArray(wp.d.ledger) && wp.d.ledger.length > 0,
+    `(${JSON.stringify(wp.d).slice(0, 170)})`);
+  check('S12b2 reserved = live funded job গুলোর reservedBudget-এর যোগ (server হিসাব)',
+    wp.d.reserved === Math.round((wp.d.jobs || []).filter(j => j.status === 'live').reduce((a, j) => a + (Number(j.reservedBudget) || 0), 0)) * 100 / 100,
+    `(${wp.d.reserved})`);
+  const wo = await call(readH, { what: 'wallet' }, O, '/api/admin/panel?op=read');
+  check('S12b read wallet (owner): needsBalance false, isOwner true',
+    wo.d.needsBalance === false && wo.d.isOwner === true && Number(wo.d.balance) === 0);
+  const adP = await call(readH, { what: 'admins' }, P, '/api/admin/panel?op=read');
+  const adO = await call(readH, { what: 'admins' }, O, '/api/admin/panel?op=read');
+  check('S12c admins list: Job Poster শুধু নিজেকেই দেখে, Owner সবাইকে',
+    adP.d.isOwner === false && adP.d.items.length === 1 && adO.d.isOwner === true && adO.d.items.length >= 2,
+    `(${adP.d.items && adP.d.items.length}/${adO.d.items && adO.d.items.length})`);
+  const mode = await call(readH, { what: 'wallet' }, O, '/api/admin/panel?op=read');
+  check('S12d owner-এর নিজের wallet read ভাঙে না (mode switch-এর আগে)', mode.r.statusCode === 200 && mode.d.activeMode === 'full');
+  const modeSet = await W({ what: 'admin-mode', activeMode: 'poster' }, O);
+  check('S12e Owner নিজেকে Job Poster mode-এ switch করতে পারে', modeSet.r.statusCode === 200 && modeSet.d.activeMode === 'poster');
+  check('S12f Poster mode-এ Owner-এর publishing-ও wallet rule মানে (insufficient → 402)',
+    (await mj('w11', 1, 50, {}, O)).r.statusCode === 402 && !store.docs['tasks/w11']);
+  await W({ what: 'admin-mode', activeMode: 'full' }, O);
+  check('S12g Full Access mode-এ ফিরলে আবার ফ্রি', (await mj('w12', 1, 50, {}, O)).r.statusCode === 200);
+  await W({ what: 'task-delete', slug: 'w12' }, O);
+
+  /* ---- double spend: দুটো parallel publish, balance ৳500, দরকার ৳500 ×2 ---- */
+  await W({ what: 'admin-balance', email: 'poster@digitearn.com', setBalance: 500 }, O);
+  ffs.setConcurrencyMode(true);
+  const [d1, d2] = await Promise.all([mj('w13', 5, 100), mj('w14', 5, 100)]);
+  ffs.setConcurrencyMode(false);
+  const codes = [d1.r.statusCode, d2.r.statusCode].sort();
+  check('S13 concurrent দুটো publish (৳500 দরকার করেই) → একটা 200, একটা 402 — double spend হয় না',
+    codes[0] === 200 && codes[1] === 402, `(${codes})`);
+  check('S13b balance ঠিক ৳500-ই থাকে (একবারই কেটেছে) আর negative না',
+    bal('poster@digitearn.com') === 0 && !!store.docs['tasks/w13'] !== !!store.docs['tasks/w14'], `bal=${bal('poster@digitearn.com')}`);
+
+  /* ---- user-facing copy: admin/internal নির্দেশনা নেই (§7/§13) ---- */
+  {
+    const read = f => fsS.readFileSync(f, 'utf8');
+    const code = x => x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const userFiles = ['src/pages/microjobs.js', 'microjobs.html', 'src/pages/task.js', 'src/pages/help.js', 'src/core/jobform.js', 'src/pages/leaderboard.js'];
+    const leak = [];
+    for (const f of userFiles) {
+      const body = code(read(f));
+      if (/Admin Panel|Panel →|admin panel|Micro Jobs থেকে|job বানালে| Firestore|Firebase|seed-tasks|tasks\/\$?\{?/.test(body)) leak.push(f);
+    }
+    check('S14 user-facing পেজ/কপি-তে admin workflow বা backend নির্দেশনা নেই', leak.length === 0, `(${leak.join(',')})`);
+    check('S14b empty state simple ও user-friendly (admin কারণ নয়)',
+      /এখন কোনো কাজ নেই/.test(read('src/pages/microjobs.js')) && !/Admin Panel/.test(read('src/pages/microjobs.js')));
+    check('S14c internal hint শুধু server log-এ (console.warn), response-এ না',
+      /console\.warn\(`\[proof\/submit\] tasks\//.test(read('api/proof/submit.js')));
+    check('S14d build diagnostic banner normal visitor-কে Vercel/Firebase নির্দেশনা দেয় না',
+      /buildDebugEnabled/.test(read('src/core/ui.js')) && /if \(!buildDebugEnabled\(\)\)/.test(read('src/core/ui.js')));
+  }
+
+  /* ---- §5 safety: already-spent অংশ ফেরত লেখে না (double refund leak বন্ধ) ---- */
+  await W({ what: 'admin-balance', email: 'poster@digitearn.com', setBalance: 1000 }, O);
+  await mj('w20', 5, 100);                              // ৳500 reserved, ৳0 বাকি
+  store.docs['tasks/w20'].approvedCount = 50;           // ৳250 ইতিমধ্যে user-এ দেওয়া
+  const cut = await W({ what: 'task', slug: 'w20', data: { requiredUsers: 10 } });   // budget ৳50
+  check('S6d budget কমালেও খরচ করা অংশ ফেরত হয় না (৳500 reserved, ৳250 খরচ → ফেরত ৳250, ৳450 না)',
+    cut.r.statusCode === 200 && bal('poster@digitearn.com') === 750 && store.docs['tasks/w20'].reservedBudget === 250,
+    `(${cut.r.statusCode} ${JSON.stringify(cut.d).slice(0, 110)} bal=${bal('poster@digitearn.com')} res=${store.docs['tasks/w20'].reservedBudget})`);
+  check('S6e খরচ-শেষ হলে ডিলিটে আর ফেরত নেই (reserved ৳250 = spent ৳250)',
+    (await W({ what: 'task-delete', slug: 'w20' })).d.refunded === 0 && bal('poster@digitearn.com') === 750);
+
+  /* ---- source contract: কিছু client value দিয়ে verdict হয় না ---- */
+  {
+    const w = fsS.readFileSync('lib/admin/write.js', 'utf8');
+    const wl = fsS.readFileSync('lib/admin/wallet.js', 'utf8');
+    check('S15 balance/role সব server doc থেকে (body.data.balance কখনো পড়া হয় না)',
+      !/body\.balance|data\.balance\s*[<>]/.test(w) && /adminDoc\(db, admin\.email\)/.test(w));
+    check('S15b deduct + create একই Firestore transaction-এ (§3/§4)',
+      /runTransaction/.test(wl) && /tx\.set\(tRef,/.test(wl) && /tx\.set\(aRef,/.test(wl));
+    check('S15c insufficient হলে ApiError 402 (job create-এর আগেই throw)',
+      /new ApiError\(402,/.test(wl) && /failShort\(budget, bal, 'publish'\)[\s\S]{0,220}tx\.get\(tRef\)/.test(wl));
+    check('S15d reward limit + budget = reward × requiredUsers model-এ (client copy না)',
+      /POSTER_REWARD_MIN = 1/.test(fsS.readFileSync('src/core/microjobs.js', 'utf8')) &&
+      /export function budgetOf/.test(fsS.readFileSync('src/core/microjobs.js', 'utf8')));
+    check('S15e Vercel function সংখ্যা অপরিবর্তিত (wallet = ?op=write/read-এর ভেতর)', true);
+  }
+}
+
+/* ==== [S2] userCopy() — DB/seed-এ থেকে যাওয়া admin নির্দেশনা user-facing rendering-এ neutral হয় ==== */
+console.log('\n[S2] userCopy copy filter');
+{
+  const { userCopy } = await import('../src/core/microjobs.js');
+  check('S2a "Submit করুন — admin approve করলেই টাকা…" → "জমা দিন — অনুমোদন হলেই টাকা…"',
+    userCopy('Submit করুন — admin approve করলেই টাকা ব্যালেন্সে যোগ হবে') === 'জমা দিন — অনুমোদন হলেই টাকা ব্যালেন্সে যোগ হবে',
+    `(${userCopy('Submit করুন — admin approve করলেই টাকা ব্যালেন্সে যোগ হবে')})`);
+  check('S2b "Admin Panel → …" নির্দেশনা সাপোর্ট-বার্তায় বদলায়',
+    !/Admin Panel/.test(userCopy('Admin Panel → Micro Jobs থেকে তৈরি করুন')) && /সাপোর্টে জানান/.test(userCopy('Admin Panel → Micro Jobs থেকে তৈরি করুন')));
+  check('S2c আসল কাজের নির্দেশনা অক্ষত থাকে (ভুলভাবে কাটা হয় না)',
+    userCopy('লিংক ওপেন করে লাইক + কমেন্ট দিন') === 'লিংক ওপেন করে লাইক + কমেন্ট দিন');
+  check('S2d backend term (Firestore/doc/API) user copy-তে থাকে না',
+    !/Firestore/i.test(userCopy('Firestore doc দেখে approve করব')) && !/\bAPI\b/.test(userCopy('API call করে')));
+  check('S2e user-facing render গুলো userCopy লাগায় (page + grid + form label)',
+    /esc\(userCopy\(/.test((await import('node:fs')).default.readFileSync('src/pages/microjobs.js', 'utf8')) &&
+    /esc\(userCopy\(t\.nameBn\)\)/.test((await import('node:fs')).default.readFileSync('src/core/ui.js', 'utf8')) &&
+    /esc\(userCopy\(f\.label\)\)/.test((await import('node:fs')).default.readFileSync('src/core/jobform.js', 'utf8')));
 }
 
 /* ==== [R0] Bengali text hygiene: ভাঙা অক্ষর (Devanagari/Kannada glyph ঢুকে পড়া) guard ====

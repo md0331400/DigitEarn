@@ -14,7 +14,7 @@ bootAppPage({
       : `
       <div class="tutorial-box">
         <i class="fa-solid fa-video-slash"></i>
-        <p>ভিডিও টিউটোরিয়াল শীঘ্রই আসছে... (admin panel থেকে Video URL set করুন)</p>
+        <p>ভিডিও টিউটোরিয়াল শীঘ্রই আসছে...</p>
       </div>`;
     box.innerHTML = `
       <div class="help-head">
@@ -42,7 +42,7 @@ bootAppPage({
 
     // admin panel থেকে link set না থাকলে "Admin not set it"
     box.querySelectorAll('[data-nolink]').forEach(el => el.addEventListener('click', () => {
-      toast('Admin not set it — এখনো admin panel থেকে link set করা হয়নি', 'error');
+      toast('এখনো এই লিংকটি যোগ করা হয়নি — সাপোর্টে যোগাযোগ করুন', 'error');
     }));
   },
 });
