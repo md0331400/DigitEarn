@@ -49,7 +49,7 @@ bootAppPage({
           <div class="level-card">
             <div class="level-head">
               <b>${levelNames[i]} (${c})</b>
-              <button type="button" class="view-btn" data-level="${i + 1}" ${c ? '' : 'style="opacity:.5"'}>View</button>
+              <button type="button" class="view-btn" data-level="${i + 1}" ${c ? '' : 'style="opacity:.5"'}>দেখুন</button>
             </div>
             <div class="level-members" id="lv${i + 1}" hidden>
               ${i === 0 && direct.length ? direct.map(m => `
@@ -76,7 +76,7 @@ bootAppPage({
         const target = document.getElementById('lv' + btn.dataset.level);
         if (!target) return;
         target.hidden = !target.hidden;
-        btn.textContent = target.hidden ? 'View' : 'Hide';
+        btn.textContent = target.hidden ? 'দেখুন' : 'লুকান';
       });
     });
     const copyBtn = document.getElementById('copyRef');

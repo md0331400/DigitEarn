@@ -8,7 +8,7 @@ import {
   listDeposits, approveDeposit, rejectDeposit,
   listWithdrawals, reviewWithdrawal,
   listUsers, getUserWithdrawals, getUserTransactions, setUserActive,
-  listTasks, saveTask, seedTasks,
+  listTasks, saveTask, seedTasks, deleteTask,
   listJobStats, listJobProofs, createMicrojob, decideProof, syncLeaderboard,
   getSettings, saveSettings, clearGiftCode,
   listNotices, addNotice, updateNotice, deleteNotice,
@@ -100,7 +100,8 @@ const NAV = [
   { id: 'deposits', label: 'Deposits', icon: 'fa-money-bill-wave' },
   { id: 'withdrawals', label: 'Withdrawals', icon: 'fa-money-bill-transfer' },
   { id: 'users', label: 'Users', icon: 'fa-users' },
-  { id: 'tasks', label: 'Micro Jobs', icon: 'fa-briefcase' },
+  { id: 'microjobs', label: 'MicroJobs', icon: 'fa-briefcase' },
+  { id: 'tasks', label: 'টাস্ক (অ্যাকাউন্ট সেল)', icon: 'fa-store' },
   { id: 'settings', label: 'Settings', icon: 'fa-gear' },
   { id: 'notices', label: 'Notices', icon: 'fa-bullhorn' },
 ];
@@ -131,7 +132,8 @@ async function onHash() {
     else if (view === 'deposits') await viewDeposits(main);
     else if (view === 'withdrawals') await viewWithdrawals(main);
     else if (view === 'users') await viewUsers(main);
-    else if (view === 'tasks') await viewTasks(main);
+    else if (view === 'tasks') await viewTasks(main, 'task');
+    else if (view === 'microjobs') await viewTasks(main, 'microjob');
     else if (view === 'settings') await viewSettings(main);
     else if (view === 'notices') await viewNotices(main);
     else await viewOverview(main);
@@ -245,8 +247,13 @@ function submittedFieldsHtml(data, snapshot) {
   return `<div class="sub-fields">${body}</div>
     <button type="button" class="adm-btn ghost sm" data-copyall data-all="${esc(all)}" style="margin-top:6px"><i class="fa-solid fa-clipboard"></i> Copy All Data</button>`;
 }
+let proofKind = '';   // '' = সব, 'microjob', 'task' — দুই সিস্টেমের submission আলাদা দেখা যায়
 async function viewProofs(main) {
   main.innerHTML = `
+    <div class="chip-row" id="proofKindChips">
+      ${[['', 'সব'], ['microjob', 'মাইক্রো জব'], ['task', 'টাস্ক (সেল)']].map(([v, l]) =>
+        `<button class="chip ${proofKind === v ? 'on' : ''}" data-pk="${v}">${l}</button>`).join('')}
+    </div>
     <div class="chip-row" id="proofChips">
       ${['pending', 'approved', 'rejected', 'all'].map(f => `<button class="chip ${f === proofFilter ? 'on' : ''}" data-pf="${f}">${{ pending: 'Pending', approved: 'Approved', rejected: 'Rejected', all: 'সব' }[f]}</button>`).join('')}
     </div>
@@ -258,7 +265,16 @@ async function viewProofs(main) {
     document.querySelectorAll('[data-pf]').forEach(c => c.classList.toggle('on', c.dataset.pf === proofFilter));
     viewProofs(main);
   });
-  const list = await listProofs(proofFilter);
+  document.getElementById('proofKindChips').addEventListener('click', e => {
+    const b = e.target.closest('[data-pk]');
+    if (!b) return;
+    proofKind = b.dataset.pk || '';
+    viewProofs(main);
+  });
+  const allList = await listProofs(proofFilter);
+  /* kind = submission-এর সময় server বসায় (api/proof/submit.js) — পুরোনো doc-এ
+     field না থাকলে সেটা টাস্ক সিস্টেমেরই ধরা হয় */
+  const list = proofKind ? allList.filter(p => ((p.kind === 'microjob') ? 'microjob' : 'task') === proofKind) : allList;
   const box = document.getElementById('proofList');
   if (!list.length) { box.innerHTML = '<p class="muted center-note">কোনো submission নেই।</p>'; return; }
   const items = await Promise.all(list.map(async p => ({ p, user: p.user || await getUser(p.userId).catch(() => null) })));
@@ -573,9 +589,15 @@ function inputFieldsEditorHtml(t) {
       <div class="if-rows" data-ifrows>${fields.map(fieldRowHtml).join('') || '<p class="muted if-empty">কোনো field নেই — task শুধু "link + submit" flow-এ থাকবে।</p>'}</div>
     </div>`;
 }
-async function viewTasks(main) {
-  /* jobs list = tasks collection (প্রতিটা doc আলাদা card) + server-এর per-job aggregate */
-  const [tasks, stats] = await Promise.all([listTasks(), listJobStats().catch(() => [])]);
+/* দুইটা আলাদা সিস্টেম, panel-এও আলাদা tab — একই `tasks` collection কিন্তু `kind`
+   field দিয়ে ভাগ (MicroJobs = kind 'microjob', পুরোনো অ্যাকাউন্ট-সেল = 'task')।
+   তাই MicroJobs tab-এ ফেসবুক/জিমাইল টাস্ক দেখায় না, টাস্ক tab-এ নতুন MicroJob দেখায় না। */
+async function viewTasks(main, kind) {
+  kind = kind === 'microjob' ? 'microjob' : 'task';
+  const isMJ = kind === 'microjob';
+  const redraw = () => viewTasks(main, kind);
+  const [allTasks, stats] = await Promise.all([listTasks(), listJobStats(kind).catch(() => [])]);
+  const tasks = (allTasks || []).filter(x => ((x && x.kind) === 'microjob' ? 'microjob' : 'task') === kind);
   const statOf = slug => stats.find(x => x.slug === slug) || null;
   /* ⚠️ Firestore-এ task config doc না থাকলে user submit → "Project পাওয়া যায়নি" (404)।
      listTasks() খালি হলে এই panel-এ কার্ডই না, মানে নতুন doc বানানোর উপায়ও না —
@@ -584,8 +606,8 @@ async function viewTasks(main) {
      card/post হিসেবেই দেখাবে (৫টা job বানালে ৫টা card; কোনো hardcode নেই) */
   const createCard = `
     <div class="adm-card" id="mjCreateCard">
-      <h4 style="margin:0 0 4px"><i class="fa-solid fa-plus" style="color:#d97706"></i> নতুন Microjob তৈরি করুন</h4>
-      <p class="muted" style="font-size:12.5px;margin:0 0 10px">প্রতিটা job আলাদা post — ছবি, title, short description, নিয়ম, লিংক, video, Required Users, Reward আর submission field নিজে থেকেই ঠিক করুন।</p>
+      <h4 style="margin:0 0 4px"><i class="fa-solid fa-plus" style="color:#d97706"></i> নতুন MicroJob তৈরি করুন</h4>
+      <p class="muted" style="font-size:12.5px;margin:0 0 10px">প্রতিটা জব আলাদা পোস্ট — ছবি, টাইটেল, সংক্ষিপ্ত বিবরণ, নিয়ম, লিংক, ভিডিও, কতজন দরকার, রেয়ার্ড আর কী জমা দিতে হবে সব নিজে ঠিক করুন। Required Users পূরণ হলে জব স্বয়ংক্রিয়ভাবে FULL/CLOSED হবে।</p>
       <div class="two-col">
         <div><label>Job Title *</label><input class="adm-input" data-nc="nameBn" maxlength="60" placeholder="যেমন: ভিডিওতে like + comment"></div>
         <div><label>Slug (খালি রাখলে বানিয়ে নেওয়া হবে)</label><input class="adm-input" data-nc="slug" maxlength="50" placeholder="like-comment-video"></div>
@@ -625,16 +647,20 @@ async function viewTasks(main) {
       <button class="adm-btn gold sm" id="seedTasksBtn"><i class="fa-solid fa-database"></i> ${tasks.length ? 'বাকিগুলো তৈরি করুন' : 'এখনই তৈরি করুন'}</button>
     </div>`;
   main.innerHTML = `
-    <div class="adm-card task-head"><h4><i class="fa-solid fa-briefcase" style="color:#d97706"></i> Micro Jobs</h4>
-    <p class="muted">Reward, link, password, description, input fields, lock/status, video — সব এখান থেকেই। Save করলেই user website-তে automatically update হয়ে যাবে। প্রতিটা job আলাদা post — নতুন job বানালেই user-এর MicroJobs page-এ আলাদা card দেখাবে, কোনো developer/page লাগবে না।</p></div>
-    ${createCard}
-    ${seedBar}
+    <div class="adm-card task-head"><h4>${isMJ
+      ? '<i class="fa-solid fa-briefcase" style="color:#d97706"></i> MicroJobs — আলাদা সিস্টেম'
+      : '<i class="fa-solid fa-store" style="color:#d97706"></i> টাস্ক (অ্যাকাউন্ট সেল)'}</h4>
+    <p class="muted">${isMJ
+      ? 'এখান থেকে বানানো প্রতিটা জব user-এর “মাইক্রো জব” পেজে আলাদা পোস্ট/কার্ড হিসেবে দেখাবে — ৫টা বানালে ৫টা কার্ড, কিছুই hardcode নয়। Reward, ছবি, নিয়ম, লিংক, ভিডিও, কতজন দরকার, জমার ফিল্ড — সব এখান থেকেই। Required Users শেষ হলে জব স্বয়ংক্রিয়ভাবে FULL/CLOSED।'
+      : 'পুরোনো সিস্টেম (ফেসবুক/জিমাইল/ইন্সট্রাগ্রাম সেল) — এগুলো মাইক্রো জব পেজে আসে না। Reward, link, password, description, input fields, lock/status, video এখান থেকেই; Save করলেই user website update হয়ে যাবে।'}</p></div>
+    ${isMJ ? createCard : ''}
+    ${isMJ ? '' : seedBar}
     <div id="taskList">${tasks.map(t => `
       <div class="adm-card task-card" data-slug="${esc(t.slug)}">
         <div class="task-row">
           <div class="task-info">
             <b>${esc(t.nameBn || t.slug)} ${t.enabled === false ? '<span class="badge gray">OFF</span>' : ''} ${t.locked ? '<span class="badge gold">LOCKED</span>' : ''}</b>
-            <span class="muted">/microjobs.html#job-${esc(t.slug)} • ${fmt(t.reward)}${Array.isArray(t.inputFields) && t.inputFields.length ? ` • ${t.inputFields.length} field(s)` : ''}</span>
+            <span class="muted">${isMJ ? `/microjobs.html#job-${esc(t.slug)}` : `/task/${esc(t.slug)}.html`} • ${fmt(t.reward)}${Array.isArray(t.inputFields) && t.inputFields.length ? ` • ${t.inputFields.length} field(s)` : ''}</span>
             ${(() => { const st = statOf(t.slug); if (!st) return '';
               const need = Number(st.requiredUsers) || 0;
               return `<div class="mj-statline">
@@ -648,6 +674,7 @@ async function viewTasks(main) {
               </div>`; })()}
           </div>
           <button class="adm-btn ghost sm" data-edit="${esc(t.slug)}"><i class="fa-solid fa-pen"></i></button>
+          <button class="adm-btn red sm" data-del="${esc(t.slug)}" title="Doc মুছে ফেলুন"><i class="fa-solid fa-trash"></i></button>
         </div>
         <div class="task-form" data-form="${esc(t.slug)}" hidden>
           <label>নাম (বাংলা)</label><input class="adm-input" data-f="nameBn" value="${esc(t.nameBn || '')}">
@@ -719,13 +746,28 @@ async function viewTasks(main) {
     const form = card.querySelector('[data-form]');
     form.hidden = !form.hidden;
   }));
+  /* মুছুন = tasks/{slug} doc সরিয়ে ফেলা (user page থেকে cardও উঠে যাবে) */
+  main.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    const slug = btn.dataset.del;
+    if (!confirm(`“${slug}” মুছে ফেলবেন? user-এর পেজ থেকে এই job-এর card উঠে যাবে (জমা দেওয়া হিস্ট্রি থাকবে)।`)) return;
+    btn.disabled = true;
+    try {
+      await deleteTask(slug);
+      toast(`মুছে ফেলা হয়েছে: ${slug}`);
+      redraw();
+    } catch (err) {
+      toast(err.message, 'error');
+      btn.disabled = false;
+    }
+  }));
+
   main.querySelector('#seedTasksBtn')?.addEventListener('click', async e => {
     const btn = e.currentTarget;
     btn.disabled = true;
     try {
       const out = await seedTasks();
       toast(`তৈরি হয়েছে ${out.createdCount || 0}টা, আগে থেকেই ছিল ${out.skippedCount || 0}টা${out.invalid && out.invalid.length ? ' · কিছু হয়নি: ' + out.invalid.join(', ') : ''}`);
-      viewTasks(main);
+      redraw();
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
   });
 
@@ -766,7 +808,21 @@ async function viewTasks(main) {
     const btn = document.getElementById('mjCreateBtn');
     btn.disabled = true;
     try {
+      const fieldRows = [...(document.getElementById('mjNewFields')?.querySelectorAll('[data-if-row]') || [])]
+        .map(r => ({
+          label: r.querySelector('.if-label').value.trim(),
+          type: r.querySelector('.if-type').value,
+          placeholder: r.querySelector('.if-ph')?.value.trim() || '',
+          required: r.querySelector('[data-ifreq]').checked,
+        })).filter(x => x.label);
       const out = await createMicrojob({
+        /* kind: 'microjob' = আলাদা সিস্টেমের doc — user-এর মাইক্রো জব পেজ এটাই দেখায় */
+        kind: 'microjob',
+        /* subscription field না দিলে default দুটো (রিপোর্ট + ছবি) — admin চাইলে বদলায় */
+        inputFields: fieldRows.length ? fieldRows : [
+          { label: 'কাজের রিপোর্ট', type: 'textarea', required: true, placeholder: 'আপনি কী করেছেন লিখুন' },
+          { label: 'প্রমাণের ছবি', type: 'image', required: true, placeholder: 'স্ক্রিনশট তুলুন' },
+        ],
         nameBn: title, slug: String(val('slug')?.value || '').trim(),
         reward: Number(val('reward')?.value) || 0,
         requiredUsers: Math.max(1, Number(val('requiredUsers')?.value) || 1),
@@ -774,11 +830,11 @@ async function viewTasks(main) {
         url: String(val('url')?.value || '').trim(),
         videoUrl: String(val('videoUrl')?.value || '').trim(),
         image: newImg ? newImg.value : '',
-        steps, inputFields, sort: Number(val('sort')?.value) || 100,
+        steps, sort: Number(val('sort')?.value) || 100,
         mode: 'single', enabled: !!val('enabled')?.checked,
       });
-      toast(`Job তৈরি হয়েছে: ${out.slug || ''} — user-এর MicroJobs page-এ আলাদা card দেখাবে`);
-      viewTasks(main);
+      toast(`জব তৈরি হয়েছে: ${out.slug || ''} — user-এর মাইক্রো জব পেজে আলাদা কার্ড দেখাবে`);
+      redraw();
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
   });
   /* ছবি: card প্রতি আপলোড/URL/clear (ডেটা data-f="image" hidden input-এ বসে, save সেটাই পাঠায়) */
@@ -846,8 +902,8 @@ async function viewTasks(main) {
         enabled: f('enabled').checked,
         locked: f('locked').checked,
       });
-      toast('Task save হয়েছে — user website-তে update হয়ে গেছে');
-      viewTasks(main);
+      toast('সেভ হয়েছে — user website-তে update হয়ে গেছে');
+      redraw();
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
   }));
 }

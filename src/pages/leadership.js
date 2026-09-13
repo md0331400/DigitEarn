@@ -1,4 +1,7 @@
 import '../styles.css';
+/* owner-এর correction: "লিডারশিপ"-এর বদলে Top-4 লিডারবোর্ড দেখাতে হবে —
+   পুরোনো levels page-টা আর না দেখিয়ে সেই পেজেই নিয়ে যায় (পুরোনো লিংক ভাঙে না) */
+location.replace('/leaderboard.html');
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, esc } from '../core/ui.js';
 import { teamCounts } from '../core/api.js';

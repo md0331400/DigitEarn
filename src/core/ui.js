@@ -67,7 +67,11 @@ export function taskHref(t) {
 }
 
 export function projectGrid(tasks) {
+  /* পুরোনো "টাস্ক" গ্রিড = আলাদা সিস্টেম: এখানে MicroJobs doc (kind==='microjob')
+     দেখানো হয় না, আর 'মাইজাগো জব'-এর leftover doc-ও না (সেটা এখন MicroJobs) */
+  const notMine = t => String(t.kind || '') !== 'microjob' && !['myjob'].includes(String(t.slug || t.id || ''));
   const items = (tasks && tasks.length ? tasks : [...TASKS, ...[]].map(t => ({ ...t, kind: 'task', url: `/task/${t.slug}.html` })))
+    .filter(notMine)
     .concat(INTERNAL_PAGES.map(p => ({ ...p, kind: 'page' })));
   // merge + sort
   const merged = [];
@@ -106,7 +110,7 @@ export function renderHeader(user, settings) {
   <div class="welcome-strip">
     <div class="strip-avatar"><i class="fa-solid fa-user"></i></div>
     <div class="strip-name">
-      <span class="strip-label">WELCOME BACK,</span>
+      <span class="strip-label">স্বাগতম,</span>
       <span class="strip-user">${esc(user ? user.name : '')}</span>
     </div>
     <div class="balance-chip"><i class="fa-solid fa-wallet"></i> <span data-balance>${user ? fmtBDT(user.balance) : '৳ 0.00'}</span></div>
@@ -124,39 +128,39 @@ export function renderDrawer(user, settings, active) {
     <div class="drawer-name">${esc(user ? user.name : '')}</div>
     <div class="drawer-idline">
       <span class="id-pill">ID: ${esc(user ? user.refCode : '')}</span>
-      <span class="status-pill ${user && user.isActive ? 'active' : 'inactive'}"><span class="dot"></span> ${user && user.isActive ? 'Active' : 'Inactive'}</span>
+      <span class="status-pill ${user && user.isActive ? 'active' : 'inactive'}"><span class="dot"></span> ${user && user.isActive ? 'একটিভ' : 'ইনএকটিভ'}</span>
     </div>
     <div class="drawer-stats">
-      <div class="ds"><span>BALANCE</span><b data-balance>${user ? fmtBDT(user.balance) : '৳ 0.00'}</b></div>
-      <div class="ds"><span>MEMBER SINCE</span><b>${memberSince(user && user.createdAt)}</b></div>
+      <div class="ds"><span>ব্যালেন্স</span><b data-balance>${user ? fmtBDT(user.balance) : '৳ 0.00'}</b></div>
+      <div class="ds"><span>সদস্য হয়েছেন</span><b>${memberSince(user && user.createdAt)}</b></div>
     </div>
     <div class="drawer-actions">
-      <a href="/profile.html" class="btn-mini btn-indigo"><i class="fa-solid fa-user-gear"></i> Profile</a>
-      <a href="/help.html" class="btn-mini btn-rose"><i class="fa-solid fa-headset"></i> Support</a>
+      <a href="/profile.html" class="btn-mini btn-indigo"><i class="fa-solid fa-user-gear"></i> প্রোফাইল</a>
+      <a href="/help.html" class="btn-mini btn-rose"><i class="fa-solid fa-headset"></i> সাপোর্ট</a>
     </div>
   </div>
   <nav class="drawer-nav">
-    <div class="dnav-label">HOME SELECTION</div>
-    <a href="/dashboard.html" class="dnav-item ${active === 'home' ? 'on' : ''}"><i class="fa-solid fa-house" style="color:#f59e0b"></i> Dashboard</a>
-    <a href="/profile.html" class="dnav-item ${active === 'profile' ? 'on' : ''}"><i class="fa-solid fa-user-gear" style="color:#8b5cf6"></i> Profile Update</a>
-    <div class="dnav-label">FINANCE</div>
-    <a href="/wallet.html" class="dnav-item ${active === 'wallet' ? 'on' : ''}"><i class="fa-solid fa-money-bill-transfer" style="color:#10b981"></i> Withdraw Funds</a>
-    <a href="/history.html" class="dnav-item ${active === 'history' ? 'on' : ''}"><i class="fa-solid fa-clock-rotate-left" style="color:#6366f1"></i> Payment History</a>
-    <div class="dnav-label">TEAM &amp; SUPPORT</div>
-    <a href="/team.html" class="dnav-item ${active === 'team' ? 'on' : ''}"><i class="fa-solid fa-users" style="color:#0ea5e9"></i> My Team</a>
-    <a href="/help.html" class="dnav-item ${active === 'help' ? 'on' : ''}"><i class="fa-solid fa-headset" style="color:#f97316"></i> Helpline</a>
-    <div class="dnav-label">ACCOUNT</div>
-    <a href="#" id="drawerLogout" class="dnav-item dnav-logout"><i class="fa-solid fa-right-from-bracket"></i> Log Out</a>
+    <div class="dnav-label">প্রধান মেনু</div>
+    <a href="/dashboard.html" class="dnav-item ${active === 'home' ? 'on' : ''}"><i class="fa-solid fa-house" style="color:#f59e0b"></i> ড্যাশবোর্ড</a>
+    <a href="/profile.html" class="dnav-item ${active === 'profile' ? 'on' : ''}"><i class="fa-solid fa-user-gear" style="color:#8b5cf6"></i> প্রোফাইল সম্পাদনা</a>
+    <div class="dnav-label">টাকা-পয়সা</div>
+    <a href="/wallet.html" class="dnav-item ${active === 'wallet' ? 'on' : ''}"><i class="fa-solid fa-money-bill-transfer" style="color:#10b981"></i> টাকা তোলুন</a>
+    <a href="/history.html" class="dnav-item ${active === 'history' ? 'on' : ''}"><i class="fa-solid fa-clock-rotate-left" style="color:#6366f1"></i> পেমেন্ট হিস্টরি</a>
+    <div class="dnav-label">টিম ও সাপোর্ট</div>
+    <a href="/team.html" class="dnav-item ${active === 'team' ? 'on' : ''}"><i class="fa-solid fa-users" style="color:#0ea5e9"></i> আমার টিম</a>
+    <a href="/help.html" class="dnav-item ${active === 'help' ? 'on' : ''}"><i class="fa-solid fa-headset" style="color:#f97316"></i> হেল্পলাইন</a>
+    <div class="dnav-label">একাউন্ট</div>
+    <a href="#" id="drawerLogout" class="dnav-item dnav-logout"><i class="fa-solid fa-right-from-bracket"></i> লগ আউট</a>
   </nav>`;
 }
 
 export function renderBottomNav(active) {
   return `
-  <a href="/help.html" class="bn-item ${active === 'help' ? 'active' : ''}"><i class="fa-solid fa-headset"></i><span>Help</span></a>
-  <a href="/wallet.html" class="bn-item ${active === 'wallet' || active === 'history' ? 'active' : ''}"><i class="fa-solid fa-wallet"></i><span>Wallet</span></a>
-  <a href="/dashboard.html" class="bn-home" aria-label="হোম"><i class="fa-solid fa-house"></i><span>HOME</span></a>
-  <a href="/team.html" class="bn-item ${active === 'team' ? 'active' : ''}"><i class="fa-solid fa-users"></i><span>Team</span></a>
-  <a href="/profile.html" class="bn-item ${active === 'profile' ? 'active' : ''}"><i class="fa-solid fa-user"></i><span>Profile</span></a>`;
+  <a href="/help.html" class="bn-item ${active === 'help' ? 'active' : ''}"><i class="fa-solid fa-headset"></i><span>সাপোর্ট</span></a>
+  <a href="/wallet.html" class="bn-item ${active === 'wallet' || active === 'history' ? 'active' : ''}"><i class="fa-solid fa-wallet"></i><span>ওয়ালেট</span></a>
+  <a href="/dashboard.html" class="bn-home" aria-label="হোম"><i class="fa-solid fa-house"></i><span>হোম</span></a>
+  <a href="/team.html" class="bn-item ${active === 'team' ? 'active' : ''}"><i class="fa-solid fa-users"></i><span>টিম</span></a>
+  <a href="/profile.html" class="bn-item ${active === 'profile' ? 'active' : ''}"><i class="fa-solid fa-user"></i><span>প্রোফাইল</span></a>`;
 }
 
 /* ---------- toast / timer / marquee ---------- */
@@ -177,7 +181,7 @@ export function toast(msg, type = 'success') {
 
 export function setMarquee(container, text) {
   if (!container || !text) { if (container) container.parentElement?.remove(); return; }
-  container.innerHTML = `<span class="notice-chip">Notice</span><div class="marquee"><span>${esc(text)}</span></div>`;
+  container.innerHTML = `<span class="notice-chip">নোটিশ</span><div class="marquee"><span>${esc(text)}</span></div>`;
 }
 
 /* ---------- welcome modal ---------- */

@@ -283,20 +283,41 @@ export async function changePassword(currentPw, newPw) {
 
 /* ---------- tasks (read) ---------- */
 
-export async function getTasks() {
+/* দুইটা আলাদা সিস্টেম, একই `tasks` collection-এ `kind` field দিয়ে আলাদা করা
+   (নতুন collection = নতুন Firestore rules publish লাগত — owner সেটা করে না, তাই
+   আগের rules-এই চলে): kind==='microjob' = MicroJobs, বাকি সব = পুরোনো টাস্ক। */
+async function readTaskDocs() {
   if (!firebaseReady) return [];
   // index-free: sort client-side (task count কম, কোনো composite index লাগে না)
-  const snap = await getDocs(query(collection(db, 'tasks'), limit(100)));
-  return snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(t => t.enabled !== false)
+  const snap = await getDocs(query(collection(db, 'tasks'), limit(200)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function getTasks() {
+  const { isMicrojobDoc, isRetiredTask } = await import('./microjobs.js');
+  const all = await readTaskDocs();
+  return all
+    .filter(t => !isMicrojobDoc(t) && !isRetiredTask(t) && t.enabled !== false)
+    .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
+}
+
+/** MicroJobs page-এর data source: শুধু admin-এর বানানো microjob doc (hardcode নেই) */
+export async function getMicrojobTasks() {
+  const { isMicrojobDoc } = await import('./microjobs.js');
+  const all = await readTaskDocs();
+  return all
+    .filter(t => isMicrojobDoc(t))
     .sort((a, b) => (Number(a.sort) || 99) - (Number(b.sort) || 99));
 }
 
 export async function getTaskBySlug(slug) {
   if (!firebaseReady) return null;
   const snap = await getDoc(doc(db, 'tasks', slug));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  if (!snap.exists()) return null;
+  const { isMicrojobDoc } = await import('./microjobs.js');
+  const t = { id: snap.id, ...snap.data() };
+  // পুরোনো টাস্ক পেজ (/task/x.html) MicroJob doc পড়বে না — সিস্টেম আলাদা
+  return isMicrojobDoc(t) ? null : t;
 }
 
 /* ---------- MicroJobs (admin-এর বানানো প্রতিটা job = আলাদা card) ----------
@@ -312,19 +333,21 @@ export async function getMyJobProofs(uid, limitN = 500) {
 
 export async function getMicrojobs(uid) {
   const { viewsFor, activeJobs } = await import('./microjobs.js');
-  const [tasks, proofs] = await Promise.all([getTasks(), getMyJobProofs(uid)]);
+  const [tasks, proofs] = await Promise.all([getMicrojobTasks(), getMyJobProofs(uid)]);
   const views = viewsFor(tasks, proofs);
   return { all: views, jobs: activeJobs(views) };
 }
 
 /** একটা job-এর detail view (task page / microjobs detail দুটোতেই লাগে) */
 export async function getJobView(uid, slug) {
-  const { viewsFor } = await import('./microjobs.js');
+  const { viewsFor, isMicrojobDoc } = await import('./microjobs.js');
   const [task, proofs] = await Promise.all([
     getTaskBySlug(slug),
     getMyJobProofs(uid),
   ]);
   if (!task) return { task: null, view: null, proofs: [] };
+  // MicroJobs page শুধু নিজের system-এর job খোলে (পুরোনো টাস্কের doc না)
+  if (!isMicrojobDoc(task)) return { task: null, view: null, proofs: [], wrongSystem: true };
   const mine = (proofs || []).filter(x => x.taskSlug === slug);
   const view = viewsFor([task], mine)[0] || null;
   return { task, view, proofs: mine };

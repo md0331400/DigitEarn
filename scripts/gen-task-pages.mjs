@@ -77,7 +77,7 @@ for (const t of TASKS) {
   <header class="site-header">
     <a class="brand" href="/"><img src="/logo.png" alt="${SITE.name} লোগো" width="34" height="34"><span>${SITE.name}</span></a>
     <nav class="header-actions" aria-label="হেডার মেনু">
-      <a href="/dashboard.html" class="btn btn-ghost btn-sm" id="hdrDash">Dashboard</a>
+      <a href="/dashboard.html" class="btn btn-ghost btn-sm" id="hdrDash">ড্যাশবোর্ড</a>
       <a href="/register.html" class="btn btn-gold btn-sm" id="hdrReg">Register</a>
     </nav>
   </header>
@@ -138,7 +138,7 @@ ${stepsHtml}
         ${TASKS.slice(0, 5).map(x => `<a href="/task/${x.slug}.html">${esc(x.nameBn)}</a>`).join('\n        ')}
       </div>
     </div>
-    <p class="foot-copy">© ${new Date().getFullYear()} ${SITE.name} — All rights reserved.</p>
+    <p class="foot-copy">© ${new Date().getFullYear()} ${SITE.name} — সর্বস্বত্ব সংরক্ষিত।</p>
   </footer>
   <script type="application/ld+json">${crumbJson}</script>
 </div>

@@ -1164,15 +1164,25 @@ console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, lea
   };
 
   /* ---- fixtures: ৫টা job admin panel-এর মতো করে তৈরি (?op=write task-create) ---- */
-  const mk = async (n, title, reward, required) => await call(writeH, {
+  /* kind:'microjob' = আলাদা সিস্টেমের doc — শুধু এগুলোই user-এর মাইক্রো জব পেজে দেখায় */
+  const mk = async (n, title, reward, required, extra = {}) => await call(writeH, {
     what: 'task-create', slug: `mj${n}`,
-    data: { nameBn: title, reward, requiredUsers: required, mode: 'single', shortDesc: `short ${n}`, url: 'https://example.com/j' + n, inputFields: [{ label: 'Work Report', type: 'textarea', required: true }] },
+    data: { nameBn: title, reward, requiredUsers: required, mode: 'single', kind: 'microjob', shortDesc: `short ${n}`, url: 'https://example.com/j' + n, inputFields: [{ label: 'Work Report', type: 'textarea', required: true }], ...extra },
   }, ADMIN, '/api/admin/panel?op=write');
   for (let n = 1; n <= 5; n++) {
     const { r } = await mk(n, `Job ${n}`, n, n === 5 ? 2 : 100);
     check(`R1 job ${n} তৈরি → আলাদা tasks/mj${n} doc (${r.statusCode})`, r.statusCode === 200, `(${r.body})`);
   }
   check('R1b duplicate slug create → 409 (একটা job একবারই)', (await mk(1, 'Job 1 again', 5, 10)).r.statusCode === 409);
+  check('R1c MicroJob হতে Required Users >= 1 (নাহলে "কতজন বাকি" মানে হারায়)',
+    (await call(writeH, { what: 'task-create', slug: 'mj-zero', data: { nameBn: 'Zero Slot', reward: 1, requiredUsers: 0, kind: 'microjob' } }, ADMIN, '/api/admin/panel?op=write')).r.statusCode === 400);
+  /* --- দুই সিস্টেম আলাদা: পুরোনো টাস্ক doc মাইক্রো জব list-এ আসে না --- */
+  const legacyTask = await call(writeH, { what: 'task-create', slug: 'fb-sale-x', data: { nameBn: 'ফেসবুক সেল', reward: 4.5, url: 'https://example.com/fb' } }, ADMIN, '/api/admin/panel?op=write');
+  check('R1d পুরোনো টাস্ক doc তৈরি হয় (kind ছাড়া) — MicroJobs-এর বাইরে', legacyTask.r.statusCode === 200 && !store.docs['tasks/fb-sale-x'].kind, `(${legacyTask.r.statusCode} kind=${store.docs['tasks/fb-sale-x'] && store.docs['tasks/fb-sale-x'].kind})`);
+  check('R1e মাইক্রো জব list-এ পুরোনো টাস্ক ফেরে না (viewsFor kind filter)',
+    viewsFor([{ slug: 'fb-sale-x', nameBn: 'ফেসবুক সেল', reward: 4.5 }, { slug: 'mj1', nameBn: 'Job 1', reward: 1, requiredUsers: 100, kind: 'microjob' }], []).map(v => v.slug).join() === 'mj1');
+  check('R1f admin read jobs kindFilter আলাদা সিস্টেম আলাদা করে',
+    (await call(readH, { what: 'jobs', kindFilter: 'microjob' }, ADMIN, '/api/admin/panel?op=read')).d.items.every(x => x.kind === 'microjob'));
 
   /* users: alice (header-এ active) + ৪টা নতুন user — প্রতিটার জন্য আলাদা ID token
      (mock-এর TOKENS map-এ বসানো হয়), তাই "ভিন্ন user = ভিন্ন state" সত্যিই টেস্ট হয় */
@@ -1187,6 +1197,8 @@ console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, lea
   }
   const T2 = 'TOKEN_MJ2', T3 = 'TOKEN_MJ3', T4 = 'TOKEN_MJ4';
   const taskDocs = () => Object.keys(store.docs).filter(k => /^tasks\/mj\d$/.test(k)).map(k => ({ slug: k.split('/')[1], ...store.docs[k] }));
+  check('R2a তৈরি হওয়া ৫টা doc-ই kind:microjob (user পেজ শুধু এগুলো পড়ে)',
+    [1, 2, 3, 4, 5].every(n => store.docs[`tasks/mj${n}`].kind === 'microjob'));
   const proofsOf = uid => Object.keys(store.docs)
     .filter(k => k.startsWith(`users/${uid}/proofs/`)).map(k => ({ id: k.split('/').pop(), ...store.docs[k] }));
   const viewsFor2 = uid => viewsFor(taskDocs(), proofsOf(uid));
@@ -1245,7 +1257,7 @@ console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, lea
   const u2views = viewsFor2('mjU2');
   const j4v = u2views.find(v => v.slug === 'mj4');
   check('R7c job card থাকে + rejected warning + Submit Again চালু',
-    j4v.state === MST.RESUBMIT && j4v.visible === true && j4v.gate.allowed === true && /Submit Again/.test(j4v.gate.label), `(${JSON.stringify(j4v.gate)})`);
+    j4v.state === MST.RESUBMIT && j4v.visible === true && j4v.gate.allowed === true && /আবার জমা দিন/.test(j4v.gate.label), `(${JSON.stringify(j4v.gate)})`);
   su = await call(submitH, { taskSlug: 'mj4', data: { 'Work Report': 'typed doc, corrected' } }, T2, '/api/proof/submit');
   check('R7d সংশোধন করে আবার submit → 200 (permanently disable হয় না)', su.r.statusCode === 200, `(${su.r.statusCode} ${su.r.body})`);
   check('R7e নতুন submit pending state-এ ফিরিয়ে আনে',
@@ -1325,6 +1337,14 @@ console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, lea
     }
   };
   referralsFor('lbA', 15); referralsFor('lbB', 12); referralsFor('lbC', 9); referralsFor('lbD', 7); referralsFor('lbE', 20);
+  /* ইনএকটিভ সদস্য + ইনএকটিভ রেফারেল = বাদ পড়ার কথা */
+  store.docs['users/lbDead'] = { name: 'LB DEAD', mobile: '01799999999', totalEarned: 99999, isActive: false, refCode: 'LBD2' };
+  referralsFor('lbDead', 40);           // সব রেফারেল কিন্তু নিজে ইনএকটিভ
+  for (let i = 0; i < 5; i++) {         // lbC-এর ৫টা রেফারেল ইনএকটিভ → গননায় পড়বে না
+    const kid = `lbCinactive${i}`;
+    store.docs['users/' + kid] = { name: kid, refBy: 'lbC', isActive: false };
+    store.docs[`users/lbC/team/${kid}`] = { name: kid, createdAt: new Date() };
+  }
   /* এটার monthly income = এই মাসের transaction (একটা ৳1500 + একটা পুরোনো মাসের) */
   store.docs['users/lbA/transactions/tx_now'] = { amount: 1500, type: 'referral_bonus', createdAt: new Date() };
   store.docs['users/lbA/transactions/tx_old'] = { amount: 9999, type: 'referral_bonus', createdAt: new Date(Date.now() - 90 * 864e5) };
@@ -1333,6 +1353,12 @@ console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, lea
   check('R12 Leaderboard exactly Top 4 (৩টা না, পুরো list না)', lbItems.length === 4, `(${lbItems.length})`);
   check('R12b ranking = বৈধ referral সংখ্যা (lbE 20 → #1, lbA 15 → #2)',
     lbItems[0].name === 'LB E' && lbItems[0].referrals === 20 && lbItems[1].name === 'LB A' && lbItems[1].referrals === 15, `(${lbItems.map(x => x.name + ':' + x.referrals)})`);
+  check('R12g ইনএকটিভ সদস্য কখনো লিডারবোর্ডে আসে না (৪০টা রেফারেল আর ৳99999 আয় থাকলেও)',
+    lbItems.every(x => x.name !== 'LB DEAD') && !lb.r.body.includes('LB DEAD'));
+  check('R12h যেসব রেফারেল একাউন্ট একটিভ করেনি তারা গননায় পড়ে না (lbC: ৯ valid, ৫ inactive বাদ)',
+    lbItems.find(x => x.name === 'LB C').referrals === 9, `(${(lbItems.find(x => x.name === 'LB C') || {}).referrals})`);
+  check('R12i response-এ isActive flag সবগুলোতেই true (filter server-এই হয়েছে)',
+    lbItems.length > 0 && lbItems.every(x => x.isActive === true));
   check('R12c rank #1..#4 ক্রমে + কার্ডে নাম/referrals', lbItems.map(x => x.rank).join() === '1,2,3,4');
   check('R12d Monthly Income = চলতি মাসের trusted transaction (পুরোনো মাস বাদ)',
     lbItems[1].monthlyIncome === 1500, `(${lbItems[1].monthlyIncome})`);
@@ -1344,18 +1370,78 @@ console.log('\n[R] MicroJobs: independent job posts, per-user status, slots, lea
   /* client-side module গুলো source contract ধরে রাখে */
   const mjPage = fsR.readFileSync('src/pages/microjobs.js', 'utf8');
   check('R13 MicroJobs page = list + #job-<slug> detail (admin-এর নতুন job-এ আলাদা post)',
-    mjPage.includes('#job-${esc(v.slug)}') && /getMicrojobs\(/.test(mjPage) && /jobViewsSorted\(/.test(mjPage));
-  check('R13b card count কখনো hardcode/slice নয় (jobs.map — যত doc, তত card)',
-    /jobs\.map\(jobCard\)/.test(mjPage) && !/jobs\.slice\(0,\s*\d+\)/.test(mjPage) && !/\.slice\(0,\s*[1-9]\)/.test(codeOnlyOf(mjPage)));
-  check('R13c list-এ pending card থাকে, approved/hidden/FULL বাদ (model থেকে আসে, page থেকে না)',
-    /visibleForUser|jobViewsSorted/.test(fsR.readFileSync('src/core/microjobs.js', 'utf8')));
+    mjPage.includes('#job-${esc(v.slug)}') && /getMicrojobs\(/.test(mjPage) && /sortJobs\(/.test(mjPage));
+  check('R13d পেজে কোনো job hardcode নেই (TASKS/static list import নয়, DB থেকেই সব)',
+    !/tasks-data/.test(mjPage) && !/TASKS/.test(codeOnlyOf(mjPage)) &&
+    !/facebook-sale|gmail-sale|instagram-sale|myjob|typing-job/.test(mjPage));
+  check('R13e list = শুধু visible + pending (approved/hidden/FULL ওই user-এর list থেকে বাদ)',
+    /v\.visible \|\| v\.state === ST\.PENDING/.test(mjPage));
+  check('R13f owner correction: stats row + Leaderboard বাটন এই পেজে নেই',
+    !/mj-stats/.test(mjPage) && !/leaderboard\.html/.test(mjPage) && !/mj-stats|leaderboard\.html/.test(fsR.readFileSync('microjobs.html', 'utf8')));
+  check('R13g site chrome বাংলা (owner: "english word use korba na") — নতুন পেজ দুটোতেই',
+    !/View Job|Submit Again|Monthly Income|Referrals|Pending<|Complete</.test(mjPage + fsR.readFileSync('src/pages/leaderboard.js', 'utf8')));
+  check('R13h state banner/label গুলোও বাংলা (core model + jobform — user যা পড়ে)',
+    !/label: 'Submit'|Submit Again|জন complete|FULL \/ CLOSED|Task Rejected/.test(fsR.readFileSync('src/core/microjobs.js', 'utf8') + fsR.readFileSync('src/core/jobform.js', 'utf8')));
   const wrSrc = fsR.readFileSync('lib/admin/write.js', 'utf8');
   check('R14 job image = data:image upload বা http(s) URL (অন্য কিছু accept না)',
     wrSrc.includes('IMG_DATA_RE') && wrSrc.includes('data:image') && wrSrc.includes('https://') &&
-    fsR.readFileSync('src/core/jobform.js', 'utf8').includes("toDataURL('image/jpeg'"));  check('R15 Leaderboard page আলাদা + Refer/team page অক্ষত (§17/§18)',
+    fsR.readFileSync('src/core/jobform.js', 'utf8').includes("toDataURL('image/jpeg'"));
+  check('R15 Leaderboard page আলাদা + Refer/team page অক্ষত (§17/§18)',
     fsR.existsSync('leaderboard.html') && /getLeaderboard\(/.test(fsR.readFileSync('src/pages/leaderboard.js', 'utf8')) &&
     !/leaderboard|getLeaderboard/.test(fsR.readFileSync('src/pages/team.js', 'utf8')));
+  /* --- R16) admin job doc মুছে ফেলা (?op=write what:'task-delete') + pending guard --- */
+  await call(writeH, { what: 'task-create', slug: 'mjdel', data: { nameBn: 'মুছার জব', reward: 2, requiredUsers: 5, kind: 'microjob' } }, ADMIN, '/api/admin/panel?op=write');
+  check('R16a মুছার আগে doc তৈরি হয় (tasks/mjdel)', !!store.docs['tasks/mjdel']);
+  const delOk = await call(writeH, { what: 'task-delete', slug: 'mjdel' }, ADMIN, '/api/admin/panel?op=write');
+  check('R16b task-delete doc সরায় — user-এর মাইক্রো জব পেজ থেকে card উঠে যায়',
+    delOk.r.statusCode === 200 && delOk.d.deleted === true && !store.docs['tasks/mjdel'], `(${delOk.r.statusCode} ${delOk.r.body})`);
+  check('R16c না-থাকা slug delete → 404 (চুপ করে success না)',
+    (await call(writeH, { what: 'task-delete', slug: 'mjdel' }, ADMIN, '/api/admin/panel?op=write')).r.statusCode === 404);
+  await call(writeH, { what: 'task-create', slug: 'mjpend', data: { nameBn: 'Pending জব', reward: 3, requiredUsers: 5, kind: 'microjob' } }, ADMIN, '/api/admin/panel?op=write');
+  await call(submitH, { taskSlug: 'mjpend', data: { 'Work Report': 'proof before delete' } }, T2, '/api/proof/submit');
+  const blockedDel = await call(writeH, { what: 'task-delete', slug: 'mjpend' }, ADMIN, '/api/admin/panel?op=write');
+  check('R16d pending submission থাকলে delete 409 (নাহলে review করা অসম্ভব)',
+    blockedDel.r.statusCode === 409 && /pending/.test(blockedDel.d.error || ''), `(${blockedDel.r.statusCode} ${blockedDel.r.body})`);
+  const pp = proofsOf('mjU2').find(x => x.taskSlug === 'mjpend');
+  await call(proofReviewH, { proofId: pp.id, action: 'reject_hide' }, ADMIN, '/api/admin/proof-review');
+  check('R16e review শেষ হলে delete চলে',
+    (await call(writeH, { what: 'task-delete', slug: 'mjpend' }, ADMIN, '/api/admin/panel?op=write')).r.statusCode === 200 && !store.docs['tasks/mjpend']);
+  check('R16f panel-এ মুছুন বাটন + kind অনুযায়ী দুই tab আলাদা (MicroJobs / টাস্ক)',
+    /data-del=/.test(fsR.readFileSync('src/admin/main.js', 'utf8')) && /deleteTask/.test(fsR.readFileSync('src/admin/core.js', 'utf8')));
+
   function codeOnlyOf(x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); }
+}
+
+/* ==== [R0] Bengali text hygiene: ভাঙা অক্ষর (Devanagari/Kannada glyph ঢুকে পড়া) guard ====
+   UI/কমেন্ট সব বাংলা — একটা অ-বাংলা Indic glyph মানেই mojibake, তাই সোর্স জুড়ে scan */
+{
+  const fsG = await import('node:fs');
+  const ranges = [[0x0900, 0x0963], [0x0966, 0x097F], [0x0A00, 0x0A7F], [0x0A80, 0x0AFF],
+    [0x0B00, 0x0B7F], [0x0B80, 0x0BFF], [0x0C00, 0x0C7F], [0x0C80, 0x0CFF], [0x0D00, 0x0D7F]];
+  const skip = new Set(['node_modules', 'dist', '.git', '.vercel', 'public', 'coverage']);
+  const hits = [];
+  const walk = dir => {
+    for (const ent of fsG.readdirSync(dir, { withFileTypes: true })) {
+      if (ent.isDirectory()) { if (!skip.has(ent.name)) walk(`${dir}/${ent.name}`); continue; }
+      if (!/\.(js|mjs|html|css|json)$/.test(ent.name)) continue;
+      const f = `${dir}/${ent.name}`;
+      const src = fsG.readFileSync(f, 'utf8');
+      for (let i = 0; i < src.length; i++) {
+        const o = src.charCodeAt(i);
+        if (ranges.some(([a, b]) => a <= o && o <= b)) {
+          hits.push(`${f}: ${JSON.stringify(src.slice(Math.max(0, i - 18), i + 6))}`);
+          break;
+        }
+      }
+    }
+  };
+  for (const d of ['src', 'api', 'lib', 'tests', 'scripts']) walk(d);
+  for (const f of fsG.readdirSync('.').filter(x => x.endsWith('.html'))) {
+    const src = fsG.readFileSync(f, 'utf8');
+    if (ranges.some(([a, b]) => Array.from(src).some(ch => { const o = ch.charCodeAt(0); return a <= o && o <= b; }))) hits.push(f);
+  }
+  check('R0a কোনো অ-বাংলা Indic glyph নেই সোর্সে (mojibake regression guard)',
+    hits.length === 0, hits.slice(0, 2).join(' | '));
 }
 
 console.log('\n=============================');

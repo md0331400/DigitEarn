@@ -1,7 +1,7 @@
 /* POST /api/leaderboard/list — Top 4 লিডার (রেফারেল সংখ্যা অনুযায়ী)।
    Leaderboard = আলাদা page-এর আলাদা data; Refer page (team.html) স্প্রশ করা হয় না —
    শুধু existing referral system (users/{uid}.refBy + users/{uid}/team) থেকে গনা হয়,
-   তাই নতুন referral model/টೇबল বানানো হয়নি।
+   তাই নতুন referral model/টেবিল বানানো হয়নি।
 
    Privacy: ফোন server-এই mask হয় (01712****89) — পুরো নম্বর কোনো response-এই যায় না।
    Auth লাগে (login user), anonymous enumeration বন্ধ। */
@@ -39,20 +39,21 @@ export default async function handler(req, res) {
     const snap = await db.collection('users').limit(SCAN_LIMIT).get();
     const users = (snap.docs || []).map(d => ({ uid: d.id, ...(d.data() || {}) }));
 
-    /* referral count = refBy pointer থেকে (একটাই scan, per-user subcollection query না)।
-       cache field refCount থাকলে সেটা বসে যায় — scan limit-এর বাইরের user-ও তখন ঠিক
-       থাকে (?op=write what:'leaderboard-backfill' দিলে refCount sync হয়)। */
+    /* বৈধ রেফারেল = যে সদস্যকে রেফার করা হয়েছে তার একাউন্টটি একটিভ (project-এর
+       নিজের activation rule — api/account/activate.js `isActive: true`)। রেজিস্টার
+       হয়েছে কিন্তু একটিভ হয়নি, এমন অ্যাকাউন্ট গননায় পড়ে না (§12)।
+       একই `users` scan থেকেই হিসাব, তাই অতিরিক্ত query লাগে না। */
+    const isValidMember = u => u.isActive === true || u.isActive === 'true';
     const counted = {};
     for (const u of users) {
       const parent = String(u.refBy || '');
-      if (parent) counted[parent] = (counted[parent] || 0) + 1;
+      if (parent && isValidMember(u)) counted[parent] = (counted[parent] || 0) + 1;
     }
-    const rankOf = u => {
-      const cached = Number(u.refCount);
-      return Number.isFinite(cached) && cached > 0 ? cached : (counted[u.uid] || 0);
-    };
+    const rankOf = u => counted[u.uid] || 0;
+    /* ইনএকটিভ সদস্য কখনো লিডারবোর্ডে আসবে না — referral/আয় পুরোনো থাকলেও না (§11/§15) */
+    const activeOnly = users.filter(u => isValidMember(u));
     const start = monthStartMs();
-    const ranked = users
+    const ranked = activeOnly
       .map(u => ({ u, refs: rankOf(u), earned: Number(u.totalEarned) || 0 }))
       .sort((x, y) => (y.refs - x.refs) || (y.earned - x.earned) || String(x.u.name || '').localeCompare(String(y.u.name || '')))
       .slice(0, topN);
@@ -78,12 +79,13 @@ export default async function handler(req, res) {
         referrals: refs,
         monthlyIncome: Math.round(monthly * 100) / 100,
         totalEarned: Math.round((Number(u.totalEarned) || 0) * 100) / 100,
-        mobile: maskMobile(u.mobile),      // 01712****89 — পুরো নম্বর কখনো যায় না
-        isActive: !!u.isActive,
+        mobile: maskMobile(u.mobile || u.phone),   // 01712****89 — পুরো নম্বর কখনো যায় না
+        isActive: true,                     // এখানে আসাই মানে একাউন্টটি একটিভ
       });
     }
     return ok(res, {
-      ok: true, items, top: topN, scanned: users.length,
+      ok: true, items, top: topN,
+      scanned: users.length, activeMembers: activeOnly.length,
       monthStart: new Date(start).toISOString().slice(0, 10),
     });
   } catch (err) {

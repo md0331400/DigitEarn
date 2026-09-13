@@ -10,6 +10,17 @@
    State মানে সবসময় (user × job) জোড়াটার state — job-এর global state না।
    User A-র জন্য Job 2 approved, User B-র জন্য pending — দুটোই একসাথে সত্যি। */
 
+/* ---------- দুইটা আলাদা সিস্টেম (mix করা যাবে না) ----------
+   kind === 'microjob' → শুধু admin Panel → “MicroJobs” থেকে বানানো limited job
+   আর সব পুরোনো/সাধারণ টাস্ক (ফেসবুক সেল, জিমাইল সেল…) = আলাদা সিস্টেম, এদের
+   MicroJobs page-এ দেখানো হয় না, আর MicroJobs-এর job পুরোনো টাস্ক গ্রিডে আসে না। */
+export const MJ_KIND = 'microjob';
+export const isMicrojobDoc = t => String((t && t.kind) || '') === MJ_KIND;
+/* পুরোনো 'মাইজাগো জব' static task-টা MicroJobs-এ convert হয়েছে — ওর leftover
+   Firestore doc (tasks/myjob) কোনো grid-এই দেখানো হয় না (owner-এর request) */
+export const RETIRED_TASK_SLUGS = new Set(['myjob']);
+export const isRetiredTask = t => RETIRED_TASK_SLUGS.has(String((t && (t.slug || t.id)) || ''));
+
 /* job mode (tasks/{slug}.mode) */
 export const MODE_SINGLE = 'single';         // MicroJob: এক user একবারই submit করবে
 export const MODE_MARKET = 'marketplace';    // পুরোনো account-sell flow: দিনে একাধিক (অপরিবর্তিত)
@@ -52,8 +63,10 @@ export function isOpenToNewSubmissions(task) {
   if (isFull(task)) return false;
   return true;
 }
-/** requiredUsers থাকলেই single-per-user mode (নাহলে slot হিসাব মানে হারায়) */
+/** requiredUsers থাকলেই single-per-user mode (নাহলে slot হিসাব মানে হারায়)।
+   MicroJob হলে সবসময় single — এক user এক job একবারই (§5/§6)। */
 export function isSingleMode(task) {
+  if (isMicrojobDoc(task)) return true;
   const mode = String((task && task.mode) || '');
   if (mode === MODE_SINGLE) return true;
   if (mode === MODE_MARKET) return false;
@@ -97,21 +110,21 @@ export function visibleForUser(task, state) {
 
 /** submit button এ চাপা যাবে কিনা + সেটা কেন */
 export function submitGate(task, state) {
-  if (state === ST.PENDING) return { allowed: false, label: 'আপনি এটি জমা দিয়েছেন — approval-এর অপেক্ষায়', tone: 'pending' };
-  if (state === ST.APPROVED) return { allowed: false, label: 'এই jobটি আপনি complete করেছেন ✓', tone: 'ok' };
-  if (state === ST.HIDDEN) return { allowed: false, label: 'এই jobটি আপনার জন্য বন্ধ', tone: 'warn' };
-  if (state === ST.FULL || isFull(task)) return { allowed: false, label: 'এই job-এর সব slot পূর্ণ (FULL)', tone: 'warn' };
-  if (task && task.locked) return { allowed: false, label: 'এই job এখনো লক করা', tone: 'warn' };
-  if (task && task.enabled === false) return { allowed: false, label: 'এই job বর্তমানে বন্ধ', tone: 'warn' };
-  if (state === ST.RESUBMIT) return { allowed: true, label: 'Submit Again', tone: 'warn' };
-  return { allowed: true, label: 'Submit', tone: 'ok' };
+  if (state === ST.PENDING) return { allowed: false, label: 'আপনি এটি জমা দিয়েছেন — অনুমোদনের অপেক্ষায়', tone: 'pending' };
+  if (state === ST.APPROVED) return { allowed: false, label: 'এই কাজটি আপনি সম্পন্ন করেছেন ✓', tone: 'ok' };
+  if (state === ST.HIDDEN) return { allowed: false, label: 'এই কাজটি আপনার জন্য বন্ধ', tone: 'warn' };
+  if (state === ST.FULL || isFull(task)) return { allowed: false, label: 'এই কাজের সব জায়গা পূর্ণ', tone: 'warn' };
+  if (task && task.locked) return { allowed: false, label: 'এই কাজটি এখনো খোলা হয়নি', tone: 'warn' };
+  if (task && task.enabled === false) return { allowed: false, label: 'এই কাজটি এখন বন্ধ আছে', tone: 'warn' };
+  if (state === ST.RESUBMIT) return { allowed: true, label: 'আবার জমা দিন', tone: 'warn' };
+  return { allowed: true, label: 'জমা দিন', tone: 'ok' };
 }
 
 /* "100 people left" — card badge text */
 export function leftBadge(task) {
   const left = remainingOf(task);
   if (left === null) return { text: '', full: false };
-  if (left <= 0) return { text: 'FULL / CLOSED', full: true };
+  if (left <= 0) return { text: 'সব জায়গা পূর্ণ', full: true };
   return { text: `${bn(left)} জন বাকি আছে`, full: false };
 }
 /* English digit → Bengali digit (UI text-এর জন্য) */
@@ -133,6 +146,9 @@ export function sortJobs(jobs) {
    state / remaining / full / visible / gate। admin যত job বানায় ততটা entry —
    কোনো hardcode count নেই, কোনো merge নেই। */
 export function viewsFor(taskDocs, myProofs = []) {
+  /* MicroJobs list-এর জন্য আলাদা filter: শুধু admin-এর বানানো microjob doc
+     (যদি admin ০টা বানায় → খালি list → page empty state দেখাবে) */
+  taskDocs = (taskDocs || []).filter(isMicrojobDoc);
   const byJob = {};
   for (const p of myProofs || []) {
     const k = String((p && p.taskSlug) || '');

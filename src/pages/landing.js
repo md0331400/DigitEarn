@@ -9,7 +9,7 @@ import { auth, firebaseReady } from '../core/firebase.js';
 function showDashboardHeader() {
   const nav = document.querySelector('.header-actions');
   if (!nav) return;
-  nav.innerHTML = '<a href="/dashboard.html" class="btn btn-gold btn-sm">Dashboard</a>';
+  nav.innerHTML = '<a href="/dashboard.html" class="btn btn-gold btn-sm">ড্যাশবোর্ড</a>';
 }
 if (firebaseReady) {
   const goDashboard = () => { showDashboardHeader(); location.replace('/dashboard.html'); };

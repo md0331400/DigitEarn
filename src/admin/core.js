@@ -209,10 +209,14 @@ export async function listTasks() {
 /* Firestore-এ tasks/{slug} doc নেই → user submit "Project পাওয়া যায়নি" খায়।
    এই call টা built-in list থেকে বাকি doc গুলো বানিয়ে দেয় (যা আগে থেকে আছে সেটা অক্ষত)। */
 /* ---------- MicroJobs admin (প্রতিটা job = আলাদা post/card, নিজের count) ---------- */
-export async function listJobStats() {
-  const d = await callApi('/api/admin/read', { what: 'jobs' });
+export async function listJobStats(kindFilter) {
+  const d = await callApi('/api/admin/read', kindFilter ? { what: 'jobs', kindFilter } : { what: 'jobs' });
   return Array.isArray(d.items) ? d.items : [];
 }
+/* listTasks = দুই সিস্টেমের doc একসাথে আনে (tasks collection শেয়ার্ড, kind field দিয়ে
+   আলাদা) — panel-এর প্রতিটা tab নিজের kind-এ filter করে, তাই MicroJobs tab-এ পুরোনো
+   ফেসবুক/জিমাইল টাস্ক দেখায় না, আর টাস্ক tab-এ নতুন MicroJob দেখায় না */
+export function taskKind(t) { return (t && t.kind === 'microjob') ? 'microjob' : 'task'; }
 /** একটা job-এর submissions (admin review) — jobSlug দিলে server ওই job-এরই দেয় */
 export async function listJobProofs(jobSlug, status = 'all', limitN = 200) {
   return adminRead('proofs', { jobSlug, status, limit: limitN });
@@ -221,6 +225,11 @@ export async function listJobProofs(jobSlug, status = 'all', limitN = 200) {
 export async function createMicrojob(data) {
   return adminWrite('task-create', { data });
 }
+/** job/টাস্ক doc মুছুন (pending submission থাকলে server 409 দেয়) */
+export async function deleteTask(slug) {
+  return adminWrite('task-delete', { slug });
+}
+
 /** review action: approve | reject_resubmit | reject_hide (legacy reject = resubmit) */
 export async function decideProof(proofId, action, note = '') {
   await callApi('/api/admin/proof-review', { proofId, action, note });

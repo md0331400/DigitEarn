@@ -16,7 +16,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 /* job config + per-user state logic = src/core/microjobs.js (client আর server একই file
    import করে) — তাই "এই user-এর জন্য jobটা pending না approved" দুই পাশে আলাদাভাবে
    ভাবতে হয় না (drift হলে এক পাশে job ভুলভাবে lock/bypass হতো) */
-import { isFull, isSingleMode, stateOf, ST } from '../../src/core/microjobs.js';
+import { isFull, isSingleMode, isMicrojobDoc, stateOf, ST } from '../../src/core/microjobs.js';
 
 const DEFAULT_DAILY_LIMIT = 20;
 
@@ -144,6 +144,9 @@ export default async function handler(req, res) {
   const pid = `p_${ts}_${rnd}`;
   const proofData = {
     taskSlug, taskName: task.nameBn || taskSlug, day,
+    /* কোন সিস্টেমের submission — MicroJobs বনাম পুরোনো account-sell টাস্ক
+       (admin review queue এটা দিয়ে আলাদা করে দেখে; দুই সিস্টেম আলাদা রাখাই উদ্দেশ্য) */
+    kind: isMicrojobDoc(task) ? 'microjob' : 'task',
     images: [], reward, status: 'pending', note: '',
     submittedData, submittedFields, accountKey,
     createdAt: now, reviewedAt: null,

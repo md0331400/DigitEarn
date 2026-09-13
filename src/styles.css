@@ -696,24 +696,43 @@ button.support-item { width: 100%; background: #fff; cursor: pointer; font-famil
 .mj-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 14px 6px; flex-wrap: wrap; }
 .mj-title { margin: 0; font-size: 21px; font-weight: 800; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .mj-title i { color: var(--gold-deep); }
-.mj-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 10px 14px 4px; }
-.mj-stat { background: #fff; border: 1.5px solid var(--border); border-radius: 14px; padding: 10px 12px; box-shadow: 0 2px 10px rgba(217,119,6,.06); }
-.mj-stat b { display: block; font-size: 17px; font-weight: 800; color: var(--ink); }
-.mj-stat span { font-size: 11.5px; color: var(--muted); font-weight: 600; }
-
-.mj-grid { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 12px 14px 26px; }
+/* reference app-এর মতো ফোনেই ২টা column (প্রতিটা job আলাদা পোস্ট/কার্ড) */
+.mj-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 10px 12px 26px; }
 .mj-card { background: #fff; border: 1.5px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: 0 4px 16px rgba(28,25,23,.06); display: flex; flex-direction: column; transition: transform .18s ease, box-shadow .18s ease; }
 .mj-card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(28,25,23,.1); }
 .mj-card.is-pending { border-color: #fcd34d; }
+.mj-history { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid var(--border); border-radius: 16px; padding: 11px 13px; margin: 10px 14px 2px; text-decoration: none; box-shadow: 0 3px 12px rgba(28,25,23,.05); }
+.mj-history-ico { width: 34px; height: 34px; border-radius: 50%; background: #fff7ed; color: var(--gold-deep); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.mj-history b { display: block; font-size: 13.5px; color: var(--ink); }
+.mj-history small { font-size: 11.5px; color: var(--muted); }
+.mj-history > i:last-child { margin-left: auto; color: var(--gold-deep); }
+.mj-card { text-decoration: none; }
+.mj-state { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; border-radius: 8px; padding: 4px 7px; line-height: 1.35; }
+.mj-state .fa-solid { flex: 0 0 auto; }
+.mj-state.pending { background: #fffbeb; color: #92400e; }
+.mj-state.reject { background: #fef2f2; color: #b91c1c; }
+.mj-state.ok { background: #f0fdf4; color: #15803d; }
+.mj-state.full { background: #f1f5f9; color: #475569; }
+.mj-open { font-size: 11.5px; font-weight: 800; color: #047857; display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 380px) {
+  .mj-open { font-size: 0; gap: 0; }
+  .mj-open .fa-solid { font-size: 11.5px; }
+  .mj-reward { font-size: 12.5px; }
+  .mj-name { font-size: 13px; }
+}
+.mj-open-link { margin-top: 14px; }
+.mj-card.is-reject { border-color: #fecaca; }
+.mj-card > .mj-media { border-bottom: 1px solid #f5f5f4; }
 .mj-media { position: relative; aspect-ratio: 16 / 9; background: linear-gradient(135deg, #fff7ed, #fef3c7); display: flex; align-items: center; justify-content: center; }
 .mj-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mj-fallback { font-size: 40px; opacity: .85; }
 .mj-lock { position: absolute; top: 8px; right: 8px; background: rgba(28,25,23,.72); color: #fff; border-radius: 999px; padding: 4px 8px; font-size: 11px; }
-.mj-left { position: absolute; left: 8px; bottom: 8px; background: rgba(255,255,255,.94); color: #b45309; border: 1px solid #fde68a; border-radius: 999px; padding: 4px 9px; font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
-.mj-left.full { color: #b91c1c; border-color: #fecaca; }
-.mj-body { padding: 12px 13px 13px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
-.mj-name { margin: 0; font-size: 15.5px; font-weight: 800; color: var(--ink); line-height: 1.35; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.mj-desc { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+/* reference UI: সবুজ pill ছবির উপরে বাম দিকে ("63 জন বাকি আছে") */
+.mj-left { position: absolute; left: 8px; top: 8px; background: rgba(16,185,129,.94); color: #fff; border: 0; border-radius: 8px; padding: 4px 9px; font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.mj-left.full { background: rgba(71,85,105,.94); }
+.mj-body { padding: 10px 11px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.mj-name { margin: 0; font-size: 14px; font-weight: 800; color: var(--ink); line-height: 1.35; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mj-desc { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .mj-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 4px; }
 .mj-reward { font-size: 14px; font-weight: 800; color: #047857; display: inline-flex; align-items: center; gap: 5px; }
 .mj-chip { font-size: 10.5px; font-weight: 800; letter-spacing: .3px; border-radius: 999px; padding: 3px 8px; border: 1px solid transparent; white-space: nowrap; }
@@ -781,7 +800,7 @@ button.support-item { width: 100%; background: #fff; cursor: pointer; font-famil
 
 @media (min-width: 600px) {
   .phone-wide { max-width: 700px; }
-  .mj-grid, .lb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mj-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (min-width: 900px) {

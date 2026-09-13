@@ -70,7 +70,7 @@ function adminContactItem(name, link, phone, email, color) {
     : (phone ? 'tel:' + String(phone).replace(/\s+/g, '') : (email ? 'mailto:' + email : ''));
   const inner = `
     <span class="s-ico" style="background:${color}"><i class="fa-solid fa-user-group"></i></span>
-    <span class="s-info"><b>${esc(name || 'Admin Support')}</b><small>ট্রানজেকশন / যেকোনো সমস্যায় যোগাযোগ করুন</small>${subs ? `<span class="support-mini-row">${subs}</span>` : ''}</span>
+    <span class="s-info"><b>${esc(name || 'অ্যাডমিন সাপোর্ট')}</b><small>ট্রানজেকশন / যেকোনো সমস্যায় যোগাযোগ করুন</small>${subs ? `<span class="support-mini-row">${subs}</span>` : ''}</span>
     <i class="fa-solid fa-chevron-right s-chev"></i>`;
   if (href) {
     return `<a href="${href}" target="_blank" rel="noopener" class="support-item">${inner}</a>`;

@@ -180,31 +180,31 @@ export function stateBannerHtml(task, state, gate = submitGate(task, state)) {
   const badge = leftBadge(task);
   const chips = [];
   if (badge.text) chips.push(`<span class="mj-left ${badge.full ? 'full' : ''}"><i class="fa-solid fa-users"></i> ${esc(badge.text)}</span>`);
-  if (task && Number(task.approvedCount) > 0) chips.push(`<span class="mj-done"><i class="fa-solid fa-check"></i> ${bnDigits(Number(task.approvedCount) || 0)} জন complete</span>`);
+  if (task && Number(task.approvedCount) > 0) chips.push(`<span class="mj-done"><i class="fa-solid fa-check"></i> ${bnDigits(Number(task.approvedCount) || 0)} জন সম্পন্ন</span>`);
   const head = chips.length ? `<div class="mj-chips">${chips.join('')}</div>` : '';
   if (state === ST.PENDING) {
     return head + `<div class="mj-note pending"><i class="fa-solid fa-hourglass-half"></i><div>
-      <b>আপনি এটি জমা দিয়েছেন</b><br>Admin approval-এর অপেক্ষায় আছি — approve হলেই ৳${(Number(task.reward) || 0).toFixed(2)} ব্যালেন্সে যোগ হবে।
+      <b>আপনি এটি জমা দিয়েছেন</b><br>অ্যাডমিন অনুমোদনের অপেক্ষায় আছি — approve হলেই ৳${(Number(task.reward) || 0).toFixed(2)} আপনার ব্যালেন্সে যোগ হবে।
     </div></div>`;
   }
   if (state === ST.APPROVED) {
     return head + `<div class="mj-note ok"><i class="fa-solid fa-circle-check"></i><div>
-      <b>এই কাজটি আপনি complete করেছেন ✓</b><br>টাকা আপনার balance-এ যোগ হয়েছে। এটি আর জমা দেওয়া যাবে না।
+      <b>এই কাজটি আপনি সম্পন্ন করেছেন ✓</b><br>টাকা আপনার ব্যালেন্সে যোগ হয়েছে। এটি আর জমা দেওয়া যাবে না।
     </div></div>`;
   }
   if (state === ST.HIDDEN) {
     return head + `<div class="mj-note warn"><i class="fa-solid fa-ban"></i><div>
-      <b>Task Rejected</b><br>এই job-টি আপনার জন্য বন্ধ করে দেওয়া হয়েছে। অন্য job করে আয় করুন।
+      <b>কাজটি বাতিল হয়েছে</b><br>এই কাজটি আপনার জন্য বন্ধ করে দেওয়া হয়েছে। অন্য কাজ করে আয় করুন।
     </div></div>`;
   }
   if (state === ST.RESUBMIT) {
     return head + `<div class="mj-note reject"><i class="fa-solid fa-triangle-exclamation"></i><div>
-      <b>⚠ Task Rejected</b><br>কাজটি ঠিকভাবে সম্পূর্ণ করে আবার submit করুন। নিচের ফর্মে সংশোধন করে <b>Submit Again</b> চাপুন।
+      <b>⚠ কাজটি বাতিল হয়েছে</b><br>কাজটি ঠিকভাবে সম্পূর্ণ করে আবার জমা দিন। নিচের ফর্মে সংশোধন করে <b>আবার জমা দিন</b> বাটন চাপুন।
     </div></div>`;
   }
   if (state === ST.FULL || (badge.full && state !== ST.PENDING)) {
     return head + `<div class="mj-note warn"><i class="fa-solid fa-lock"></i><div>
-      <b>এই job FULL / CLOSED</b><br>${left === 0 ? 'সব slot পূরণ হয়ে গেছে — admin চাইলে Required Users বাড়ালে আবার খুলে যাবে।' : 'নতুন submission বন্ধ আছে।'}
+      <b>এই কাজটি বন্ধ — সব জায়গা পূর্ণ</b><br>${left === 0 ? 'সব জায়গা পূরণ হয়ে গেছে — অ্যাডমিন জায়গা বাড়ালে আবার খুলে যাবে।' : 'নতুন জমা বন্ধ আছে।'}
     </div></div>`;
   }
   return head;

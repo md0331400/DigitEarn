@@ -178,11 +178,12 @@ export const TASKS = [
 ];
 
 export const INTERNAL_PAGES = [
-  { slug: 'leadership', nameBn: 'লিডারশিপ', nameEn: 'Leadership', icon: 'fa-solid fa-crown', color: '#f59e0b', url: '/leadership.html', sort: 5 },
+  /* owner: "leadership-এর বদলে leaderboard হবে" — টাইলটা এখন Top-4 লিডারবোর্ড খোলে
+     (Refer/team page আলাদাই আছে, সেটা স্প্রশ করা হয়নি) */
+  { slug: 'leaderboard', nameBn: 'লিডারবোর্ড', nameEn: 'Leaderboard', icon: 'fa-solid fa-trophy', color: '#f59e0b', url: '/leaderboard.html', sort: 5 },
   { slug: 'target', nameBn: 'টার্গেট বোনাস', nameEn: 'Target Bonus', icon: 'fa-solid fa-bullseye', color: '#ef4444', url: '/target.html', sort: 6 },
   { slug: 'team', nameBn: 'রেফার', nameEn: 'Referral', icon: 'fa-solid fa-users', color: '#8b5cf6', url: '/team.html', sort: 7 },
   { slug: 'gift', nameBn: 'গিফট কোড', nameEn: 'Gift Code', icon: 'fa-solid fa-gift', color: '#ec4899', url: '/gift.html', sort: 8 },
   /* MicroJobs ও Leaderboard = আলাদা page (Refer/team page আলাদাই আছে — মেশানো হয়নি) */
-  { slug: 'microjobs', nameBn: 'MicroJobs', nameEn: 'MicroJobs', icon: 'fa-solid fa-briefcase', color: '#0ea5e9', url: '/microjobs.html', sort: 13 },
-  { slug: 'leaderboard', nameBn: 'Leaderboard', nameEn: 'Leaderboard', icon: 'fa-solid fa-trophy', color: '#f59e0b', url: '/leaderboard.html', sort: 14 },
+  { slug: 'microjobs', nameBn: 'মাইক্রো জব', nameEn: 'MicroJobs', icon: 'fa-solid fa-briefcase', color: '#0ea5e9', url: '/microjobs.html', sort: 13 },
 ];

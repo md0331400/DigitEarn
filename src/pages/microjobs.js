@@ -2,89 +2,89 @@ import '../styles.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { bootAppPage, toast, esc, videoEmbedHtml, fmtDate } from '../core/ui.js';
 import { getMicrojobs, getJobView, submitProof } from '../core/api.js';
-import { ST, jobViewsSorted, remainingOf, leftBadge, bnDigits } from '../core/microjobs.js';
+import { ST, sortJobs, remainingOf, leftBadge, bnDigits } from '../core/microjobs.js';
 import { cleanFields, fieldsHtml, readFields, paintErrors, mountImageFields, stateBannerHtml } from '../core/jobform.js';
 
-/* MicroJobs page = list + detail, এক পেজেই (hash routing)।
-   ⚠️ কোনো card hardcode নয়: admin যত job বানায়, `tasks` collection-এ ততটা doc —
-   প্রতিটা doc = একটা আলাদা card/post (§1)। নতুন job-এর জন্য আলাদা static page বা
-   developer-এর দরকার নেই: #job-<slug> hash-এই detail খোলে। */
+/* MicroJobs = admin Panel → "MicroJobs" থেকে বানানো job গুলোর আলাদা সিস্টেম।
+   ⚠️ এখানে পুরোনো ফেসবুক/জিমাইল/ইন্সট্রাগ্রাম টাস্ক দেখানো হয় না, আর কিছুই
+   hardcode নয় — list = শুধু microjob doc (kind==='microjob')। admin ৫টা বানালে ৫টা
+   card, ১০টা বানালে ১০টা card, ০টা বানালে খালি অবস্থা। */
 
-const money = n => '৳' + (Number(n) || 0).toFixed(2);
+const money = n => '৳' + bnDigits((Number(n) || 0).toFixed(2));
 const imgUrl = v => (typeof v === 'string' && /^https?:\/\/\S+$/i.test(v)) ? v : '';
 const imgData = v => (typeof v === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(v)) ? v : '';
 
-/** একটা job-এর card (list view) — image, "N জন বাকি", title, reward, status, View Job */
+const STATE_CHIP = {
+  [ST.PENDING]: '<span class="mj-state pending"><i class="fa-solid fa-hourglass-half"></i> জমা দেওয়া হয়েছে — রিভিউ চলছে</span>',
+  [ST.RESUBMIT]: '<span class="mj-state reject"><i class="fa-solid fa-triangle-exclamation"></i> কাজটি বাতিল — ঠিক করে আবার জমা দিন</span>',
+  [ST.APPROVED]: '<span class="mj-state ok"><i class="fa-solid fa-check"></i> সম্পন্ন ✓</span>',
+  [ST.FULL]: '<span class="mj-state full"><i class="fa-solid fa-lock"></i> সব জায়গা পূর্ণ</span>',
+};
+
+/** একটা job = একটা আলাদা card/post (reference UI: ছবি + "N জন বাকি" + লেখা + রেয়ার্ড) */
 function jobCard(v) {
   const badge = leftBadge(v);
   const pic = imgUrl(v.image) || imgData(v.image);
   const color = /^#[0-9a-fA-F]{3,8}$/.test(v.color || '') ? v.color : '#f59e0b';
   const icon = /^fa-(solid|regular|brands) [a-z0-9-]+$/.test(v.icon || '') ? v.icon : 'fa-solid fa-hand-holding-dollar';
-  const stateChip = v.state === ST.PENDING ? '<span class="mj-chip pending">Pending</span>'
-    : v.state === ST.RESUBMIT ? '<span class="mj-chip reject">Rejected — আবার করুন</span>'
-    : v.state === ST.APPROVED ? '<span class="mj-chip ok">Done ✓</span>'
-    : v.state === ST.FULL || v.full ? '<span class="mj-chip full">FULL</span>' : '';
+  const chip = STATE_CHIP[v.state] || '';
   return `
-    <article class="mj-card${v.state === ST.PENDING ? ' is-pending' : ''}" data-job="${esc(v.slug)}">
+    <a class="mj-card${v.state === ST.PENDING ? ' is-pending' : ''}${v.state === ST.RESUBMIT ? ' is-reject' : ''}" href="#job-${esc(v.slug)}">
       <div class="mj-media">
         ${pic ? `<img src="${esc(pic)}" alt="${esc(v.nameBn || v.slug)}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false">` : ''}
         <div class="mj-fallback" ${pic ? 'hidden' : ''} style="color:${color}"><i class="${icon}"></i></div>
+        ${badge.text ? `<span class="mj-left ${badge.full ? 'full' : ''}">${badge.full ? '<i class="fa-solid fa-lock"></i>' : '<i class="fa-solid fa-user-group"></i>'} ${esc(badge.text)}</span>` : ''}
         ${v.locked ? '<span class="mj-lock"><i class="fa-solid fa-lock"></i></span>' : ''}
-        ${badge.text ? `<span class="mj-left ${badge.full ? 'full' : ''}"><i class="fa-solid fa-users"></i> ${esc(badge.text)}</span>` : ''}
       </div>
       <div class="mj-body">
-        <h3 class="mj-name">${esc(v.nameBn || v.slug)} ${stateChip}</h3>
+        <h3 class="mj-name">${esc(v.nameBn || v.slug)}</h3>
         ${v.shortDesc ? `<p class="mj-desc">${esc(v.shortDesc)}</p>` : ''}
+        ${chip}
         <div class="mj-foot">
           <span class="mj-reward"><i class="fa-solid fa-sack-dollar"></i> ${money(v.reward)}</span>
-          <a class="btn btn-green btn-sm" href="#job-${esc(v.slug)}"><i class="fa-solid fa-eye"></i> View Job</a>
+          <span class="mj-open">জব খুলুন <i class="fa-solid fa-arrow-right"></i></span>
         </div>
       </div>
-    </article>`;
-}
-
-function emptyState(user) {
-  return `<div class="mj-empty">
-    <i class="fa-solid fa-inbox"></i>
-    <p><b>এখন কোনো MicroJob চালু নেই</b><br>Admin Panel → Micro Jobs থেকে job বানালেই এখানে একেকটা job একেকটা card হিসেবে দেখাবে।</p>
-    <a href="/dashboard.html" class="btn btn-gold btn-sm"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-  </div>`;
+    </a>`;
 }
 
 bootAppPage({
   active: 'home',
-  onReady: async ({ user, settings }) => {
+  onReady: async ({ user }) => {
     const box = document.getElementById('mjBox');
     if (!box) return;
 
     const drawList = async () => {
-      box.innerHTML = '<div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> Job লোড হচ্ছে...</div>';
+      box.innerHTML = '<div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> লোড হচ্ছে...</div>';
       const { all } = await getMicrojobs(user.uid);
-      /* list = user-facing: ওই user approved/hidden করে ফেলা job বাদে বাকি সব (§9) */
-      const jobs = jobViewsSorted(all);
-      const doneCount = (all || []).filter(v => v.state === ST.APPROVED).length;
+      /* শুধু সেই job গুলো যেগুলো এই user-এর জন্য এখনো বাকি (approved/hidden/FULL বাদ),
+         + pending job থাকে (card হারায় না, শুধু submit বন্ধ হয়) */
+      const jobs = sortJobs(all.filter(v => v.visible || v.state === ST.PENDING));
       box.innerHTML = `
-        <div class="mj-stats">
-          <div class="mj-stat"><b>${bnDigits(jobs.length)}</b><span>চালু Job</span></div>
-          <div class="mj-stat"><b>${bnDigits(jobs.filter(v => v.state === ST.PENDING).length)}</b><span>আমার Pending</span></div>
-          <div class="mj-stat"><b>${bnDigits(doneCount)}</b><span>Complete</span></div>
-          <div class="mj-stat"><b>${money(user.balance)}</b><span>Balance</span></div>
-        </div>
-        ${jobs.length ? `<div class="mj-grid">${jobs.map(jobCard).join('')}</div>` : emptyState(user)}`;
+        <a class="mj-history" href="/history.html">
+          <span class="mj-history-ico"><i class="fa-solid fa-clock-rotate-left"></i></span>
+          <span><b>আপনার জমা দেওয়া কাজ</b><small>সব submission আর status দেখুন</small></span>
+          <i class="fa-solid fa-arrow-right"></i>
+        </a>
+        ${jobs.length
+          ? `<div class="mj-grid">${jobs.map(jobCard).join('')}</div>`
+          : `<div class="mj-empty"><i class="fa-solid fa-inbox"></i>
+              <p><b>এখন কোনো মাইক্রো জব নেই</b><br>Admin Panel → MicroJobs থেকে job বানালেই এখানে একেকটা job একেকটা পোস্ট হিসেবে দেখাবে।</p>
+              <a href="/dashboard.html" class="btn btn-gold btn-sm"><i class="fa-solid fa-house"></i> হোমে ফিরে যান</a></div>`}`;
     };
 
     const drawDetail = async (slug) => {
       box.innerHTML = '<div class="loading-line"><i class="fa-solid fa-spinner fa-spin"></i> লোড হচ্ছে...</div>';
-      const { task, view, proofs } = await getJobView(user.uid, slug);
+      const { task, view, proofs, wrongSystem } = await getJobView(user.uid, slug);
       if (!task) {
         box.innerHTML = `<div class="mj-empty"><i class="fa-solid fa-circle-exclamation"></i>
-          <p><b>Job পাওয়া যায়নি</b><br>এই job-টি হয় বন্ধ হয়ে গেছে, হয় সরিয়ে দেওয়া হয়েছে।</p>
-          <a class="btn btn-gold btn-sm" href="#list"><i class="fa-solid fa-arrow-left"></i> সব Job</a></div>`;
+          <p><b>${wrongSystem ? 'এই পেজে শুধু মাইক্রো জব খোলে' : 'জবটি পাওয়া যায়নি'}</b><br>${wrongSystem ? 'এটি পুরোনো টাস্ক সেকশনের কাজ — হোম ট্যাস্ক গ্রিড থেকে করুন।' : 'জবটি হয় বন্ধ করা হয়েছে, নয় সরিয়ে দেওয়া হয়েছে।'}</p>
+          <a class="btn btn-gold btn-sm" href="#list"><i class="fa-solid fa-arrow-left"></i> সব জব</a></div>`;
         return;
       }
       const v = view || { ...task, slug };
       const state = v.state || ST.AVAILABLE;
-      const gate = v.gate || { allowed: true, label: 'Submit' };
+      const gate = v.gate || { allowed: true, label: 'জমা দিন' };
       const fields = cleanFields(task.inputFields);
       const pic = imgUrl(task.image) || imgData(task.image);
       const left = remainingOf(task);
@@ -93,42 +93,42 @@ bootAppPage({
       const steps = Array.isArray(task.steps) ? task.steps.filter(Boolean) : [];
 
       box.innerHTML = `
-        <div class="mj-back"><a href="#list"><i class="fa-solid fa-arrow-left"></i> সব MicroJobs</a></div>
+        <div class="mj-back"><a href="#list"><i class="fa-solid fa-arrow-left"></i> সব মাইক্রো জব</a></div>
         <article class="mj-detail">
           ${pic ? `<div class="mj-detail-media"><img src="${esc(pic)}" alt="${esc(task.nameBn || slug)}" onerror="this.hidden=true"></div>` : ''}
           <header class="mj-detail-head">
             <h2>${esc(task.nameBn || slug)}</h2>
             <div class="mj-chips">
-              <span class="mj-chip gold"><i class="fa-solid fa-sack-dollar"></i> প্রতি কাজে ${money(task.reward)}</span>
-              ${left === null ? '' : `<span class="mj-left ${left <= 0 ? 'full' : ''}"><i class="fa-solid fa-users"></i> ${bnDigits(left)} জন বাকি (মোট ${bnDigits(Number(task.requiredUsers) || 0)})</span>`}
-              ${Number(task.approvedCount) > 0 ? `<span class="mj-done"><i class="fa-solid fa-check"></i> ${bnDigits(Number(task.approvedCount))} জন complete</span>` : ''}
+              <span class="mj-chip gold"><i class="fa-solid fa-sack-dollar"></i> প্রতি জবে ${money(task.reward)}</span>
+              ${left === null ? '' : `<span class="mj-left ${left <= 0 ? 'full' : ''}"><i class="fa-solid fa-user-group"></i> ${bnDigits(left)} জন বাকি (মোট ${bnDigits(Number(task.requiredUsers) || 0)})</span>`}
+              ${Number(task.approvedCount) > 0 ? `<span class="mj-done"><i class="fa-solid fa-check"></i> ${bnDigits(Number(task.approvedCount))} জন সম্পন্ন</span>` : ''}
             </div>
             ${task.shortDesc ? `<p class="mj-desc">${esc(task.shortDesc)}</p>` : ''}
           </header>
 
           ${stateBannerHtml(task, state, gate)}
 
-          ${steps.length ? `<section class="mj-sec"><h4 class="sec-title"><i class="fa-solid fa-list-ol"></i> কাজের নিয়ম (Full Instructions)</h4>
-            <ol class="mj-steps">${steps.map((x, i) => `<li><span class="step-num">${i + 1}</span>${esc(x)}</li>`).join('')}</ol></section>` : ''}
+          ${steps.length ? `<section class="mj-sec"><h4 class="sec-title"><i class="fa-solid fa-list-ordered"></i> কাজের নিয়ম</h4>
+            <ol class="mj-steps">${steps.map((x, i) => `<li><span class="step-num">${bnDigits(i + 1)}</span>${esc(x)}</li>`).join('')}</ol></section>` : ''}
           ${task.description ? `<section class="mj-sec"><h4 class="sec-title"><i class="fa-solid fa-circle-info"></i> বিবরণ</h4><p class="mj-desc">${esc(task.description)}</p></section>` : ''}
-          ${video ? `<section class="mj-sec"><h4 class="sec-title"><i class="fa-solid fa-circle-play"></i> Tutorial Video</h4><div class="video-box">${video}</div></section>` : ''}
-          ${safeUrl ? `<a class="btn btn-gold btn-block mj-open" href="${esc(safeUrl)}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> কাজের লিংক ওপেন করুন</a>` : ''}
+          ${video ? `<section class="mj-sec"><h4 class="sec-title"><i class="fa-solid fa-circle-play"></i> ভিডিও গাইড</h4><div class="video-box">${video}</div></section>` : ''}
+          ${safeUrl ? `<a class="btn btn-gold btn-block mj-open-link" href="${esc(safeUrl)}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> কাজের লিংক খুলুন</a>` : ''}
 
           <section class="mj-sec mj-form-sec">
-            <h4 class="sec-title"><i class="fa-solid fa-file-signature"></i> ${state === ST.RESUBMIT ? 'Submit Again' : 'Work Report'}</h4>
-            ${fields.length ? fieldsHtml(fields) : `<p class="muted" style="font-size:13px">এই job-এ শুধু Submit চাপলেই হবে — admin নিজে থেকে verify করবে।</p>`}
+            <h4 class="sec-title"><i class="fa-solid fa-file-signature"></i> ${state === ST.RESUBMIT ? 'আবার জমা দিন' : 'কাজের রিপোর্ট'}</h4>
+            ${fields.length ? fieldsHtml(fields) : `<p class="muted" style="font-size:13px">এই জবে শুধু “জমা দিন” চাপলেই হবে — admin নিজে থেকে দেখে অনুমোদন করবে।</p>`}
             <button type="button" id="mjSubmit" class="btn ${gate.allowed ? 'btn-green' : 'btn-gray'} btn-block" style="margin-top:12px"${gate.allowed ? '' : ' disabled'}>
-              <i class="fa-solid ${gate.allowed ? 'fa-paper-plane' : 'fa-hourglass-half'}"></i> ${esc(gate.allowed ? (state === ST.RESUBMIT ? 'Submit Again' : 'Submit') : gate.label)}
+              <i class="fa-solid ${gate.allowed ? 'fa-paper-plane' : 'fa-hourglass-half'}"></i> ${esc(gate.allowed ? (state === ST.RESUBMIT ? 'আবার জমা দিন' : 'জমা দিন') : gate.label)}
             </button>
           </section>
 
-          ${proofs.length ? `<section class="mj-sec"><h4 class="sec-title"><i class="fa-solid fa-clock-rotate-left"></i> আমার submissions (${bnDigits(proofs.length)})</h4>
+          ${proofs.length ? `<section class="mj-sec"><h4 class="sec-title"><i class="fa-solid fa-clock-rotate-left"></i> আপনার জমা (${bnDigits(proofs.length)})</h4>
             <div class="hist-list">${proofs.slice().reverse().map(p => `
               <div class="hist-item">
                 <div class="h-info"><b>${esc(p.taskName || task.nameBn || slug)}</b>
                   <span>${money(p.reward)} • ${fmtDate(p.createdAt)}${p.note ? ` • ${esc(p.note)}` : ''}</span></div>
                 <span class="h-status ${p.status === 'approved' ? 'paid' : p.status === 'rejected' ? 'rejected' : 'pending'}">
-                  ${p.status === 'approved' ? 'Approved' : p.status === 'rejected' ? (p.hiddenForUser ? 'Rejected (closed)' : 'Rejected') : 'Pending'}</span>
+                  ${p.status === 'approved' ? 'অনুমোদিত' : p.status === 'rejected' ? (p.hiddenForUser ? 'বাতিল (বন্ধ)' : 'বাতিল') : 'রিভিউ চলছে'}</span>
               </div>`).join('')}</div></section>` : ''}
         </article>`;
 
@@ -146,15 +146,15 @@ bootAppPage({
         }
         paintErrors(box, [], false);
         btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submit হচ্ছে...';
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> জমা হচ্ছে...';
         try {
           await submitProof(user.uid, { taskSlug: slug, data });
-          toast('Submit হয়েছে — admin approval-এর অপেক্ষায় ✓');
-          await drawDetail(slug);   // state এখন pending → card/পেজে বাটন বন্ধ (§8)
+          toast('জমা হয়েছে — admin অনুমোদন করলে টাকা যোগ হবে ✓');
+          await drawDetail(slug);   // এখন pending → বাটন বন্ধ, "জমা দেওয়া হয়েছে" দেখাবে
         } catch (err) {
           toast(err.message, 'error');
           btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit';
+          btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> জমা দিন';
         }
       });
     };

@@ -24,7 +24,7 @@ bootAppPage({
         subBox.innerHTML = subs.map(s => {
           const cls = s.status === 'approved' ? 'paid' : s.status === 'rejected' ? 'rejected' : 'pending';
           const ico = s.status === 'approved' ? 'fa-circle-check' : s.status === 'rejected' ? 'fa-circle-xmark' : 'fa-hourglass-half';
-          const label = s.status === 'approved' ? 'Approved' : s.status === 'rejected' ? 'Rejected' : 'Pending';
+          const label = s.status === 'approved' ? 'অনুমোদিত' : s.status === 'rejected' ? 'বাতিল' : 'রিভিউ চলছে';
           return `
           <div class="hist-item">
             <div class="h-ico ${cls}"><i class="fa-solid ${ico}"></i></div>

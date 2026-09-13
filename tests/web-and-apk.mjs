@@ -348,6 +348,31 @@ console.log('\n[I] firebase-admin v14 surface + client error handling');
   check('task page-এ নিজের দ্বিতীয় field-render copy নেই (import-করা নাম shadow করা যাবে না)',
     !/const fieldsHtml = /.test(codeOnly(taskSrc)) && !/const ftype = /.test(codeOnly(taskSrc)) &&
     !/iconOf\[/.test(codeOnly(taskSrc)) && !/const phOf = /.test(codeOnly(taskSrc)));
+  /* --- দুইটা সিস্টেম আলাদা রাখা (owner correction: মিশিয়ে ফেলা হয়েছিল) --- */
+  {
+    const apiSrc = read('src/core/api.js');
+    const mj = read('src/pages/microjobs.js');
+    const admMain = read('src/admin/main.js');
+    check('getTasks() (পুরোনো টাস্ক grid) MicroJob doc বাদ দেয়',
+      /!isMicrojobDoc\(t\)/.test(apiSrc) && /export async function getMicrojobTasks/.test(apiSrc));
+    check('MicroJobs page শুধু getMicrojobTasks() পড়ে (কোনো hardcode job list নেই)',
+      /getMicrojobs\(/.test(mj) && !/getTasks\(\)/.test(mj) && !/TASKS/.test(codeOnly(mj)));
+    check('getTaskBySlug পুরোনো টাস্ক পেজে MicroJob doc দেখায় না',
+      /isMicrojobDoc\(t\) \? null : t/.test(apiSrc));
+    check('panel-এ দুইটা tab আলাদা (MicroJobs + টাস্ক) — link-ও আলাদা',
+      /id: 'microjobs'/.test(admMain) && /id: 'tasks'/.test(admMain) &&
+      /isMJ \? `\/microjobs\.html#job-/.test(admMain) && /\/task\/\$\{esc\(t\.slug\)\}\.html/.test(admMain));
+    check('লেডারবোর্ড = লিডারশিপ টাইলটাই (ডুপ্লিকেট টাইল নেই), Refer page আলাদা',
+      !/লিডারশিপ/.test(read('src/tasks-data.js')) && /লিডারবোর্ড/.test(read('src/tasks-data.js')) &&
+      /location\.replace\('\/leaderboard\.html'\)/.test(read('src/pages/leadership.js')) &&
+      !/leaderboard/.test(read('src/pages/team.js')));
+    check('user-facing chrome বাংলা (owner: english word না) — nav labels',
+      /সাপোর্ট<\/span>/.test(read('src/core/ui.js')) && /প্রোফাইল<\/span>/.test(read('src/core/ui.js')) &&
+      !/<span>Help<\/span>/.test(read('src/core/ui.js')));
+    check('proof submission-এ সিস্টেমের ছাপ (kind) বসে — admin queue আলাদা করতে',
+      /kind: isMicrojobDoc\(task\)/.test(read('api/proof/submit.js')));
+  }
+
   check('task page + MicroJobs detail একই jobform module ব্যবহার করে (একটাই form implementation)',
     /from '..\/core\/jobform\.js'/.test(taskSrc) && /from '..\/core\/jobform\.js'/.test(read('src/pages/microjobs.js')));
   check('jobform toast/ui.js import করে না (admin bundle-ও এটা import করে)',

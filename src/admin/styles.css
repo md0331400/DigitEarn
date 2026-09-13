@@ -169,3 +169,7 @@ a { color: var(--gold-deep); }
 .img-prev { display: flex; align-items: center; gap: 8px; background: #fff; border: 1.5px dashed #fdba74; border-radius: 12px; padding: 6px 8px; width: 100%; }
 .img-prev img { width: 74px; height: 74px; object-fit: cover; border-radius: 8px; background: #fafaf9; }
 .img-prev .adm-btn { margin-left: auto; }
+.mj-tab-title { margin: 14px 0 6px; font-size: 13px; font-weight: 800; color: #78716c; letter-spacing: .2px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chip { border: 1.5px solid #e7e5e4; background: #fff; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; color: #57534e; cursor: pointer; }
+.chip.on { background: #fff7ed; border-color: #fdba74; color: #b45309; }

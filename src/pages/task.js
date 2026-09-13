@@ -58,9 +58,9 @@ bootAppPage({
       const vu = task.videoUrl || '';
       const embed = videoEmbedHtml(vu);
       if (embed) {
-        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ${esc(task.nameBn)} Video Guide</p><div class="video-box">${embed}</div></div>`;
+        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ${esc(task.nameBn)} ভিডিও গাইড</p><div class="video-box">${embed}</div></div>`;
       } else if (vu) {
-        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ${esc(task.nameBn)} Video Guide</p><a href="${esc(vu)}" target="_blank" rel="noopener" class="btn btn-indigo btn-block" style="margin-top:10px"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Video Link</a></div>`;
+        vidSlot.innerHTML = `<div class="video-card"><p class="video-note"><i class="fa-solid fa-circle-play" style="color:var(--gold-deep)"></i> ${esc(task.nameBn)} ভিডিও গাইড</p><a href="${esc(vu)}" target="_blank" rel="noopener" class="btn btn-indigo btn-block" style="margin-top:10px"><i class="fa-solid fa-arrow-up-right-from-square"></i> ভিডিও লিংক খুলুন</a></div>`;
       }
     }
 
@@ -115,7 +115,7 @@ bootAppPage({
       ]);
       const view = (jobState && jobState.view) || null;
       const state = view ? view.state : ST.AVAILABLE;
-      const gate = (view && view.gate) || { allowed: true, label: 'Submit' };
+      const gate = (view && view.gate) || { allowed: true, label: 'জমা দিন' };
       const singleMode = isSingleMode(task);
 
       /* ⚠️ Dynamic fields only — admin panel (Micro Jobs → Submission Fields) যা configure
@@ -131,7 +131,7 @@ bootAppPage({
 
       const soldBadge = s => {
         const cls = s.status === 'approved' ? 'paid' : s.status === 'rejected' ? 'rejected' : 'pending';
-        const label = s.status === 'approved' ? 'Approved' : s.status === 'rejected' ? 'Rejected' : 'Pending';
+        const label = s.status === 'approved' ? 'অনুমোদিত' : s.status === 'rejected' ? 'বাতিল' : 'রিভিউ চলছে';
         return `<span class="h-status ${cls}">${label}</span>`;
       };
       const idOf = s => {
@@ -189,7 +189,7 @@ bootAppPage({
           ${fieldsMarkup}
           ${settings.admin1Link ? `<a href="${esc(settings.admin1Link)}" target="_blank" rel="noopener" class="btn-teal"><i class="fa-brands fa-telegram"></i> ${esc(settings.admin1Name)}-এর সাথে চ্যাট করুন</a>` : ''}
           <button type="button" id="proofSubmitBtn" class="btn ${canSubmit ? 'btn-green' : 'btn-gray'} btn-block" style="margin-top:12px"${canSubmit ? '' : ' disabled'}>
-            <i class="fa-solid ${canSubmit ? 'fa-paper-plane' : 'fa-hourglass-half'}"></i> ${esc(canSubmit ? (state === ST.RESUBMIT ? 'Submit Again' : submitLabel) : gate.label)}
+            <i class="fa-solid ${canSubmit ? 'fa-paper-plane' : 'fa-hourglass-half'}"></i> ${esc(canSubmit ? (state === ST.RESUBMIT ? 'আবার জমা দিন' : submitLabel) : gate.label)}
           </button>
           <a href="/history.html" class="btn btn-gray btn-block" style="margin-top:10px"><i class="fa-solid fa-clock-rotate-left"></i> ${esc(historyLabel)}</a>
         </div>
